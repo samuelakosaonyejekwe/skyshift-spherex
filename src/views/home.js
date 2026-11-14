@@ -29,7 +29,14 @@ export async function render(root, route, { go }) {
     'aria-describedby': 'parsed', role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'suggest', 'aria-autocomplete': 'list' });
   const parsed = h('div', { class: 'parsed', id: 'parsed', 'aria-live': 'polite' }, 'Decimal degrees, sexagesimal (h m s / d m s), galactic (l=… b=…) or "Gaia DR3 <id>".');
   const sugg = h('div', { class: 'suggest', id: 'suggest', role: 'listbox', hidden: true });
-  let sel = -1, items = [];
+  let sel = -1, items = [], chosen = null; // chosen: the suggestion placed in the box, opened only by Play/Enter
+  // A suggestion only fills the box; nothing opens until the user presses Play (or Enter)
+  const choose = (it) => {
+    if (it.fill) { it.fill(); return; }
+    chosen = it; input.value = it.label;
+    sugg.hidden = true; input.setAttribute('aria-expanded', 'false'); sel = -1;
+    parsed.className = 'parsed ok'; parsed.textContent = `${it.label} selected. Press Play to open it.`;
+  };
 
   const openTarget = (t, extra = {}) => {
     pushRecent(t);
@@ -37,7 +44,7 @@ export async function render(root, route, { go }) {
   };
   const submit = async () => {
     const v = input.value.trim();
-    if (sel >= 0 && items[sel]) { items[sel].pick(); return; }
+    if (chosen && v === chosen.label) { const c = chosen; chosen = null; c.pick(); return; }
     parsed.className = 'parsed'; parsed.textContent = 'Resolving…';
     try {
       const r = await resolveTarget(v);
@@ -77,7 +84,7 @@ export async function render(root, route, { go }) {
       { label: 'South ecliptic pole deep field', sub: 'Deep field', keys: 'deep field south ecliptic pole sep', icon: 'star', pick: () => openTarget({ ra: 90, dec: -EP.toFixed(5), name: 'South ecliptic pole deep field', source: 'coords' }) },
       { label: 'Galactic centre', sub: 'Milky Way core', keys: 'galactic centre center milky way core sgr', icon: 'star', pick: () => openTarget({ ra: +gc.ra.toFixed(5), dec: +gc.dec.toFixed(5), name: 'Galactic centre', source: 'coords' }) },
       { label: 'Random field', sub: 'Surprise me', keys: 'random field surprise any', icon: 'dice', pick: () => randomField() },
-      { label: 'Gaia DR3 source ID…', sub: 'Type an ID', keys: 'gaia dr3 source id star', icon: 'info', pick: () => { input.value = 'Gaia DR3 '; input.focus(); updateSuggest(); } },
+      { label: 'Gaia DR3 source ID…', sub: 'Type an ID', keys: 'gaia dr3 source id star', icon: 'info', fill: () => { chosen = null; input.value = 'Gaia DR3 '; input.focus(); updateSuggest(); } },
     ];
     for (const x of extras) if (!v || x.keys.includes(v) || v.split(/\s+/).every((w) => x.keys.includes(w))) items.push(x);
     for (const r of recent()) {
@@ -86,12 +93,12 @@ export async function render(root, route, { go }) {
     }
     items = items.slice(0, 11);
     sel = -1;
-    sugg.replaceChildren(...items.map((it, i) => h('button', { type: 'button', role: 'option', id: `sg${i}`, 'aria-selected': 'false', onmousedown: (e) => { e.preventDefault(); it.pick(); } },
+    sugg.replaceChildren(...items.map((it, i) => h('button', { type: 'button', role: 'option', id: `sg${i}`, 'aria-selected': 'false', onmousedown: (e) => { e.preventDefault(); choose(it); } },
       icon(it.icon || 'star'), h('span', {}, it.label), h('span', { class: 'k' }, it.sub))));
     const show = document.activeElement === input && items.length > 0 && !pos;
     sugg.hidden = !show; input.setAttribute('aria-expanded', String(show));
   };
-  input.addEventListener('input', updateSuggest);
+  input.addEventListener('input', () => { if (chosen && input.value.trim() !== chosen.label) chosen = null; updateSuggest(); });
   input.addEventListener('focus', updateSuggest);
   input.addEventListener('blur', () => setTimeout(() => { sugg.hidden = true; input.setAttribute('aria-expanded', 'false'); }, 120));
   input.addEventListener('keydown', (e) => {
@@ -101,7 +108,7 @@ export async function render(root, route, { go }) {
       sel = (sel + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
       [...sugg.children].forEach((b, i) => b.setAttribute('aria-selected', String(i === sel)));
       input.setAttribute('aria-activedescendant', `sg${sel}`);
-    } else if (e.key === 'Enter') { e.preventDefault(); submit(); }
+    } else if (e.key === 'Enter') { e.preventDefault(); if (!sugg.hidden && sel >= 0 && items[sel]) choose(items[sel]); else submit(); }
     else if (e.key === 'Escape') { sugg.hidden = true; sel = -1; }
   });
 
