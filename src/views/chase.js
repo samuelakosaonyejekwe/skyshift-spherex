@@ -29,6 +29,16 @@ export async function render(root, route, { go }) {
   const fast = await fetch('./data/fastmovers.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const known = Object.fromEntries((await presets()).filter((t) => t.gaia).map((t) => [String(t.gaia?.source_id || t.gaia), t.name]));
   const fastList = h('datalist', { id: 'fastmovers' }, (fast?.stars || []).map((s) => h('option', { value: s.id, label: `${known[s.id] ? known[s.id] + ' · ' : ''}${(s.pm / 1000).toFixed(2)}″ per year · ${s.parallax > 0 ? (1000 / s.parallax).toFixed(1) + ' pc away' : ''} · G ${s.g?.toFixed(1)}` })));
+  // the fastest-moving stars in Gaia DR3 (built-in list from IRSA), as cards; works without an archive relay
+  const fastTarget = (s) => ({ ra: s.ra, dec: s.dec, pmra: s.pmra, pmdec: s.pmdec, plx: s.parallax > 0 ? s.parallax : 0, refEpoch: 2016.0, name: known[s.id] || `Gaia DR3 ${s.id}`, id: s.id, source: 'gaia' });
+  const fastSection = () => {
+    const stars = (fast?.stars || []).filter((s) => !known[s.id]).slice(0, 12); // 12 fills whole rows at 2, 3, 4 or 6 columns
+    if (!stars.length) return null;
+    return h('section', { style: { marginTop: '18px' } },
+      h('h2', {}, 'The fastest stars in Gaia DR3'),
+      h('p', { class: 'tiny muted' }, 'The twelve fastest-moving stars in Gaia DR3 after the challenge targets, fastest first (from IRSA’s copy of the catalogue). All lie within about 10 parsecs of the Sun.'),
+      h('div', { class: 'chase-cards fast-cards' }, stars.map((s) => card({ name: `Gaia DR3 ${s.id}`, kind: `G = ${s.g?.toFixed(1)} · ${s.ra.toFixed(2)}°, ${s.dec >= 0 ? '+' : ''}${s.dec.toFixed(2)}°`, pmra: s.pmra, pmdec: s.pmdec, parallax: s.parallax, target: fastTarget(s) }))));
+  };
   const idIn = h('input', { type: 'text', list: 'fastmovers', inputmode: 'numeric', placeholder: 'Gaia DR3 source ID, or pick one of the fastest-moving stars', 'aria-label': 'Gaia DR3 source ID' });
   const idOut = h('div');
   const posIn = h('input', { type: 'text', placeholder: 'Position, e.g. 269.45 4.69 (or leave empty for your last field)', 'aria-label': 'Search position' });
@@ -49,7 +59,7 @@ export async function render(root, route, { go }) {
       try {
         const id = idIn.value.replace(/\D/g, '');
         const f = fast?.stars?.find((s) => s.id === id);
-        const r = f ? { kind: 'gaia', target: { ra: f.ra, dec: f.dec, pmra: f.pmra, pmdec: f.pmdec, plx: f.parallax > 0 ? f.parallax : 0, refEpoch: 2016.0, name: known[id] || `Gaia DR3 ${id}`, id, source: 'gaia' }, note: `Gaia DR3 star, G=${f.g?.toFixed(2)}; one of the fastest-moving stars in the catalogue (built-in list from IRSA)` }
+        const r = f ? { kind: 'gaia', target: fastTarget(f), note: `Gaia DR3 star, G=${f.g?.toFixed(2)}; one of the fastest-moving stars in the catalogue (built-in list from IRSA)` }
           : await resolveTarget(`Gaia DR3 ${id}`);
         if (r.error) { idOut.replaceChildren(h('p', { class: 'notice warn' }, `${r.error}. ${r.hint}`)); return; }
         idOut.replaceChildren(card({ name: r.target.name, kind: r.note, pmra: r.target.pmra, pmdec: r.target.pmdec, parallax: r.target.plx, target: r.target }));
@@ -72,10 +82,11 @@ ORDER BY phot_g_mean_mag`, { timeout: 60000 });
         rows.sort((a, b) => Math.hypot(b.pmra, b.pmdec) - Math.hypot(a.pmra, a.pmdec));
         findOut.replaceChildren(h('p', { class: 'tiny' }, `${rows.length} stars from Gaia DR3 (IRSA), fastest first.`),
           h('div', { class: 'chase-cards' }, rows.slice(0, 12).map((g) => card({ name: `Gaia DR3 ${g.source_id}`, kind: `G = ${g.phot_g_mean_mag?.toFixed(1)}`, pmra: g.pmra, pmdec: g.pmdec, parallax: g.parallax > 0 ? g.parallax : null,
-            target: { ra: g.ra, dec: g.dec, pmra: g.pmra, pmdec: g.pmdec, refEpoch: g.ref_epoch || 2016, name: `Gaia DR3 ${g.source_id}`, id: String(g.source_id), source: 'gaia' } }))));
+            target: { ra: g.ra, dec: g.dec, pmra: g.pmra, pmdec: g.pmdec, plx: g.parallax > 0 ? g.parallax : 0, refEpoch: g.ref_epoch || 2016, name: `Gaia DR3 ${g.source_id}`, id: String(g.source_id), source: 'gaia' } }))));
       } catch (err) { findOut.replaceChildren(h('p', { class: 'notice bad' }, `Gaia search unavailable right now (${err.message}).`)); }
     } }, posIn, radSel, minSel, h('button', { class: 'btn primary', type: 'submit' }, 'Find')),
     findOut)),
+    fastSection(),
     h('p', { class: 'tiny', style: { marginTop: '16px' } }, 'Asteroids and comets are not listed here: their paths need an orbit service that is not part of the challenge’s resources. You can still spot them with Time Machine → Discover.'));
   return () => {};
 }
