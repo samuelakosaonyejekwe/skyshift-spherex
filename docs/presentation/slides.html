@@ -49,6 +49,16 @@
   th, td { text-align: left; padding: 13px 16px; border-bottom: 1px solid #ffffff22; }
   th { color: var(--muted); font-weight: 600; }
   code { font-size: .9em; }
+  .facts { display: grid; gap: 12px; margin-top: 26px; }
+  .facts div { display: flex; align-items: baseline; gap: 20px; background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 14px; padding: 18px 24px; }
+  .facts span { flex: 0 0 190px; font-size: 25px; color: var(--muted); }
+  .facts b { font-size: 34px; white-space: nowrap; }
+  .steps { list-style: none; padding: 0; counter-reset: st; }
+  .steps li { counter-increment: st; position: relative; padding-left: 70px; margin-bottom: 24px; }
+  .steps li::before { content: counter(st); position: absolute; left: 0; top: -2px; width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #6a5cff, #2f9bff); color: #fff; font-weight: 800; font-size: 28px; display: grid; place-items: center; }
+  .src { display: grid; gap: 12px; }
+  .src div { background: #ffffff0d; border: 1px solid #ffffff22; border-left: 6px solid var(--accent); border-radius: 12px; padding: 12px 20px; font-size: 26px; line-height: 1.3; color: var(--muted); }
+  .src b { display: block; font-size: 29px; color: var(--text); margin-bottom: 2px; }
   #problem li { font-size: 34px; margin-bottom: 24px; }
   .mini { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
   .mini div { background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 14px; padding: 18px 20px; font-size: 27px; color: var(--muted); line-height: 1.25; }
@@ -77,16 +87,20 @@
 </style>
 </head>
 <body>
-<div class="bar no-print"><b>SkyShift · 7 slides</b><div class="acts"><button class="go" id="present" type="button">▶ Present</button><a href="SkyShift-slides.pdf">PDF</a><a href="skyshift-demo-barnard.webm">Video (28 s)</a><a href="../">Open the app</a></div></div>
+<div class="bar no-print"><b>SkyShift · Planet X and SPHEREx · 7 slides</b><div class="acts"><button class="go" id="present" type="button">▶ Present</button><a href="SkyShift-slides.pdf">PDF</a><a href="skyshift-demo-barnard.webm">Video (28 s)</a><a href="../">Open the app</a></div></div>
 <div class="viewport"><div class="deck" id="deck">
 
 <section class="on" aria-label="Title">
   <div class="two" style="grid-template-columns:1.3fr 1fr">
     <div>
-      <p class="kicker">2026 NASA Space Apps Challenge · Planet X and SPHEREx</p>
-      <h1>SkyShift: <span class="grad">a time machine</span> for the SPHEREx sky</h1>
-      <p>Type a star or coordinates, press Play, and watch NASA SPHEREx infrared images of that patch of sky play like a film.</p>
-      <p class="muted" style="margin-top:18px;font-size:28px">Team SkyShift Cyprus<br><b style="color:#9fe0ff;white-space:nowrap">samuelakosaonyejekwe.github.io/skyshift-spherex</b></p>
+      <p class="kicker">NASA Space Apps Challenge 2026</p>
+      <h1 style="font-size:86px">SkyShift: <span class="grad">a time machine</span> for the SPHEREx sky</h1>
+      <p style="margin:0">Type a star, press Play, and watch NASA SPHEREx infrared images of that sky play like a film.</p>
+      <div class="facts">
+        <div><span>Challenge</span><b>Planet X and SPHEREx</b></div>
+        <div><span>Team</span><b>SkyShift Cyprus</b></div>
+        <div><span>Team member</span><b>Samuel Akosa Onyejekwe</b></div>
+      </div>
     </div>
     <div><img class="badge" src="img/team-badge.png" alt="SkyShift Cyprus team badge"></div>
   </div>
@@ -111,13 +125,14 @@
 <section aria-label="Solution">
   <div class="two" style="grid-template-columns:.8fr 1.2fr">
     <div>
-      <h2>My solution</h2>
-      <ul>
-        <li><b>Explore</b>: a real SPHEREx map of the whole sky; click any spot.</li>
-        <li><b>Time Machine</b>: every image of that spot as a Movie, Blink, Difference, Stack, false Colour or your own equation.</li>
-        <li>Gaia and WISE overlays, quality flags, shareable links and a reproducible dossier.</li>
-        <li>Installs on any phone or computer; works offline.</li>
-      </ul>
+      <h2>How you use it</h2>
+      <ol class="steps">
+        <li><b>Type</b> a star or coordinates, or click the sky map.</li>
+        <li><b>Press Play</b>: every SPHEREx image of that spot plays as a film.</li>
+        <li><b>Blink</b> or <b>Difference</b>: moving objects jump out.</li>
+        <li><b>Click</b> a star: spectrum, Gaia motion and distance.</li>
+        <li><b>Save, share</b> or export what you found.</li>
+      </ol>
     </div>
     <img class="shot" src="img/explore.jpg" alt="SkyShift Explore page">
   </div>
@@ -131,17 +146,19 @@
   </div>
 </section>
 
-<section aria-label="102 bands">
-  <div class="two square">
-    <img class="shot" src="img/colour.jpg" alt="False-colour SPHEREx view">
+<section aria-label="Open space data">
+  <div class="two" style="grid-template-columns:560px 1fr;gap:44px">
+    <figure><img class="shot" src="img/colour.jpg" alt="False-colour SPHEREx view" style="width:560px;height:560px"><figcaption>All 102 bands at work: false colour from 0.75 µm (blue) to 5 µm (red).</figcaption></figure>
     <div>
-      <h2>Using all 102 bands</h2>
-      <ul>
-        <li><b>Clean co-adds</b>: each of the 6 detectors averaged, then combined.</li>
-        <li><b>False colour</b>: blue 0.75–1.6 µm, green 1.6–3.8 µm, red 3.8–5 µm. Cold brown dwarfs glow red.</li>
-        <li><b>Spectra and light curves</b> for any clicked object.</li>
-        <li><b>Image equations</b> such as <code>mean(D5,D6) − epoch(1)</code>.</li>
-      </ul>
+      <h2>Built on open space data</h2>
+      <div class="src">
+        <div><b>NASA IRSA · SPHEREx</b>1.6 million images in 102 infrared bands, streamed from NASA’s open cloud archive</div>
+        <div><b>NASA IRSA · search &amp; sky map</b>finds every image of a spot; all-sky map from the SPHEREx data cube</div>
+        <div><b>Gaia DR3 · MAST</b>star positions, motions and distances</div>
+        <div><b>NASA WISE · IRSA</b>CatWISE2020 and AllWISE infrared catalogues</div>
+        <div><b>CSA NEOSSat · CADC</b>asteroid-hunting satellite images of the same spot</div>
+      </div>
+      <p class="muted" style="margin:14px 0 0;font-size:27px">All processing runs in your browser.</p>
     </div>
   </div>
 </section>
