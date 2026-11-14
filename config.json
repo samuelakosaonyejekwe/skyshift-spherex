@@ -1,14 +1,35 @@
 {
-  "relays": ["/api/relay"],
-  "releases": [
-    { "id": "dr1", "name": "SPHEREx Data Release 1 (Surveys 1-2)", "doi": "10.26131/IRSA678", "sia": ["spherex_dr1", "spherex_dr1_deep"] },
-    { "id": "qr3", "name": "SPHEREx Quick Release 3 (Surveys 3-4, weekly)", "doi": "10.26131/IRSA662", "sia": ["spherex_qr3", "spherex_qr3_deep"] }
+  "relays": [
+    "/api/relay"
   ],
-  "excludeReleases": ["qr1", "qr2"],
+  "releases": [
+    {
+      "id": "dr1",
+      "name": "SPHEREx Data Release 1 (Surveys 1-2)",
+      "doi": "10.26131/IRSA678",
+      "sia": [
+        "spherex_dr1",
+        "spherex_dr1_deep"
+      ]
+    },
+    {
+      "id": "qr3",
+      "name": "SPHEREx Quick Release 3 (Surveys 3-4, weekly)",
+      "doi": "10.26131/IRSA662",
+      "sia": [
+        "spherex_qr3",
+        "spherex_qr3_deep"
+      ]
+    }
+  ],
+  "excludeReleases": [
+    "qr1",
+    "qr2"
+  ],
   "hosts": {
     "primary": "https://samuelakosaonyejekwe.github.io/skyshift-spherex/",
-    "backup": "Cloudflare Pages mirror (address assigned when set up)",
+    "backup": "Cloudflare Pages mirror (not set up yet)",
     "code": "https://github.com/samuelakosaonyejekwe/skyshift-spherex"
   },
-  "deployed": false
+  "deployed": true
 }

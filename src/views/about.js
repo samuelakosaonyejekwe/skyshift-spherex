@@ -20,9 +20,9 @@ export async function render(root) {
       h('p', { class: 'tiny', style: { margin: '6px 0 0' } }, 'SkyShift’s code, design and documentation may not be copied, modified or reused without written permission. Third-party data and software keep their own licences and credits, listed below.')),
     h('h2', {}, 'Where SkyShift lives'),
     h('ul', {},
-      h('li', {}, 'Primary: ', h('code', {}, cfg.hosts?.primary || 'https://samuelakosaonyejekwe.github.io/skyshift-spherex/'), cfg.deployed ? '' : ' (not yet published)'),
-      h('li', {}, 'Backup mirror: ', h('code', {}, cfg.hosts?.backup || 'Cloudflare Pages (to be set up)'), cfg.deployed ? '' : ' (not yet published)'),
-      h('li', {}, 'Source code: ', h('code', {}, cfg.hosts?.code || 'https://github.com/samuelakosaonyejekwe/skyshift-spherex'))),
+      h('li', {}, 'Live app: ', h('a', { href: cfg.hosts?.primary || 'https://samuelakosaonyejekwe.github.io/skyshift-spherex/' }, cfg.hosts?.primary || 'https://samuelakosaonyejekwe.github.io/skyshift-spherex/')),
+      h('li', {}, 'Backup mirror: ', cfg.hosts?.backup || 'Cloudflare Pages (to be set up)'),
+      h('li', {}, 'Source code: ', h('a', { href: cfg.hosts?.code || 'https://github.com/samuelakosaonyejekwe/skyshift-spherex' }, cfg.hosts?.code || 'https://github.com/samuelakosaonyejekwe/skyshift-spherex'))),
     h('p', {}, 'Both hosts serve the same build. Installed copies keep working offline even if a host is unreachable, and data requests go from your device straight to the archives.'),
     version ? h('p', { class: 'tiny' }, `App version ${version}`) : null,
 

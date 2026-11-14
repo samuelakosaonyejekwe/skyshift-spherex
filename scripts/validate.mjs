@@ -71,7 +71,7 @@ Browser maths is separately checked against Astropy (\`test/astropy.test.mjs\`, 
 `;
 for (const r of rows) {
   const m = r.motion;
-  md += `| ${r.name} | ${r.used} of ${r.searched} | ${r.epochs.length} (${r.epochs[0] || '–'} → ${r.epochs[r.epochs.length - 1] || '–'}) | ${m ? `${f(m.measured.pmra)}, ${f(m.measured.pmdec)}` : '–'} | ${m?.predicted ? `${f(m.predicted.pmra)}, ${f(m.predicted.pmdec)}` : 'not in Gaia DR3'} | ${m?.residual ? `${f(m.residual.pmra)}, ${f(m.residual.pmdec)}` : '–'} | ${m ? `${f(m.errRa)}, ${f(m.errDec)} (${m.nEpochs} epochs)` : '–'} | ${[r.saturated ? `${r.saturated} exposures with saturated core` : '', m?.saturatedCore ? 'centroid on saturated star (wings only)' : ''].filter(Boolean).join('; ') || '–'} |\n`;
+  md += `| ${r.name} | ${r.used} of ${r.searched} | ${r.epochs.length} (${r.epochs[0] || '–'} → ${r.epochs[r.epochs.length - 1] || '–'}) | ${m ? `${f(m.measured.pmra)}, ${f(m.measured.pmdec)}` : '–'} | ${m?.predicted ? `${f(m.predicted.pmra)}, ${f(m.predicted.pmdec)}` : 'not in Gaia DR3'} | ${m?.residual ? `${f(m.residual.pmra)}, ${f(m.residual.pmdec)}` : '–'} | ${m ? `${f(m.errRa)}, ${f(m.errDec)} (${m.nEpochs} epochs)` : '–'} | ${[r.saturated ? `${r.saturated} exposures with saturated core` : '', m?.saturatedCore ? 'centroid on saturated star (wings only)' : '', m?.parallaxRemoved ? `parallax removed (up to ${m.maxParallaxShift.toFixed(2)}″)` : ''].filter(Boolean).join('; ') || '–'} |\n`;
 }
 md += `
 ## Brightness change between survey passes (relative to the target's mean spectrum)
@@ -87,8 +87,9 @@ md += `
 
 - Motion: Gaussian-weighted centroids of the target in every six-month co-add, then a weighted straight-line fit;
   uncertainties from the fit residuals (3+ epochs) or centroid noise. A residual within about 2σ means the motion
-  SkyShift measures from SPHEREx agrees with Gaia. Saturated stars are centroided on their wings. Parallax is not
-  fitted, so for nearby stars part of the residual is the yearly parallax wobble (Barnard's Star ϖ = 0.55″).
+  SkyShift measures from SPHEREx agrees with Gaia. Saturated stars are centroided on their wings. Parallax is
+  removed: each epoch's annual-parallax shift (from the Gaia DR3 parallax) is subtracted from the measured position
+  before the straight-line fit, and the predicted positions include parallax.
 - Brightness changes use quick-look aperture photometry divided by the target's mean spectrum, so they mix
   wavelengths; ≥3σ is flagged as a candidate, not a confirmed variation.
 - Transfer: ${rows.map((r) => `${r.name} ${r.mb.toFixed(0)} MB in ${r.s.toFixed(0)} s`).join('; ')}.

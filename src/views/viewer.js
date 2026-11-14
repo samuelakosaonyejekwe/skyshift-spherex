@@ -186,7 +186,7 @@ export async function render(root, route, { go }) {
         toast({ title: 'Showing the saved image list', text: `The live archive search did not answer (${e.message}). ${quick.ts ? 'List saved ' + new Date(quick.ts).toLocaleString() + '.' : 'Built-in list.'}`, glyph: '📦', timeout: 7000 });
         return;
       }
-      setLoad(`The SPHEREx archive could not be reached (${e.message}). ${navigator.onLine ? 'Try again in a minute.' : 'You are offline and this field is not saved on this device yet.'}`, 0);
+      setLoad(navigator.onLine ? `Searching a new position needs SkyShift's archive relay, which is not available on this host right now (${e.message}). The five challenge targets, saved fields and every field you have opened before still work.` : 'You are offline and this field is not saved on this device yet.', 0);
       loading.querySelector('.boot-orbit').hidden = true;
       loading.firstChild.append(h('button', { class: 'btn primary', style: { marginTop: '10px' }, onclick: () => load() }, 'Retry'));
       return;

@@ -1,7 +1,7 @@
 # Keeps data fresh with no personal computer switched on: rebuilds the pre-built indexes from
 # the challenge resources (IRSA) and deploys the same build to GitHub Pages (primary) and
 # Cloudflare Pages (backup). Build artefacts are deployed directly; nothing is committed.
-# Enable only after the owner's go-ahead (secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID).
+# The Cloudflare backup step runs only when the secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are set.
 name: refresh-and-deploy
 on:
   push: { branches: [main] }
@@ -12,11 +12,14 @@ concurrency: { group: pages, cancel-in-progress: false }
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
-      - name: Refresh data from IRSA (keeps previous files if a source is down)
+      - name: Refresh data from IRSA (scheduled and manual runs; keeps previous files if a source is down)
+        if: github.event_name != 'push'
         run: |
           node scripts/prebake.mjs || true
           node scripts/mission.mjs || true
@@ -26,8 +29,8 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
       - name: Deploy backup to Cloudflare Pages
-        if: ${{ env.CF_TOKEN != '' }}
-        env: { CF_TOKEN: '${{ secrets.CLOUDFLARE_API_TOKEN }}', CLOUDFLARE_API_TOKEN: '${{ secrets.CLOUDFLARE_API_TOKEN }}', CLOUDFLARE_ACCOUNT_ID: '${{ secrets.CLOUDFLARE_ACCOUNT_ID }}' }
+        if: env.CF_TOKEN != ''
+        env: { CLOUDFLARE_API_TOKEN: '${{ secrets.CLOUDFLARE_API_TOKEN }}', CLOUDFLARE_ACCOUNT_ID: '${{ secrets.CLOUDFLARE_ACCOUNT_ID }}' }
         run: npx --yes wrangler@3 pages deploy dist --project-name skyshift-spherex --branch main
   deploy:
     needs: build

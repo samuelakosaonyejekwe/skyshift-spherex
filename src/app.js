@@ -5,7 +5,7 @@ import { h, toast, sheet, icon } from './ui/dom.js';
 import { loadConfig, onNetStatus, netStatus } from './lib/net.js';
 import { fromParams } from './state.js';
 import { getSettings, setSettings, applyTheme, DEFAULT_SETTINGS } from './settings.js';
-import { t, setLang } from './i18n/index.js';
+import { t, setLang, LANGS } from './i18n/index.js';
 
 const ROUTES = {
   home: () => import('./views/home.js'),
@@ -280,6 +280,8 @@ setLang(getSettings().lang || 'en');
   const keys = { home: 'nav.explore', view: 'nav.tm', chase: 'nav.chase', live: 'nav.live', mission: 'nav.mission', sky: 'nav.sky', saved: 'nav.saved', guide: 'nav.learn', about: 'nav.about' };
   document.querySelectorAll('#mainnav a').forEach((a) => { const sp = a.querySelector('span'); if (sp && keys[a.dataset.route]) sp.textContent = t(keys[a.dataset.route]); });
   document.querySelector('#installBtn span').textContent = t('top.install');
+  navBack.setAttribute('aria-label', t('top.back')); navFwd.setAttribute('aria-label', t('top.forward'));
+  document.getElementById('themeBtn').title = t('top.theme'); document.getElementById('settingsBtn').title = t('top.settings');
 }
 
 // ---------------- theme + settings ----------------
@@ -295,6 +297,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
     h('label', { class: 'field' }, 'Default field of view for new targets', sel('fov', [[4, '4′ (small, fastest)'], [6, '6′ (default)'], [10, '10′'], [15, '15′'], [30, '30′ (large, more data)']])),
     h('label', { class: 'field' }, 'Images per target (spread across all epochs and detectors)', sel('maxImages', [[60, '60'], [120, '120 (default)'], [240, '240'], [480, '480'], [0, 'All']])),
     h('label', { class: 'field' }, 'Download mode', sel('readMode', [['auto', 'Auto: first images fastest, then data saver (switches to saver on slow or Save-Data connections)'], ['saver', 'Data saver: only the pixels needed (≈0.1 MB per image)'], ['fast', 'Fast: whole image rows (≈0.6 MB per image)']])),
+    h('label', { class: 'field' }, 'Interface language (menus and messages; page content is in English)', sel('lang', Object.entries(LANGS).map(([k, v]) => [k, v.name]))),
     chk('mask', 'Remove bad pixels from measurements using SPHEREx quality flags'),
     chk('reduceMotion', 'Reduce motion (no automatic playback)'),
     h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => { close(); toast({ title: 'Settings saved', text: 'They apply to the next target you open.', glyph: '⚙', timeout: 2500 }); } }, 'Done'),

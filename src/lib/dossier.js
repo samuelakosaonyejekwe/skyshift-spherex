@@ -87,11 +87,20 @@ export function measureMotion(display, grid, req) {
     // centroid noise ≈ PSF width / S/N (floor 0.05 px)
     return { x, y, nan, snr, err: Math.max(0.05, (sigPx * 1.2) / Math.max(1, snr)) };
   };
+  // annual parallax shift (grid pixels) at a date, so the fit measures proper motion only
+  const plx = req.target.plx || 0;
+  const plxShift = (m) => {
+    if (!plx) return [0, 0];
+    const a = apparent(req.target.ra, req.target.dec, 0, 0, plx, 2016, m);
+    const dra = ((a.ra - req.target.ra + 540) % 360 - 180) * Math.cos((req.target.dec * Math.PI) / 180) * 3600;
+    const ddec = (a.dec - req.target.dec) * 3600;
+    return [-dra / grid.scale, -ddec / grid.scale]; // grid x grows west, y grows south
+  };
   const pts = [];
   D.groups.forEach((g, i) => {
     const img = detectorBalanced(D.dmaps[i], N);
     const t = mid(g), c = centroid(img, pred(t));
-    if (c) pts.push({ t: mjdToYear(t), ...c, date: mjdToISO(t, false) });
+    if (c) { const [sx, sy] = plxShift(t); pts.push({ t: mjdToYear(t), ...c, x: c.x - sx, y: c.y - sy, plxShiftArcsec: Math.hypot(sx, sy) * grid.scale, date: mjdToISO(t, false) }); }
   });
   if (pts.length < 2) return null;
   // weighted least squares x = a + b t, y = c + d t
@@ -116,6 +125,7 @@ export function measureMotion(display, grid, req) {
     residual: hasPm ? { pmra: muRa - req.target.pmra, pmdec: muDec - req.target.pmdec } : null, uncertainty: unc,
     errRa: fx.err * grid.scale * 1000, errDec: fy.err * grid.scale * 1000,
     saturatedCore: pts.some((p) => p.nan), epochs: [pts[0].date, pts[pts.length - 1].date],
+    parallaxRemoved: !!plx, maxParallaxShift: Math.max(0, ...pts.map((p) => p.plxShiftArcsec || 0)),
   };
 }
 

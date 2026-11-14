@@ -5,8 +5,13 @@ little film; moving brown dwarfs, asteroids and changing stars jump out, and eve
 
 Built for the 2026 NASA Space Apps Challenge "Planet X and SPHEREx" by team **SkyShift Cyprus**.
 
-- Live app (primary): https://samuelakosaonyejekwe.github.io/skyshift-spherex/ (not yet published)
-- Backup mirror: Cloudflare Pages (address assigned when set up; not yet published)
+- Live app: https://samuelakosaonyejekwe.github.io/skyshift-spherex/
+- Code: https://github.com/samuelakosaonyejekwe/skyshift-spherex
+- Backup mirror: Cloudflare Pages (to be set up; needs a Cloudflare account)
+
+On GitHub Pages there is no search relay yet, so searches of new positions use saved or built-in image lists; the five
+challenge targets, the sky map, Live, Mission and the Sky atlas work fully. Adding a relay host (see `wrangler.toml`)
+enables live searches anywhere.
 - Local: `npm start`, then open http://localhost:8080/
 
 ## What you can do

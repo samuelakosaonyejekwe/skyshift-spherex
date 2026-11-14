@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SkyShift: A Time Machine for the SPHEREx Sky — SkyShift Cyprus</title>
+<style>
+  :root { --bg: #070919; --text: #eef0ff; --muted: #b9bee6; --accent: #5ec8ff; --warm: #ffcf7a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 22px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .deck { height: 100%; }
+  section { display: none; height: 100%; padding: 4vh 5vw; background: radial-gradient(1200px 700px at 15% -10%, #241c6b 0%, transparent 60%), radial-gradient(900px 600px at 110% 10%, #0d3d6b 0%, transparent 55%); }
+  section.on { display: grid; }
+  h1 { font-size: 2.6em; margin: 0 0 .2em; letter-spacing: -.02em; }
+  h2 { font-size: 1.7em; margin: 0 0 .4em; }
+  .grad { background: linear-gradient(90deg, #a99bff, #5ec8ff 50%, #ffcf7a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .muted { color: var(--muted); }
+  .two { display: grid; grid-template-columns: 1fr 1.25fr; gap: 3vw; align-items: center; }
+  .two.flip { grid-template-columns: 1.25fr 1fr; }
+  img.shot { width: 100%; border-radius: 14px; box-shadow: 0 10px 40px #0008; border: 1px solid #ffffff22; }
+  ul { padding-left: 1.1em; margin: .3em 0; } li { margin: .35em 0; }
+  .big { font-size: 1.25em; }
+  .num { font-size: 2.2em; font-weight: 800; color: var(--warm); line-height: 1; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2vw; margin-top: 1em; }
+  .stat { background: #ffffff0d; border: 1px solid #ffffff1f; border-radius: 14px; padding: 14px; }
+  .stat span { display: block; font-size: .7em; color: var(--muted); margin-top: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: .72em; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #ffffff22; }
+  th { color: var(--muted); font-weight: 600; }
+  .foot { position: fixed; bottom: 14px; left: 5vw; right: 5vw; display: flex; justify-content: space-between; font-size: .55em; color: var(--muted); }
+  .nav { position: fixed; bottom: 10px; right: 50%; transform: translateX(50%); display: flex; gap: 10px; }
+  .nav button { width: 40px; height: 40px; border-radius: 50%; border: 1px solid #ffffff44; background: #1d2263; color: #fff; font-size: 18px; cursor: pointer; }
+  .badge { width: min(34vh, 320px); border-radius: 18px; box-shadow: 0 10px 40px #0009; }
+  @media print { section { display: grid !important; page-break-after: always; height: 100vh; } .nav, .foot { display: none; } }
+</style>
+</head>
+<body>
+<div class="deck">
+
+<section class="on" aria-label="Title">
+  <div class="two">
+    <div>
+      <p class="muted">2026 NASA Space Apps Challenge · Planet X and SPHEREx</p>
+      <h1>SkyShift: <span class="grad">a time machine</span> for the SPHEREx sky</h1>
+      <p class="big">Type a star or coordinates, press Play, and watch NASA SPHEREx infrared images of that patch of sky play like a film.</p>
+      <p class="muted">Team SkyShift Cyprus</p>
+    </div>
+    <div style="text-align:center"><img class="badge" src="img/team-badge.png" alt="SkyShift Cyprus team badge"></div>
+  </div>
+</section>
+
+<section aria-label="Problem">
+  <div class="two flip">
+    <div><img class="shot" src="img/skymap.png" alt="The whole sky as SPHEREx sees it"></div>
+    <div>
+      <h2>The problem</h2>
+      <ul>
+        <li>SPHEREx maps the <b>entire sky every six months in 102 infrared bands</b>: over 1.6 million spectral images so far.</li>
+        <li>Brown dwarfs, asteroids, comets and nearby stars reveal themselves by <b>moving</b>; variable stars by <b>changing brightness</b>.</li>
+        <li>No one person, and no single program, can look at all of it.</li>
+        <li>Volunteers found most known brown dwarfs and comets by blinking images, the way Pluto was found. They need a tool for SPHEREx.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section aria-label="Solution">
+  <div class="two">
+    <div>
+      <h2>Our solution</h2>
+      <ul>
+        <li><b>Explore</b> a real SPHEREx map of the whole sky; hover to see how often each spot was imaged; click to play it.</li>
+        <li><b>Time Machine</b>: every SPHEREx image of that spot, aligned on the sky, as a Movie, Blink, Difference, Stack, false Colour or your own equation.</li>
+        <li>Gaia and WISE overlays, contamination flags, shareable/embeddable links, saved fields, candidates and a reproducible dossier.</li>
+        <li>Installs on any phone or computer and works offline.</li>
+      </ul>
+    </div>
+    <div><img class="shot" src="img/explore.png" alt="SkyShift Explore page"></div>
+  </div>
+</section>
+
+<section aria-label="Live demo">
+  <h2>Live demo: WISE 0855 and RW Aurigae</h2>
+  <div class="two" style="grid-template-columns:1fr 1fr">
+    <figure style="margin:0"><img class="shot" src="img/blink.png" alt="Blink comparator of WISE 0855"><figcaption class="muted" style="font-size:.6em">Blink: first vs last six-month survey of the coldest known brown dwarf (D4–D6, 2.4–5 µm).</figcaption></figure>
+    <figure style="margin:0"><img class="shot" src="img/spectrum.png" alt="Spectrum of RW Aurigae"><figcaption class="muted" style="font-size:.6em">A spectrum built on the fly from every exposure; each SPHEREx image samples a different wavelength.</figcaption></figure>
+  </div>
+  <p class="muted" style="font-size:.6em">30-second video: skyshift-demo.webm (same folder).</p>
+</section>
+
+<section aria-label="102 bands">
+  <div class="two flip">
+    <div><img class="shot" src="img/colour.png" alt="False-colour view"></div>
+    <div>
+      <h2>Using all 102 bands</h2>
+      <ul>
+        <li><b>Per-detector co-adds</b>: each of the 6 arrays averaged separately, then combined, for clean deep images.</li>
+        <li><b>False colour</b>: blue 0.75–1.6 µm, green 1.6–3.8 µm, red 3.8–5 µm; cold brown dwarfs glow red.</li>
+        <li><b>Spectra and light curves on the fly</b> for any clicked object, with hydrogen and PAH lines marked.</li>
+        <li><b>Wavelength-matched differences</b> and image equations such as <code>mean(D5,D6) − epoch(1)</code>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section aria-label="Validation">
+  <h2>Validation</h2>
+  <div class="stats">
+    <div class="stat"><div class="num">4×10⁻¹⁰″</div><span>largest position difference vs Astropy on real SPHEREx files</span></div>
+    <div class="stat"><div class="num">10⁻¹⁵ µm</div><span>largest wavelength difference vs Astropy (WCS-WAVE table)</span></div>
+    <div class="stat"><div class="num">9×</div><span>less data per image with column-precise byte ranges (identical pixels)</span></div>
+    <div class="stat"><div class="num">8 / 8</div><span>challenge resources used and checked live</span></div>
+  </div>
+  <div id="val" style="margin-top:1em">
+    <table><tr><th>Target</th><th>Proper motion: SkyShift vs Gaia DR3 (parallax removed)</th><th>Verdict</th></tr><tr><td>Barnard’s Star</td><td>μδ 10,139 vs 10,362 mas/yr (2.2%)</td><td>agrees (1σ); saturated core</td></tr><tr><td>RW Aurigae</td><td>residual 386 ± 433, −20 ± 433</td><td>agrees</td></tr><tr><td>Epsilon Indi B</td><td>residual −1,229 ± 512, −1,381 ± 486</td><td>≈2.5σ: direction right</td></tr><tr><td>R Draconis</td><td>2 epochs, saturated</td><td>not reliable</td></tr><tr><td>WISE 0855</td><td>too faint at 0.75–5 µm</td><td>no reliable motion</td></tr></table><p class="muted" style="font-size:.6em">RW Aurigae brightness changed −13.5% ± 5.3% between surveys (2.5σ, below the 3σ candidate threshold). Full report: docs/VALIDATION.md.</p>
+  </div>
+</section>
+
+<section aria-label="Impact and next steps">
+  <div class="two">
+    <div>
+      <h2>Impact</h2>
+      <ul>
+        <li>Anyone with a phone can inspect SPHEREx data minutes after it reaches the archive, with no account and no software to install.</li>
+        <li>Discovery helpers flag <b>candidates</b> for human checking; finds are saved with full provenance and exportable (CSV, JSON, MPC ADES).</li>
+        <li>Classroom activities built on the five challenge targets.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>What's next</h2>
+      <ul>
+        <li>Public hosting on two independent hosts with scheduled data refresh.</li>
+        <li>Forced photometry for blended sources; parallax fits from SPHEREx alone.</li>
+        <li>More languages (Greek interface already started) and shared crowd classification.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div>
+<div class="nav"><button id="prev" aria-label="Previous slide">‹</button><button id="next" aria-label="Next slide">›</button></div>
+<div class="foot"><span>SkyShift Cyprus · SPHEREx data: NASA/IPAC Infrared Science Archive (IRSA)</span><span id="count"></span></div>
+<script>
+  const s = [...document.querySelectorAll('section')]; let i = 0;
+  const show = (k) => { i = Math.max(0, Math.min(s.length - 1, k)); s.forEach((x, j) => x.classList.toggle('on', j === i)); document.getElementById('count').textContent = `${i + 1} / ${s.length}`; };
+  document.getElementById('prev').onclick = () => show(i - 1); document.getElementById('next').onclick = () => show(i + 1);
+  addEventListener('keydown', (e) => { if (['ArrowRight', 'PageDown', ' '].includes(e.key)) show(i + 1); if (['ArrowLeft', 'PageUp'].includes(e.key)) show(i - 1); });
+  show(0);
+</script>
+</body>
+</html>
