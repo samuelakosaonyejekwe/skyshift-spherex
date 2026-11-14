@@ -17,14 +17,22 @@ export async function render(root, route, { go }) {
   const info = h('div', { class: 'tiny', 'aria-live': 'polite' }, 'Loading the sky map…');
   const picked = h('div', { class: 'row' });
   const props = h('p', { class: 'tiny' });
+  const catBar = h('div', { class: 'row' });
   root.append(
     h('div', { class: 'row', style: { marginBottom: '10px' } },
       h('h1', { style: { margin: 0 } }, 'Sky atlas'), h('div', { class: 'spacer' }),
       req.target ? h('a', { class: 'btn', href: `#/view?${toParams(req)}` }, 'Back to the film of this field') : null),
     h('p', { class: 'muted' }, 'The whole sky as SPHEREx sees it: the DR1 all-sky spectral cube from IRSA, displayed with Aladin Lite from CDS Strasbourg. Drag to explore, scroll to zoom, click a spot to make it your next target.'),
-    host, h('div', { class: 'row', style: { marginTop: '10px' } }, info, h('div', { class: 'spacer' }), picked), props);
+    host, h('div', { class: 'row', style: { marginTop: '10px' } }, info, h('div', { class: 'spacer' }), catBar, picked), props);
 
-  if (!navigator.serviceWorker?.controller) props.textContent = 'Tip: the sky map shows best once SkyShift has finished installing its offline files (reload this page if it stays dark).';
+  // The SPHEREx cube needs the service worker (it swaps the cube's blank middle channel for a valid one).
+  if ('serviceWorker' in navigator && !navigator.serviceWorker.controller && location.protocol !== 'file:') {
+    info.textContent = 'Preparing the sky map…';
+    try {
+      await Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(r, 6000))]);
+      if (!navigator.serviceWorker.controller && !sessionStorage.getItem('skyshift.skyReload')) { sessionStorage.setItem('skyshift.skyReload', '1'); location.reload(); return () => {}; }
+    } catch { /* continue without */ }
+  }
   if (!document.createElement('canvas').getContext('webgl2')) {
     host.replaceChildren(h('div', { class: 'empty' }, 'This device’s browser does not support WebGL2, which the sky map needs. Everything else in SkyShift works.'));
     info.textContent = '';
@@ -36,7 +44,7 @@ export async function render(root, route, { go }) {
     const A = mod.default;
     await A.init;
     aladin = A.aladin(host, {
-      survey: SPHEREX_HIPS, fov: Math.max(0.3, (req.fov / 60) * 4), target: `${t.ra} ${t.dec}`, cooFrame: 'ICRSd',
+      survey: SPHEREX_HIPS, fov: Math.max(1.5, (req.fov / 60) * 6), target: `${t.ra} ${t.dec}`, cooFrame: 'ICRSd',
       showReticle: true, showLayersControl: false, showSimbadPointerControl: false, showShareControl: false, showSettingsControl: false,
       showProjectionControl: false, showContextMenu: false, showCooGridControl: true, showFullscreenControl: true, showFrame: true, showZoomControl: true,
       backgroundColor: 'rgb(5,6,26)', reticleColor: '#ffcf7a',
@@ -49,15 +57,20 @@ export async function render(root, route, { go }) {
     info.textContent = `Centred on ${t.name || `${formatRA(t.ra)} ${formatDec(t.dec)}`}. Yellow box = the field shown in Explore.`;
     // catalogues
     const rad = Math.min(0.5, Math.max(0.05, req.fov / 60));
+    // catalogues: brightest sources only, so the SPHEREx sky stays visible; toggles below the map
+    const cats = {};
+    const toggle = (key, label, on) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: on, onchange: (e) => { const c = cats[key]; if (c) (e.target.checked ? c.show() : c.hide()); } }), label);
+    catBar.replaceChildren(h('span', { class: 'tiny' }, 'Catalogues:'), toggle('gaia', 'Gaia DR3 (brightest 300)', true), toggle('wise', 'CatWISE2020 (brightest 300)', false));
     gaiaCone(t.ra, t.dec, rad).then((r) => {
-      const cat = A.catalog({ name: 'Gaia DR3', color: '#5ec8ff', sourceSize: 10 });
-      aladin.addCatalog(cat);
-      cat.addSources(r.data.rows.slice(0, 2000).map((s) => A.source(s.ra, s.dec, { name: `Gaia DR3 ${s.source_id}`, G: s.phot_g_mean_mag })));
+      const cat = A.catalog({ name: 'Gaia DR3', color: '#5ec8ff', sourceSize: 9 });
+      aladin.addCatalog(cat); cats.gaia = cat;
+      cat.addSources([...r.data.rows].sort((a, b) => (a.phot_g_mean_mag ?? 99) - (b.phot_g_mean_mag ?? 99)).slice(0, 300).map((s) => A.source(s.ra, s.dec, { name: `Gaia DR3 ${s.source_id}`, G: s.phot_g_mean_mag })));
     }).catch(() => {});
     catwiseCone(t.ra, t.dec, rad).then((r) => {
-      const cat = A.catalog({ name: 'CatWISE2020', color: '#ffb547', sourceSize: 8, shape: 'square' });
-      aladin.addCatalog(cat);
-      cat.addSources(r.data.rows.slice(0, 2000).map((s) => A.source(s.ra, s.dec, { name: s.source_name })));
+      const cat = A.catalog({ name: 'CatWISE2020', color: '#ffb547', sourceSize: 7, shape: 'square' });
+      aladin.addCatalog(cat); cats.wise = cat;
+      cat.addSources([...r.data.rows].sort((a, b) => (a.w1mpro ?? 99) - (b.w1mpro ?? 99)).slice(0, 300).map((s) => A.source(s.ra, s.dec, { name: s.source_name })));
+      cat.hide();
     }).catch(() => {});
     aladin.on('click', (e) => {
       if (!e || e.ra == null) return;

@@ -70,14 +70,18 @@ export async function render(root, route, { go }) {
       let newestObs = Number(localStorage.getItem('skyshift.newestMjd') || 0);
       try { const { latestSpherex } = await import('../lib/tap.js'); const r = await latestSpherex(); if (r.data) newestObs = r.data; } catch { /* keep */ }
       stats.replaceChildren(
-        stat(top.period, `newest planning period (${top.rel.toUpperCase()}) in the archive`),
-        stat(newestFile ? ago(newestFile) : '–', 'newest files arrived'),
-        stat(newestObs ? mjdToISO(newestObs, false) : '–', 'newest exposure searchable (IRSA TAP)'),
-        stat(String(all.length), 'planning periods currently served (DR1 + QR3)'));
+        stat(top.period, `newest SPHEREx planning period in the IRSA archive (${top.rel.toUpperCase()})`),
+        stat(newestFile ? newestFile.slice(0, 10) : '–', `newest SPHEREx files reached the IRSA archive${newestFile ? ` (${ago(newestFile)})` : ''}`),
+        stat(newestObs ? mjdToISO(newestObs, false) : '–', 'date of the newest SPHEREx exposure searchable at IRSA'),
+        stat(String(all.length), 'SPHEREx planning periods served by IRSA now (DR1 + QR3)'));
+      periods.className = 'period-grid';
       periods.replaceChildren(...newest.map((p, i) => h('div', { class: 'card row' }, h('span', { class: `chip ${p.rel === 'qr3' ? 'good' : 'info'}` }, p.rel.toUpperCase()), h('b', {}, `Planning period ${p.period}`), h('span', { class: 'tiny' }, `${weekLabel(p.period)}${i === 0 ? ' · newest' : ''}`))));
       const latest = keys.slice(-8).reverse();
-      frames.replaceChildren(...latest.map((k) => frameCard(k)));
-      status.textContent = `${keys.length} detector-3 frames listed in ${top.period}. Checked ${new Date().toLocaleTimeString()}.`;
+      const cardsEls = latest.map((k) => frameCard(k));
+      frames.replaceChildren(...cardsEls);
+      // develop the newest frames automatically, one after another (about 0.3 MB each)
+      (async () => { for (const c of cardsEls) { const b = c.querySelector('button'); if (b && b.textContent === 'Develop') { b.click(); await new Promise((r) => setTimeout(r, 400)); while (b.isConnected && b.disabled) await new Promise((r) => setTimeout(r, 300)); } } })();
+      status.textContent = `${keys.length} detector-3 frames listed in ${top.period}. Archive checked just now (${new Date().toLocaleTimeString()}).`;
       await cache.set('live:last', { at: Date.now(), top, keys: latest });
     } catch (e) {
       const prev = await cache.get('live:last');
@@ -89,7 +93,7 @@ export async function render(root, route, { go }) {
   function frameCard(k) {
     const d = describeUri(k.key);
     const canvas = h('canvas', { width: 192, height: 192, class: 'live-thumb', 'aria-label': 'Quick-look picture' });
-    const info = h('p', { class: 'tiny' }, `${d.obsid || ''} D${d.detector || '?'} · arrived ${ago(k.modified)} · ${(k.size / 1048576).toFixed(0)} MB`);
+    const info = h('p', { class: 'tiny' }, `${d.obsid || ''} D${d.detector || '?'} · reached IRSA ${k.modified?.slice(0, 10)} · ${(k.size / 1048576).toFixed(0)} MB`);
     const btn = h('button', { class: 'btn small primary' }, 'Develop');
     const card = h('div', { class: 'card live-card' }, canvas, info, btn);
     btn.addEventListener('click', async () => {
