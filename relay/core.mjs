@@ -125,7 +125,11 @@ export async function handle(request, { clientIp = 'anon', fetchImpl = fetch } =
     },
     flush() { clearTimeout(timer); },
   });
-  // upstream 5xx is passed as 502 so the client can fail over to another relay
-  const status = up.status >= 500 ? 502 : up.status;
+  // An archive's server error (e.g. IRSA's gateway answering 502) is reported in X-Relay-Upstream-Status with a
+  // 200 from the relay: the relay is healthy, so clients do not fail over to another relay (the archive is down for
+  // every relay alike) and browsers do not log a failed request; clients read the header and use their fallbacks.
+  // 502/503/504 from the relay itself therefore always mean "this relay is broken".
+  const status = up.status >= 500 ? 200 : up.status;
+  if (up.status >= 500) headers['Cache-Control'] = 'no-store';
   return new Response(up.body ? up.body.pipeThrough(limiter) : null, { status, headers });
 }

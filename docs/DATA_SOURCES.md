@@ -129,7 +129,9 @@ example link (133.786245, −7.244372), which SkyShift uses as the field centre.
 
 IRSA TAP/SIA, MAST API, CADC TAP and the mission web pages do not send CORS headers, so a browser cannot read them
 directly. `relay/core.mjs` is a stateless allow-list relay (hosts and path prefixes of the eight seeds only, GET/POST,
-40 MB cap, 55 s timeout, no cookies, no logging, per-client rate limit). It runs as the local server's `/api/relay`, and is
+40 MB cap, 55 s timeout, no cookies, no logging, per-client rate limit). An archive's server error is reported in
+`X-Relay-Upstream-Status` with a 200 from the relay (not cached), so clients use their fallbacks instead of failing over
+to another relay, and a 502/503/504 from the relay always means the relay itself is down. It runs as the local server's `/api/relay`, and is
 packaged for Cloudflare Pages Functions, Cloudflare Workers, Netlify Edge, Vercel Edge and Deno Deploy, so two or more
 independent relays can be listed in `config.json`. GitHub Pages cannot run it: there the app skips the same-origin relay
 (`config.json` → `staticHosts`), searches images through the static index (below) and uses any external relay listed

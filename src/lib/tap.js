@@ -62,8 +62,8 @@ export async function tap(service, adql, { timeout = 60000, signal } = {}) {
   const upstream = Number(res.headers.get('x-relay-upstream-status') || res.status);
   if (upstream >= 500 || upstream === 0) tapDownUntil.set(service, Date.now() + 10 * 60e3);
   const text = await res.text();
-  if (!res.ok || /<VOTABLE|QUERY_STATUS.*ERROR/i.test(text.slice(0, 600))) {
-    const msg = (text.match(/<INFO[^>]*>([^<]+)/) || [])[1] || `HTTP ${res.status}`;
+  if (!res.ok || upstream >= 400 || upstream === 0 || /<VOTABLE|QUERY_STATUS.*ERROR/i.test(text.slice(0, 600))) {
+    const msg = (text.match(/<INFO[^>]*>([^<]+)/) || [])[1] || `HTTP ${upstream || res.status}`;
     throw new Error(`TAP error: ${msg.trim().slice(0, 200)}`);
   }
   return parseCSV(text);
