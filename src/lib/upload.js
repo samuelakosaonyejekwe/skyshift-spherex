@@ -4,7 +4,7 @@
 
 import { parseHeader, BLOCK, dataSize } from './fits.js';
 import { CelestialWCS } from './wcs.js';
-import { parsePosition, parseAngle, wrap360 } from './coords.js';
+import { parsePosition, parseAngle, wrap360, fromGalactic } from './coords.js';
 
 export const LIMITS = { fileBytes: 30 * 1024 * 1024, unzipBytes: 120 * 1024 * 1024, zipEntries: 200, rows: 20000, ratio: 200 };
 
@@ -59,7 +59,7 @@ function parseText(name, text, mapping) {
     try { j = JSON.parse(t); } catch (e) { throw new Error(`JSON could not be read: ${e.message}`); }
     return finish(j?.type === 'FeatureCollection' ? 'GeoJSON' : 'JSON', tableFromJson(j), mapping);
   }
-  if (/^# %ECSV/.test(t)) return finish('ECSV', tableFromDelimited(t.replace(/^#.*$/gm, '').trim(), /\s+/.test(t.split('\n').find((l) => !l.startsWith('#')) || '') && !t.includes(',') ? ' ' : ','), mapping);
+  if (/^# %ECSV/.test(t)) return finish('ECSV', tableFromDelimited(t.replace(/^#.*$/gm, '').trim(), !(t.split('\n').find((l) => l.trim() && !l.startsWith('#')) || '').includes(',') ? ' ' : ','), mapping);
   if (/^\s*\|/m.test(t.slice(0, 4000)) && /^\\/m.test(t.slice(0, 4000)) || /^\|[^\n]+\|\s*\n\|/m.test(t.slice(0, 2000))) return finish('IPAC table', tableFromIpac(t), mapping);
   if (/^(# Region file|global |fk5|icrs|circle\()/im.test(t.slice(0, 500))) return finish('DS9 region file', tableFromDs9(t), mapping);
   if (looksMpc80(t)) return finish('MPC 80-column observations', tableFromMpc80(t), mapping);
@@ -244,10 +244,13 @@ function parseFits(bytes, mapping) {
   // image with celestial WCS
   for (const f of found) {
     const h = f.h;
-    const n1 = h.NAXIS1 ?? h.ZNAXIS1, n2 = h.NAXIS2 ?? h.ZNAXIS2;
+    // a tile-compressed image (ZIMAGE) stores its real size in ZNAXISn; NAXISn there is the table layout
+    const n1 = h.ZIMAGE ? h.ZNAXIS1 : h.NAXIS1, n2 = h.ZIMAGE ? h.ZNAXIS2 : h.NAXIS2;
     if ((h.NAXIS >= 2 || h.ZNAXIS >= 2) && /RA-|GLON/.test(h.CTYPE1 || '') && !(h.XTENSION === 'BINTABLE' && !h.ZIMAGE)) {
       const wcs = new CelestialWCS(h);
-      const [ra, dec] = wcs.pixToWorld((n1 + 1) / 2, (n2 + 1) / 2);
+      let [ra, dec] = wcs.pixToWorld((n1 + 1) / 2, (n2 + 1) / 2);
+      // an image in galactic coordinates gives (l, b): convert to ICRS like every other position
+      if (/^GLON/.test(h.CTYPE1 || '') && Number.isFinite(ra)) ({ ra, dec } = fromGalactic(ra, dec));
       const fov = (Math.max(n1, n2) * wcs.pixelScaleArcsec) / 60;
       return {
         format: 'FITS image (user-supplied)', columns: [], preview: [], errors: [],
@@ -265,9 +268,9 @@ function parseFits(bytes, mapping) {
     for (let k = 1; k <= h.TFIELDS; k++) {
       const m = String(h[`TFORM${k}`]).match(/^(\d*)([LXBIJKAEDCMPQ])/);
       const rep = m[1] ? Number(m[1]) : 1, t = m[2];
-      const size = { L: 1, X: 1, B: 1, I: 2, J: 4, K: 8, A: 1, E: 4, D: 8, C: 8, M: 16, P: 8, Q: 16 }[t];
+      const size = { L: 1, X: 0.125, B: 1, I: 2, J: 4, K: 8, A: 1, E: 4, D: 8, C: 8, M: 16, P: 8, Q: 16 }[t];
       cols.push({ name: h[`TTYPE${k}`] || `col${k}`, t, rep, off: o, scale: h[`TSCAL${k}`] ?? 1, zero: h[`TZERO${k}`] ?? 0 });
-      o += rep * size;
+      o += t === 'X' ? Math.ceil(rep / 8) : rep * size; // X (bit) columns pack 8 bits per byte
     }
     const nrow = Math.min(h.NAXIS2, LIMITS.rows), width = h.NAXIS1;
     if (f.dataStart + nrow * width > bytes.length) throw new Error('FITS table is truncated.');
@@ -404,11 +407,11 @@ function finish(format, table, mapping, mode = 'table') {
 
 function findPositionInText(line) {
   const s = line.replace(/[,;|]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const sexa = s.match(/(\d{1,2}[h:\s]\s*\d{1,2}[m:\s]\s*\d{1,2}(?:\.\d+)?s?)\s+([+-−]?\s*\d{1,2}[d°:\s]\s*\d{1,2}[m′':\s]\s*\d{1,2}(?:\.\d+)?[s″"]?)/i);
-  const dec = s.match(/(?:^|\s)(\d{1,3}\.\d+)\s+([+-−]?\d{1,2}\.\d+)(?:\s|$)/);
+  const sexa = s.match(/(\d{1,2}[h:\s]\s*\d{1,2}[m:\s]\s*\d{1,2}(?:\.\d+)?s?)\s+([+\-−]?\s*\d{1,2}[d°:\s]\s*\d{1,2}[m′':\s]\s*\d{1,2}(?:\.\d+)?[s″"]?)/i);
+  const dec = s.match(/(?:^|\s)(\d{1,3}\.\d+)\s+([+\-−]?\d{1,2}\.\d+)(?:\s|$)/);
   const m = sexa || dec;
   if (!m) return null;
-  const pos = parsePosition(`${m[1]} ${/^[+-−]/.test(m[2].trim()) ? m[2].replace('−', '-').replace(/\s+/g, '') : '+' + m[2].trim()}`);
+  const pos = parsePosition(`${m[1]} ${/^[+\-−]/.test(m[2].trim()) ? m[2].replace('−', '-').replace(/\s+/g, '') : '+' + m[2].trim()}`);
   if (!pos) return null;
   return { ...pos, rest: s.replace(m[0], ' ').replace(/\s+/g, ' ').trim().slice(0, 80) };
 }

@@ -3,7 +3,7 @@
 // fixed so the object crosses the frame. Solar-system objects are not included: no ephemeris
 // service is reached from the challenge resources.
 
-import { h, icon, toast } from '../ui/dom.js';
+import { h, icon } from '../ui/dom.js';
 import { presets, presetToTarget, resolveTarget } from '../targets.js';
 import { normalise, toParams } from '../state.js';
 import { parsePosition, formatRA, formatDec } from '../lib/coords.js';

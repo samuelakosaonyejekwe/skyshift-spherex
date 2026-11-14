@@ -80,15 +80,31 @@ export function toast({ title, text, glyph = '✦', actions = [], timeout = 6000
 }
 
 /** Bottom sheet dialog. Returns close(). */
+const openSheets = new Set();
+/** Close every open sheet properly (listeners removed, focus returned), e.g. when the page changes. */
+export function closeSheets() { [...openSheets].forEach((c) => c()); }
+
 export function sheet(content, { label = 'Dialog', onClose } = {}) {
   const back = document.getElementById('sheetBackdrop');
   const prevFocus = document.activeElement;
   const el = h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': label, tabindex: '-1' }, h('div', { class: 'grab' }), content);
+  let closed = false;
   const close = () => {
-    el.remove(); back.hidden = true; document.removeEventListener('keydown', onKey);
-    onClose?.(); prevFocus?.focus?.();
+    if (closed) return; closed = true; openSheets.delete(close);
+    el.remove(); if (!openSheets.size) back.hidden = true; document.removeEventListener('keydown', onKey);
+    onClose?.(); if (prevFocus?.isConnected) prevFocus.focus();
   };
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  // Escape closes; Tab and Shift+Tab stay inside the dialog while it is open
+  const onKey = (e) => {
+    if (e.key === 'Escape') { close(); return; }
+    if (e.key !== 'Tab') return;
+    const f = [...el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((x) => x.offsetParent !== null);
+    if (!f.length) { e.preventDefault(); el.focus(); return; }
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === el)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  openSheets.add(close);
   back.hidden = false; back.onclick = close;
   document.body.appendChild(el);
   document.addEventListener('keydown', onKey);

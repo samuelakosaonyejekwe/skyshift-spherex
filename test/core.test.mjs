@@ -47,3 +47,15 @@ test('WCS, wavelength table and flags against IRSA tutorial values', { timeout: 
   assert.ok(fl.data.every((v) => (v & ~((1 << 29) - 1)) === 0), 'only bits 0-28 used');
   console.log('pixel', x - 1, y - 1, 'wl', s.wavelength, 'bw', s.bandwidth, 'flags sample', decodeFlags(fl.data[5 * 2040 + 1019]));
 });
+
+// Annual parallax: displacement of Barnard's Star (ϖ = 547 mas) against Astropy's ICRS→GCRS transform
+// (finite distance vs infinite distance), at three dates; the low-precision Sun formula allows a few mas.
+test('parallax displacement matches Astropy', async () => {
+  const { apparent } = await import('../src/lib/coords.js');
+  const ref = [[61000, -276, -216], [61091, 477, -122], [61182, 269, 229]];
+  for (const [mjd, ex, ey] of ref) {
+    const a = apparent(269.452, 4.693, 0, 0, 547, 2026, mjd), b = apparent(269.452, 4.693, 0, 0, 0, 2026, mjd);
+    const dx = (a.ra - b.ra) * 3.6e6 * Math.cos((4.693 * Math.PI) / 180), dy = (a.dec - b.dec) * 3.6e6;
+    assert.ok(Math.abs(dx - ex) < 8 && Math.abs(dy - ey) < 8, `MJD ${mjd}: ${dx.toFixed(0)}, ${dy.toFixed(0)} vs ${ex}, ${ey}`);
+  }
+});

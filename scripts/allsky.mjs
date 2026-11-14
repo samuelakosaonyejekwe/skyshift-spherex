@@ -1,6 +1,6 @@
-// Builds icons/../assets/allsky.png: the real SPHEREx sky (DR1 all-sky spectral cube, IRSA HiPS)
-// as a false-colour Mollweide map in galactic coordinates. Three cube channels are read from the
-// HiPS "Allsky" previews (order 3) and combined as blue / green / red. No dependencies.
+// Builds assets/allsky-<W>.jpg (W from ALLSKY_W, default 1200; ALLSKY_FRAME=galactic for galactic coordinates): the real SPHEREx sky (DR1 all-sky spectral cube,
+// IRSA HiPS) as a false-colour Mollweide map in equatorial coordinates, RA 12h at the centre. Three cube channels are
+// read from the HiPS "Allsky" previews (order 3) and combined as blue / green / red. No dependencies.
 //
 // HiPS layout (IVOA HiPS 1.0): an order-3 Allsky image holds the 768 order-3 tiles, 27 per row,
 // each downsampled to tile_width / 8 pixels; tile pixel (x, y) maps to the nested HEALPix index
@@ -92,12 +92,12 @@ function galToEq(l, b) {
 
 async function fetchAllsky(frame) {
   const url = `${HIPS}/Norder3/Allsky${frame ? `_${frame}` : ''}.png`;
-  const r = await fetch(url, { headers: { 'User-Agent': 'SkyShift-build/1.0' } });
+  const r = await fetch(url, { headers: { 'User-Agent': 'SkyShift-build/1.0' }, signal: AbortSignal.timeout(180000) });
   if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
   return decodePNG(Buffer.from(await r.arrayBuffer()));
 }
 
-const props = await (await fetch(`${HIPS}/properties`)).text();
+const props = await (await fetch(`${HIPS}/properties`, { signal: AbortSignal.timeout(60000) })).text();
 const tileWidth = Number((props.match(/^hips_tile_width\s*=\s*(\d+)/m) || [])[1] || 512);
 const imgs = {};
 for (const [k, f] of Object.entries(CHANNELS)) imgs[k] = await fetchAllsky(f);

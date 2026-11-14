@@ -3,9 +3,10 @@
 // "Save as PDF"), and a ZIP bundle with figures (PNG + SVG), an animated PNG, data tables
 // (CSV + VOTable), FITS cutouts of the displayed frames and the SkyRequest JSON.
 
-import { formatRA, formatDec, mjdToISO, mjdToYear, propagate, apparent } from './coords.js';
+import { formatRA, formatDec, mjdToISO, mjdToYear, apparent } from './coords.js';
+import { NATIVE_SCALE } from './engine.js';
 import { paint, paintDiff, paintRGB, limits, detectorBalanced, matchedDifference, tintName } from './render.js';
-import { decodeFlags, BAD_MASK, DETECTORS, uriToS3 } from './spherex.js';
+import { decodeFlags, uriToS3 } from './spherex.js';
 import { questionable, epochBrightness } from './discover.js';
 import { toParams, normalise } from '../state.js';
 
@@ -50,7 +51,7 @@ export function measureMotion(display, grid, req) {
     const c = (N - 1) / 2;
     return [c - xi / grid.scale, c - eta / grid.scale];
   };
-  const sigPx = 1.2 * (6.15 / grid.scale); // PSF-like weighting width in grid pixels
+  const sigPx = 1.2 * (NATIVE_SCALE / grid.scale); // PSF-like weighting width in grid pixels
   const centroid = (img, [px, py]) => {
     // local background and noise from a ring
     const ring = [];
@@ -78,7 +79,7 @@ export function measureMotion(display, grid, req) {
       const nx = sx / s, ny = sy / s;
       // stay near the prediction (protects against neighbours and noise)
       const dx = nx - px, dy = ny - py, r = Math.hypot(dx, dy);
-      const lim = 1.5 * (6.15 / grid.scale);
+      const lim = 1.5 * (NATIVE_SCALE / grid.scale);
       x = r > lim ? px + (dx / r) * lim : nx; y = r > lim ? py + (dy / r) * lim : ny;
       if (Math.abs(nx - x) < 1e-3 && Math.abs(ny - y) < 1e-3) break;
     }
@@ -348,7 +349,13 @@ export async function buildDossier(snap) {
     files.push({ name: 'figures/sequence-animation.png', data: await apng(groups.map((g, i) => frameCanvas(mono[i], N, monoLims, 'mono', opts, sc, grid, `${i + 1}/${groups.length} ${mjdToISO(dates[i][0], false)}`)), Math.min(2000, Math.max(200, req.speed))) });
   }
   // FITS cutouts of every epoch co-add
-  mono.forEach((img, i) => files.push({ name: `fits/epoch-${String(i + 1).padStart(2, '0')}.fits`, data: writeFitsImage(img, N, grid, { 'DATE-OBS': mjdToISO(dates[i][0]).replace(' UTC', '').replace(' ', 'T'), MJD_BEG: dates[i][0], MJD_END: dates[i][1], NEXP: groups[i].length, OBJECT: name.slice(0, 60) }) }));
+  // with tracking on, each epoch is drawn around the target's position on that date, so that is its sky centre
+  const gridAt = (i) => {
+    if (!req.track) return grid;
+    const p = apparent(req.target.ra, req.target.dec, req.target.pmra || 0, req.target.pmdec || 0, req.target.plx || 0, req.target.refEpoch || 2016, (dates[i][0] + dates[i][1]) / 2);
+    return { ...grid, ra: p.ra, dec: p.dec };
+  };
+  mono.forEach((img, i) => files.push({ name: `fits/epoch-${String(i + 1).padStart(2, '0')}.fits`, data: writeFitsImage(img, N, gridAt(i), { 'DATE-OBS': mjdToISO(dates[i][0]).replace(' UTC', '').replace(' ', 'T'), MJD_BEG: dates[i][0], MJD_END: dates[i][1], NEXP: groups[i].length, OBJECT: name.slice(0, 60) }) }));
   // 6. charts
   if (snap.specSvg) { files.push({ name: 'figures/spectrum.svg', data: snap.specSvg }); figs.push({ n: ++figNo, svg: snap.specSvg, caption: `Spectrum of ${name} from ${snap.phot.length} exposures (aperture photometry at the predicted position, 15″ radius). Hollow points are questionable (saturated core or >20% masked). Dashed lines: spectral lines stated in the IRSA SPHEREx documentation.`, file: 'spectrum' }); }
   if (snap.lcSvg) { files.push({ name: 'figures/lightcurve.svg', data: snap.lcSvg }); figs.push({ n: ++figNo, svg: snap.lcSvg, caption: `Light curve of ${name}: brightness relative to its average spectrum, coloured by detector.`, file: 'lightcurve' }); }
@@ -356,7 +363,8 @@ export async function buildDossier(snap) {
   // ---------- numbers
   const pts = snap.phot;
   const eb = epochBrightness(pts);
-  const motion = measureMotion(D, grid, req);
+  // tracked frames keep the target fixed on purpose, so its motion cannot be measured from them
+  const motion = req.track ? null : measureMotion(D, grid, req);
   const nQ = pts.filter(questionable).length;
   const satur = exps.filter((e) => e.meta.saturated).length;
   const releases = [...new Set(exps.map((e) => e.meta.release))].sort();
@@ -379,7 +387,6 @@ export async function buildDossier(snap) {
   const checks = [];
   checks.push(['Every figure rendered', figs.every((f) => f.src?.length > 100 || f.svg?.length > 100)]);
   checks.push(['At least one epoch of real data', exps.length > 0]);
-  checks.push(['All numbers carry units', true]);
   const size = files.reduce((a, f) => a + (f.data.size ?? f.data.length ?? 0), 0);
   checks.push([`Bundle size reasonable (${(size / 1048576).toFixed(1)} MB)`, size < 80 * 1048576]);
 
@@ -418,11 +425,11 @@ code,pre{font:11.5px ui-monospace,Menlo,Consolas,monospace}pre{background:#f6f6f
 ${sec('Summary', `<p>${summary.join(' ')}</p>`)}
 ${sec('Input record', `<p>What was supplied and how it was understood. Re-running the same request on the same data release reproduces this dossier (same ID).</p>${snap.inputs ? `<pre>${esc(JSON.stringify(snap.inputs, null, 2))}</pre>` : ''}<p><b>Interpreted request (SkyRequest):</b></p><pre>${esc(requestJson)}</pre><p>Reproduce: <a href="${esc(shareUrl)}">${esc(shareUrl)}</a></p>`)}
 ${sec('Results', figHtml)}
-${sec('Validation', `${motionHtml}${eb.epochs.length > 1 ? table(['Survey pass', 'Dates', 'Mean relative brightness', 'N'], eb.epochs.map((e, i) => [i + 1, `${mjdToISO(e.t0, false)} – ${mjdToISO(e.t1, false)}`, `${((e.mean - 1) * 100).toFixed(1)}% ± ${(e.err * 100).toFixed(1)}%`, e.n])) : ''}${!motion && !eb.epochs.length ? '<p>No catalogue comparison was possible for this field (no proper motion known, or too few clean epochs).</p>' : ''}`)}
+${sec('Validation', `${motionHtml}${eb.epochs.length > 1 ? table(['Survey pass', 'Dates', 'Mean relative brightness', 'N'], eb.epochs.map((e, i) => [i + 1, `${mjdToISO(e.t0, false)} – ${mjdToISO(e.t1, false)}`, `${((e.mean - 1) * 100).toFixed(1)}% ± ${(e.err * 100).toFixed(1)}%`, e.n])) : ''}${req.track ? '<p>Motion was not measured: this view follows the target’s catalogue motion, so the target is held still. Turn tracking off to measure it.</p>' : ''}${!motion && !eb.epochs.length && !req.track ? '<p>No catalogue comparison was possible for this field (no proper motion known, or too few clean epochs).</p>' : ''}`)}
 ${snap.movers?.length || snap.candidates?.length ? sec('Candidates', `${snap.movers?.length ? table(['#', 'RA', 'Dec', 'Shift (″)', 'Rate (″/yr)', 'PA (° E of N)', 'S/N'], snap.movers.map((m, i) => [i + 1, formatRA(m.ra), formatDec(m.dec), m.shift.toFixed(1), m.rate.toFixed(2), m.pa.toFixed(0), m.snr.toFixed(1)])) : ''}${snap.candidates?.length ? table(['Type', 'RA', 'Dec', 'Note', 'Saved'], snap.candidates.map((c) => [c.type, formatRA(c.ra), formatDec(c.dec), c.note || '', c.created])) : ''}<p class="small">Candidates are for the user's own vetting; they are not discoveries.</p>`) : ''}
 ${sec('Data used', `<p>${exps.length} SPHEREx Level 2 spectral images (IRSA), releases ${releases.map((r) => `${r.toUpperCase()} (DOI ${DOIS[r] || 'see IRSA'})`).join(', ')}.</p>${table(expCols.slice(0, 9), expRows.map((r) => r.slice(0, 9)), 120)}<p>Overlay sources: ${[snap.cats?.gaia ? `Gaia DR3 (${esc(snap.cats.gaia.via)})` : '', snap.cats?.wise ? esc(snap.cats.wise.via) : ''].filter(Boolean).join('; ') || 'none shown'}.</p>`)}
 ${sec('Methods', `<ul>
-<li>Image list from IRSA TAP (<code>spherex.artifact</code> joined with <code>spherex.plane</code>, footprint containing the position), all current releases.</li>
+<li>Image list ${snap.imageList === 'index' ? 'from SkyShift’s image index, built from IRSA TAP every 6 hours' : snap.imageList === 'live' ? 'from IRSA TAP' : 'from a saved copy of an IRSA TAP search'} (<code>spherex.artifact</code> joined with <code>spherex.plane</code>, footprint containing the position), all current releases.</li>
 <li>Pixels read from IRSA's public cloud copy with HTTP byte ranges; IMAGE (MJy/sr), FLAGS (RICE_1 decoded) and WCS-WAVE read directly from each file.</li>
 <li>Each exposure resampled onto a common north-up tangent-plane grid (${grid.scale.toFixed(2)}″/px) with the file's TAN-SIP WCS; background (field median) subtracted.</li>
 <li>Co-adds: inverse-variance mean per detector array, arrays combined with equal weight. Differences: detector by detector (wavelength-matched).</li>

@@ -1,10 +1,10 @@
 // SkyShift application shell: router with history-aware Back/Forward arrows, install
 // flow for every platform, service-worker updates, connection status and data freshness.
 
-import { h, toast, sheet, icon } from './ui/dom.js';
+import { closeSheets, h, toast, sheet } from './ui/dom.js';
 import { loadConfig, onNetStatus, netStatus } from './lib/net.js';
 import { fromParams } from './state.js';
-import { getSettings, setSettings, applyTheme, DEFAULT_SETTINGS } from './settings.js';
+import { getSettings, setSettings, applyTheme } from './settings.js';
 import { t, setLang, LANGS } from './i18n/index.js';
 import { applyUiLanguage } from './i18n/apply.js';
 
@@ -37,7 +37,7 @@ function syncArrows() {
 if (history.state?.idx == null) history.replaceState({ idx: 0 }, '');
 
 /** Navigate to a hash route. replace=true updates the URL without a new history entry. */
-export function go(hash, { replace = false } = {}) {
+function go(hash, { replace = false } = {}) {
   if (!hash.startsWith('#')) hash = '#' + hash;
   if (location.hash === hash) return;
   if (replace) history.replaceState({ idx: idx() }, '', hash);
@@ -71,7 +71,7 @@ window.addEventListener('touchend', (e) => {
   edge = null;
 }, { passive: true });
 
-export function parseHash() {
+function parseHash() {
   const raw = location.hash.replace(/^#\/?/, '');
   const [path, qs = ''] = raw.split('?');
   const ALIAS = { tm: 'view', explore: 'home', learn: 'guide' };
@@ -91,7 +91,8 @@ async function route() {
   lastIdx = idx();
   syncArrows();
   // dialogs belong to the page that opened them: close any that are still open
-  document.querySelectorAll('.sheet, .tour, .tour-ring').forEach((el) => el.remove());
+  closeSheets();
+  document.querySelectorAll('.tour, .tour-ring').forEach((el) => el.remove());
   const backdrop = document.getElementById('sheetBackdrop'); if (backdrop) backdrop.hidden = true;
   if (applyPendingUpdate()) return; // reloads into the new version at the requested page
   const seq = ++renderSeq;
@@ -193,7 +194,7 @@ installBtn.addEventListener('click', async () => {
   }
   showInstallSheet();
 });
-export function showInstallSheet() {
+function showInstallSheet() {
   const glyph = (d) => {
     const NS = 'http://www.w3.org/2000/svg';
     const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24');
@@ -232,7 +233,7 @@ function doUpdate(worker) {
   try { worker?.postMessage({ type: 'SKIP_WAITING' }); } catch { /* ignore */ }
   setTimeout(() => location.reload(), 2500); // fallback if the browser is slow to switch
 }
-export function applyPendingUpdate() { if (pendingWorker) { doUpdate(pendingWorker); return true; } return false; }
+function applyPendingUpdate() { if (pendingWorker) { doUpdate(pendingWorker); return true; } return false; }
 async function setupSW() {
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
   try {
@@ -326,7 +327,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
 });
 // "/" focuses the search box (on Explore) from anywhere
 document.addEventListener('keydown', (e) => {
-  if (e.key !== '/' || e.target.matches('input, textarea, select')) return;
+  if (e.key !== '/' || e.target.matches('input, textarea, select') || getSettings().noShortcuts) return;
   e.preventDefault();
   const q = document.getElementById('q');
   if (q) q.focus(); else { go('#/'); setTimeout(() => document.getElementById('q')?.focus(), 400); }
@@ -357,4 +358,3 @@ document.addEventListener('keydown', (e) => {
   window.addEventListener('skyshift:online', checkNewData);
 })();
 
-export { icon };

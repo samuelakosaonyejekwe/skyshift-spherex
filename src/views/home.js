@@ -1,6 +1,6 @@
 // Home: target search with predictive input, typed requests, presets, how-it-works.
 
-import { h, icon, toast } from '../ui/dom.js';
+import { h, icon } from '../ui/dom.js';
 import { presets, resolveTarget, presetToTarget, presetById, describePosition, fromGalactic } from '../targets.js';
 import { parsePosition, formatRA, formatDec, niceDate, niceNum } from '../lib/coords.js';
 import { normalise, toParams, parseText, DEFAULTS } from '../state.js';
@@ -162,7 +162,7 @@ export async function render(root, route, { go }) {
   let coverage = null, mission = null;
   try { [coverage, mission] = await Promise.all([fetch('./data/coverage.json').then((r) => (r.ok ? r.json() : null)).catch(() => null), fetch('./data/mission.json').then((r) => (r.ok ? r.json() : null)).catch(() => null)]); } catch { /* offline first run */ }
   const map = skyMap({
-    coverage, livePts: JSON.parse(localStorage.getItem('skyshift.livePts') || '[]'),
+    coverage, livePts: (() => { try { return JSON.parse(localStorage.getItem('skyshift.livePts') || '[]'); } catch { return []; } })(), // a damaged saved value must not break Explore
     targets: list.map((t) => ({ id: t.id, name: t.name, ra: t.ra, dec: t.dec, kind: t.kind.split(/ [—(]/)[0] })),
     onPick: (ra, dec) => openTarget({ ra: +ra.toFixed(5), dec: +dec.toFixed(5), source: 'coords' }),
     onTarget: (t) => { const p = list.find((x) => x.id === t.id); openTarget(presetToTarget(p), PRESET_EXTRA[p.id] || {}); },

@@ -10,12 +10,12 @@ if (!jobUrl) { console.error('IRSA did not create a job:', job.status, (await jo
 jobUrl = new URL(jobUrl, 'https://irsa.ipac.caltech.edu/').href;
 let phase = '';
 for (let i = 0; i < 120; i++) {
-  phase = (await (await fetch(`${jobUrl}/phase`)).text()).trim();
+  phase = (await (await fetch(`${jobUrl}/phase`, { signal: AbortSignal.timeout(60000) })).text()).trim();
   if (['COMPLETED', 'ERROR', 'ABORTED'].includes(phase)) break;
   await new Promise((res) => setTimeout(res, 10000));
 }
 if (phase !== 'COMPLETED') { console.error('IRSA job ended as', phase); process.exit(1); }
-const r = await fetch(`${jobUrl}/results/result`);
+const r = await fetch(`${jobUrl}/results/result`, { signal: AbortSignal.timeout(300000) });
 const text = await r.text();
 const rows = parseCSV(text).filter((x) => x.source_id);
 if (!rows.length) { console.error('IRSA returned no rows:', r.status, text.slice(0, 300)); process.exit(1); }

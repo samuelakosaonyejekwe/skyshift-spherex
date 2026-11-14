@@ -15,9 +15,13 @@ function parseInWorker(name, buffer, mapping) {
   worker ||= new Worker(new URL('../upload-worker.js', import.meta.url), { type: 'module' });
   const id = ++seq;
   return new Promise((resolve, reject) => {
-    const on = (e) => { if (e.data.id !== id) return; worker.removeEventListener('message', on); e.data.ok ? resolve(e.data.result) : reject(new Error(e.data.error)); };
+    const off = () => { worker.removeEventListener('message', on); worker.removeEventListener('error', fail); };
+    const on = (e) => { if (e.data.id !== id) return; off(); e.data.ok ? resolve(e.data.result) : reject(new Error(e.data.error)); };
+    // the reader could not start (e.g. blocked script): report it instead of waiting forever, and start fresh next time
+    const fail = (e) => { off(); worker.terminate(); worker = null; reject(new Error(`The file reader could not start (${e.message || 'worker error'}).`)); };
     worker.addEventListener('message', on);
-    worker.postMessage({ id, name, buffer, mapping }, mapping ? [] : []);
+    worker.addEventListener('error', fail);
+    worker.postMessage({ id, name, buffer, mapping });
   });
 }
 

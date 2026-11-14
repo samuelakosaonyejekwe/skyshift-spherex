@@ -116,6 +116,8 @@ export class RangeSource {
     throw lastErr;
   }
   async _once(range, attempt) {
+    // a request queued before the page was left is dropped, not fetched
+    if (this.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     // a stalled request is abandoned after 10 s and retried on another hostname
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 10000);

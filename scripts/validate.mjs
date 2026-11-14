@@ -19,10 +19,17 @@ const T = JSON.parse(readFileSync('data/targets.json', 'utf8')).targets;
 const DETS = { wise0855: [4, 5, 6] };
 const EXCLUDED = JSON.parse(readFileSync('config.json', 'utf8')).excludeReleases || [];
 
-async function search(ra, dec) {
+let listSource = 'IRSA TAP search';
+async function search(ra, dec, t) {
   const q = `SELECT a.uri, p.time_bounds_lower, p.energy_bandpassname FROM spherex.artifact a JOIN spherex.plane p ON a.planeid = p.planeid WHERE 1 = CONTAINS(POINT('ICRS', ${ra}, ${dec}), p.poly) ORDER BY p.time_bounds_lower`;
-  const r = await fetch(`https://irsa.ipac.caltech.edu/TAP/sync?LANG=ADQL&FORMAT=csv&QUERY=${encodeURIComponent(q)}`);
-  return parseCSV(await r.text()).filter((x) => /spx_l2b.*\.fits$/.test(x.uri) && !EXCLUDED.some((rel) => x.uri.includes(`/${rel}/`)))
+  let txt = null;
+  try { const r = await fetch(`https://irsa.ipac.caltech.edu/TAP/sync?LANG=ADQL&FORMAT=csv&QUERY=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(120000) }); if (r.ok) txt = await r.text(); } catch { /* below */ }
+  if (!txt || /QUERY_STATUS" value="ERROR|<html/i.test(txt)) {
+    // IRSA's search is down: use the same image list saved from it in data/targets.json (scripts/prebake.mjs)
+    listSource = 'image lists saved from IRSA TAP in data/targets.json (TAP was unavailable)';
+    return (t.images || []).filter(([u]) => !EXCLUDED.some((rel) => u.includes(`/${rel}/`))).map(([uri, mjd, det]) => ({ uri, mjd, det }));
+  }
+  return parseCSV(txt).filter((x) => /spx_l2b.*\.fits$/.test(x.uri) && !EXCLUDED.some((rel) => x.uri.includes(`/${rel}/`)))
     .map((x) => ({ uri: x.uri, mjd: x.time_bounds_lower, det: Number(String(x.energy_bandpassname).replace(/\D/g, '')) }));
 }
 
@@ -31,7 +38,7 @@ async function pool(items, n, fn) { let i = 0; await Promise.all(Array.from({ le
 const rows = [];
 for (const t of T) {
   const t0 = Date.now();
-  const all = (await search(t.ra, t.dec)).filter((e) => !DETS[t.id] || DETS[t.id].includes(e.det));
+  const all = (await search(t.ra, t.dec, t)).filter((e) => !DETS[t.id] || DETS[t.id].includes(e.det));
   const step = Math.max(1, all.length / MAX);
   const list = all.length > MAX ? Array.from({ length: MAX }, (_, k) => all[Math.floor(k * step)]) : all;
   const grid = makeGrid(t.ra, t.dec, 6);
@@ -89,7 +96,7 @@ const speedDir = (m) => {
 let md = `# Validation of the five challenge targets
 
 Generated ${new Date().toISOString()} by \`node scripts/validate.mjs ${MAX}\` with the same code the browser runs
-(IRSA TAP search, byte-range reads from the IRSA S3 bucket, TAN-SIP reprojection, six-month co-adds, centroids,
+(${listSource}, byte-range reads from the IRSA S3 bucket, TAN-SIP reprojection, six-month co-adds, centroids,
 aperture photometry). Up to ${MAX} exposures per target, sampled evenly in time; 6′ fields; WISE 0855 uses D4–D6.
 
 Browser maths is separately checked against Astropy (\`test/astropy.test.mjs\`, reference from

@@ -7,9 +7,12 @@ const SHELL = `skyshift-shell-${VERSION}`;
 const RUNTIME = 'skyshift-runtime-v1';
 const HIPS = 'skyshift-hips-v1';
 const PRECACHE = __PRECACHE__;
-const NETWORK_FIRST = /\/(version\.json|data\/idx\/.+)$/;
-// served at once from the last copy and refreshed in the background (fast start; updates arrive on the next visit)
-const STALE_REVALIDATE = /\/(config\.json|data\/targets\.json)$/;
+// fetched fresh each time (data files are refreshed every 6 h without a new app version); the last copy is used
+// when the network is down or slower than NET_WAIT
+const NETWORK_FIRST = /\/(version\.json|config\.json|data\/[^/]+\.json|data\/idx\/.+)$/;
+const NET_WAIT = 4000;
+// served at once from the last copy and refreshed in the background (none at present)
+const STALE_REVALIDATE = /^$/;
 
 // Some hosts redirect (e.g. Cloudflare Pages sends /index.html to / with 308). Browsers refuse a response marked
 // "redirected" for a page load, so every stored response is first copied into a plain, unredirected one.
@@ -35,14 +38,13 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(keys.filter((k) => k.startsWith('skyshift-shell-') && k !== SHELL).map((k) => caches.delete(k)));
-    if (self.registration.navigationPreload) await self.registration.navigationPreload.enable().catch(() => {});
+    if (self.registration.navigationPreload) await self.registration.navigationPreload.disable().catch(() => {}); // stored pages answer first, so a preload request would be wasted
     await self.clients.claim();
   })());
 });
 
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
-  if (event.data?.type === 'RESET') event.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith('skyshift-shell-') || k === RUNTIME).map((k) => caches.delete(k)))));
 });
 
 async function trim(cacheName, max) {
@@ -89,7 +91,7 @@ self.addEventListener('fetch', (event) => {
       const hit = (await c.match('./')) || (await c.match('./index.html'));
       if (hit && !hit.redirected) return hit;
       // no usable stored page: the network (never an error page while the host answers)
-      try { return await clean((await event.preloadResponse) || (await fetch(req))); } catch { return hit ? clean(hit) : Response.error(); }
+      try { return await clean(await fetch(req)); } catch { return hit ? clean(hit) : Response.error(); }
     })());
     return;
   }
@@ -107,12 +109,15 @@ self.addEventListener('fetch', (event) => {
 
   if (NETWORK_FIRST.test(url.pathname)) {
     event.respondWith((async () => {
+      const stored = async () => (await (await caches.open(RUNTIME)).match(req, { ignoreSearch: true })) || (await (await caches.open(SHELL)).match(req, { ignoreSearch: true }));
+      const net = fetch(req, { cache: 'no-cache' }).then(async (res) => { if (res.ok) { await (await caches.open(RUNTIME)).put(req, res.clone()); if (Math.random() < 0.02) trim(RUNTIME, 4000); } return res; }); // index tiles add up: the stored set is capped
+      event.waitUntil(net.catch(() => null));
       try {
-        const res = await fetch(req, { cache: 'no-cache' });
-        if (res.ok) (await caches.open(RUNTIME)).put(req, res.clone());
-        return res;
+        // a slow network falls back to the stored copy after NET_WAIT; the fresh copy is still saved for next time
+        const res = await Promise.race([net, new Promise((_, no) => setTimeout(() => no(new Error('slow')), NET_WAIT))]);
+        return res.ok ? res : (await stored()) || res;
       } catch {
-        return (await (await caches.open(RUNTIME)).match(req)) || (await (await caches.open(SHELL)).match(req)) || Response.error();
+        return (await stored()) || (await net.catch(() => null)) || Response.error();
       }
     })());
     return;

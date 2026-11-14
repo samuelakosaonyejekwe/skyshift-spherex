@@ -11,11 +11,12 @@ Built for the 2026 NASA Space Apps Challenge "Planet X and SPHEREx" by team **Sk
 
 - Local: `npm start`, then open http://localhost:8080/
 
-On GitHub Pages (no relay): searching **any** position works through a pre-built index of every SPHEREx image
+On GitHub Pages, searching **any** position works through a pre-built index of every SPHEREx image
 (rebuilt from IRSA every 6 hours), with pixels streamed live from IRSA's cloud bucket; so do the Explore map, Live,
 Mission statistics, the Sky atlas imagery, saved fields, uploads, equations and dossiers. Services that allow no direct
-browser access need a relay host (see `wrangler.toml`): Gaia and WISE overlays, Gaia ID look-ups, NEOSSat listings, Sky
-atlas catalogues and the live data-freshness checks. Without one the app says so and the images still work.
+browser access (Gaia and WISE overlays, Gaia ID look-ups, NEOSSat listings, Sky atlas catalogues and the live
+data-freshness checks) go through the backup's relay at skyshift-spherex.pages.dev; if no relay answers, the app says so
+and the images still work.
 
 ## What you can do
 
@@ -36,7 +37,7 @@ atlas catalogues and the live data-freshness checks. Without one the app says so
 |---|---|---|
 | Impact | Free, instant SPHEREx exploration on any device; candidates export as MPC ADES; classroom-ready targets; two hosts and offline use | Live app, [docs/HOSTING.md](docs/HOSTING.md) |
 | Creativity | Sky as a film; wavelength-true colours across 102 bands; user image equations; coverage-glow sky map; all processing in the browser | Time Machine, Explore |
-| Validity | Real data only from the challenge's resources; Astropy-level maths; motions checked against Gaia; limits stated; 20 unit tests, 24 browser checks | [docs/VALIDATION.md](docs/VALIDATION.md), `test/` |
+| Validity | Real data only from the challenge's resources; Astropy-level maths; motions checked against Gaia; limits stated; 24 unit tests, 24 browser checks | [docs/VALIDATION.md](docs/VALIDATION.md), `test/` |
 | Relevance | Every point of the challenge statement mapped to a feature | [docs/CHALLENGE_TRACEABILITY.md](docs/CHALLENGE_TRACEABILITY.md) |
 | Presentation | 28-second demo video, 7-slide deck per the Space Apps checklist; every page and tab in English, Greek, Spanish and French | [Presentation](https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/) |
 

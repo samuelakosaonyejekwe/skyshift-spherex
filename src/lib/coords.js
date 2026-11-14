@@ -79,15 +79,25 @@ export function formatDec(deg) {
   return `${sign}${pad(dd, 2)}°${pad(mm, 2)}′${pad(ss, 2, 2)}″`;
 }
 
+// ICRS → galactic rotation (IAU 1958, J2000); one copy, used both ways
+const GAL = [
+  [-0.0548755604, -0.8734370902, -0.4838350155],
+  [0.4941094279, -0.4448296300, 0.7469822445],
+  [-0.8676661490, -0.1980763734, 0.4559837762],
+];
+/** Galactic (l, b) → ICRS (ra, dec), the inverse (transpose) rotation. */
+export function fromGalactic(l, b) {
+  const x = Math.cos(b * D2R) * Math.cos(l * D2R), y = Math.cos(b * D2R) * Math.sin(l * D2R), z = Math.sin(b * D2R);
+  const M = GAL;
+  const ex = M[0][0] * x + M[1][0] * y + M[2][0] * z, ey = M[0][1] * x + M[1][1] * y + M[2][1] * z, ez = M[0][2] * x + M[1][2] * y + M[2][2] * z;
+  let ra = Math.atan2(ey, ex) * R2D; if (ra < 0) ra += 360;
+  return { ra, dec: Math.asin(Math.max(-1, Math.min(1, ez))) * R2D };
+}
 /** Galactic coordinates (IAU 1958, J2000 rotation). */
 export function toGalactic(ra, dec) {
   const r = ra * D2R, d = dec * D2R;
   const x = Math.cos(d) * Math.cos(r), y = Math.cos(d) * Math.sin(r), z = Math.sin(d);
-  const M = [
-    [-0.0548755604, -0.8734370902, -0.4838350155],
-    [0.4941094279, -0.4448296300, 0.7469822445],
-    [-0.8676661490, -0.1980763734, 0.4559837762],
-  ];
+  const M = GAL;
   const gx = M[0][0] * x + M[0][1] * y + M[0][2] * z;
   const gy = M[1][0] * x + M[1][1] * y + M[1][2] * z;
   const gz = M[2][0] * x + M[2][1] * y + M[2][2] * z;
@@ -181,7 +191,9 @@ export function apparent(ra, dec, pmra, pmdec, plx, refYear, mjd) {
   const p = propagate(ra, dec, pmra || 0, pmdec || 0, refYear, mjdToYear(mjd));
   if (!plx) return p;
   const [X, Y, Z] = sunXYZ(mjd), a = (p.ra * Math.PI) / 180, d = (p.dec * Math.PI) / 180;
-  const dra = plx * (X * Math.sin(a) - Y * Math.cos(a)); // mas, includes cos(dec)
-  const ddec = plx * (X * Math.cos(a) * Math.sin(d) + Y * Math.sin(a) * Math.sin(d) - Z * Math.cos(d));
+  // (X, Y, Z) is the Sun seen from Earth; a nearby star is displaced toward the Sun by plx × (unit vector to Sun,
+  // projected on the sky). Checked against Astropy's GCRS transform (test/core.test.mjs).
+  const dra = plx * (Y * Math.cos(a) - X * Math.sin(a)); // mas, includes cos(dec)
+  const ddec = plx * (Z * Math.cos(d) - X * Math.cos(a) * Math.sin(d) - Y * Math.sin(a) * Math.sin(d));
   return { ra: wrap360(p.ra + dra / 3.6e6 / (Math.cos(d) || 1e-9)), dec: p.dec + ddec / 3.6e6 };
 }

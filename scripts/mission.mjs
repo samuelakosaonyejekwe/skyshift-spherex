@@ -4,7 +4,7 @@
 // Mission: totals, images per day, images per detector band, survey dates, sky fraction.
 // Safe to run on a schedule; keeps the previous files if IRSA does not answer.
 
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, existsSync } from 'node:fs';
 import { parseCSV } from '../src/lib/tap.js';
 
 const TAP = 'https://irsa.ipac.caltech.edu/TAP/sync';
@@ -69,7 +69,8 @@ try {
   const u16 = (arr, f) => { const a = new Uint16Array(W * H); for (let k = 0; k < a.length; k++) a[k] = Math.min(65535, Math.round(f(arr[k]))); return Buffer.from(a.buffer).toString('base64'); };
   let covered = 0, area = 0;
   for (let j = 0; j < H; j++) { const w = Math.cos(((j - 90 + 0.5) * Math.PI) / 180); for (let i = 0; i < W; i++) { area += w; if (counts[j * W + i]) covered += w; } }
-  writeFileSync('data/coverage.json', JSON.stringify({ w: W, h: H, mjd0: MJD0, note: 'SPHEREx spectral images per 1° cell (IRSA spherex.obscore, spread over each image footprint); lastDay = days after mjd0', counts: u16(counts, (v) => v), lastDay: u16(last, (v) => (v ? v - MJD0 : 0)), built: new Date().toISOString() }));
+  // written together with mission.json after the totals check, so the two files never disagree
+  const coverageTxt = JSON.stringify({ w: W, h: H, mjd0: MJD0, note: 'SPHEREx spectral images per 1° cell (IRSA spherex.obscore, spread over each image footprint); lastDay = days after mjd0', counts: u16(counts, (v) => v), lastDay: u16(last, (v) => (v ? v - MJD0 : 0)), built: new Date().toISOString() });
 
   const dayMap = new Map(), bandMap = new Map();
   for (const r of perDayBand) { dayMap.set(r.d, (dayMap.get(r.d) || 0) + r.n); bandMap.set(r.band, (bandMap.get(r.band) || 0) + r.n); }
@@ -82,6 +83,7 @@ try {
     days: perDay.length, perDay: perDay.map((r) => [r.d, r.n]), perBand: perBand.map((r) => [r.band, r.n]),
     source: 'IRSA TAP spherex.obscore, spectral images D1-D6 (all releases currently served)',
   };
+  writeFileSync('data/coverage.json', coverageTxt);
   writeFileSync('data/mission.json', JSON.stringify(mission));
   console.log('data/coverage.json and data/mission.json written', { images: total, sky: mission.skyFraction.toFixed(3), days: mission.days, s: ((Date.now() - t0) / 1000).toFixed(0) });
 } catch (e) {

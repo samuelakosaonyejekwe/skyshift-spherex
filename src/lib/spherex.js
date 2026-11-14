@@ -136,7 +136,7 @@ export class SpherexImage {
     return this._wave;
   }
 
-  /** IMAGE rows y0..y1 (1-based, inclusive), full width. Uses aligned 16-row cached blocks. */
+  /** IMAGE rows y0..y1 (1-based, inclusive), full width. Uses aligned BLOCK_ROWS-row cached blocks. */
   async rows(y0, y1) {
     const m = await this.meta();
     const W = m.header.NAXIS1, H = m.header.NAXIS2;

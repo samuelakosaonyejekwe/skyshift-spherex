@@ -3,7 +3,7 @@
 // target, and summarise flags. Runs inside a Web Worker (and in Node for tests).
 
 import { BAD_MASK, FLAG_BITS, META_KEYS, describeUri } from './spherex.js';
-import { propagate, mjdToYear, apparent } from './coords.js';
+import { apparent } from './coords.js';
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 export const NATIVE_SCALE = 6.15; // arcsec / pixel (SPHEREx spectral image pixel)

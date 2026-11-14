@@ -20,18 +20,16 @@ relay too (repository variables `RELAY_URLS` and `MIRROR_URLS`). Cloudflare keep
 
 ## Adding more backup hosts (needs a free account with each host, created by the owner)
 
-Each host below builds the same repository with the configuration files already in it, serves the full app, and runs
+Each further host below builds the same repository with the configuration files already in it, serves the full app, and runs
 its own relay at `/api/relay` (so search and all overlays work live there). Once imported, each keeps serving its last
 build even when GitHub is down. Any one of them is enough; two give more redundancy.
 
 | Host | One-time setup by the owner | Files already in the repository |
 |---|---|---|
-| Cloudflare Pages | Dashboard → Workers & Pages → Create → Pages → Connect to Git → choose `skyshift-spherex`; build command `node scripts/build.mjs`, output `dist` | `functions/api/relay.js`, `relay/core.mjs` |
+| Cloudflare Pages | Already live (above): deployed by the workflow with the repository secrets, no Git connection needed | `functions/api/relay.js`, `relay/core.mjs` |
 | Netlify | Add new site → Import an existing project → GitHub → `skyshift-spherex` (settings are read from `netlify.toml`) | `netlify.toml`, `netlify/edge-functions/relay.js` |
 | Vercel | Add New → Project → Import `skyshift-spherex` (settings are read from `vercel.json`) | `vercel.json`, `api/relay.js` |
 
-Optional, for Cloudflare: instead of connecting Git, add the repository secrets `CLOUDFLARE_API_TOKEN` and
-`CLOUDFLARE_ACCOUNT_ID`; the workflow then deploys the exact GitHub build to Cloudflare Pages on every run.
 `wrangler.toml` also defines a stand-alone relay Worker (`npx wrangler deploy`) with its own 6-hourly schedule.
 
 ## Telling the GitHub Pages copy about the backups

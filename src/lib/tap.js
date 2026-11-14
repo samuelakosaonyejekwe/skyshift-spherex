@@ -55,7 +55,7 @@ const tapDownUntil = new Map();
 export const tapIsDown = (service) => (tapDownUntil.get(service) || 0) > Date.now();
 
 export async function tap(service, adql, { timeout = 60000, signal } = {}) {
-  if (tapIsDown(service)) throw new Error('TAP service unavailable (recent server error); using fallbacks');
+  if (tapIsDown(service)) throw new Error('TAP service unavailable (recent server error)');
   const url = `${service}?LANG=ADQL&FORMAT=csv&QUERY=${encodeURIComponent(adql)}`;
   let res;
   try { res = await smartFetch(url, { timeout, signal }); } catch (e) { if (e?.name === 'TimeoutError') tapDownUntil.set(service, Date.now() + 10 * 60e3); throw e; }

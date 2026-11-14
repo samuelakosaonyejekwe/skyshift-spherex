@@ -2,10 +2,10 @@
 
 ## Copyright and licence
 
-- Copyright 2026 Akosa Samuel Onyejekwe. Licensed under the **Apache License 2.0** (`LICENSE`), with a `NOTICE` file that
-  every redistribution must keep. Decided by Samuel on 2026-11-14 to meet the Space Apps terms (below); it replaces the
+- Copyright 2026 the author (named in `NOTICE`). Licensed under the **Apache License 2.0** (`LICENSE`), with a `NOTICE` file that
+  every redistribution must keep. Decided by the author on 2026-11-14 to meet the Space Apps terms (below); it replaces the
   earlier "All rights reserved" notice. The author keeps the copyright, and reusers must credit the author and mark their changes.
-- Name display: full name on the About page, LICENSE/NOTICE, README, CITATION.cff and the title slide (Space Apps asks for
+- Name display: full name on the About page, LICENSE/NOTICE, README, CITATION.cff, the `author` field of package.json and the title slide (Space Apps asks for
   team member names on the slides); the app footer and generated dossiers show "© 2026 SkyShift · Apache-2.0".
 - Third-party material keeps its own copyright and licence (see below and `NOTICE`).
 
@@ -26,7 +26,7 @@ No logos or trademarks of NASA, SPHEREx, Space Apps, ESA, CSA, NRC/CADC or CDS a
 ## 2026 Space Apps Terms and Conditions
 
 Read on 2026-11-14 from the participant terms (spaceappschallenge.org/legal, updated 7 August 2026) and the Project
-Submission Guide (13 November 2026), as transcribed by Samuel. How SkyShift meets the licensing and reuse rules:
+Submission Guide (13 November 2026), as transcribed by the author. How SkyShift meets the licensing and reuse rules:
 
 | Term | How SkyShift meets it |
 |---|---|

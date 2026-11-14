@@ -1,19 +1,16 @@
-// Minimal animated GIF encoder (GIF89a, fixed 256-colour palette: 6x7x6 colour cube + greys, LZW).
+// Minimal animated GIF encoder (GIF89a, fixed 256-colour palette: 6×6×6 colour cube + a 40-step grey ramp, LZW).
+// Most SkyShift frames are greyscale, so greys get their own fine ramp instead of the cube's six levels.
+const GREYS = 40;
 function palette() {
   const p = [];
-  for (let r = 0; r < 6; r++) for (let g = 0; g < 7; g++) for (let b = 0; b < 6; b++) p.push([Math.round(r * 51), Math.round(g * 42.5), Math.round(b * 51)]);
-  while (p.length < 256) { const v = Math.round(((p.length - 252) / 3) * 255); p.push([v, v, v]); }
+  for (let r = 0; r < 6; r++) for (let g = 0; g < 6; g++) for (let b = 0; b < 6; b++) p.push([r * 51, g * 51, b * 51]);
+  for (let i = 0; i < GREYS; i++) { const v = Math.round((i / (GREYS - 1)) * 255); p.push([v, v, v]); }
   return p;
 }
 const PAL = palette();
 function index(r, g, b) {
-  if (Math.abs(r - g) < 6 && Math.abs(g - b) < 6) { // greys: use the cube's grey axis or the extra greys
-    const v = (r + g + b) / 3;
-    let best = 0, bd = 1e9;
-    for (const k of [0, 43, 86, 129, 172, 215, 251, 252, 253, 254, 255]) { const c = PAL[k]; const d = Math.abs(c[0] - v) + Math.abs(c[1] - v) + Math.abs(c[2] - v); if (d < bd) { bd = d; best = k; } }
-    return best;
-  }
-  return Math.round(r / 51) * 42 + Math.round(g / 42.5) * 6 + Math.round(b / 51);
+  if (Math.abs(r - g) < 6 && Math.abs(g - b) < 6) return 216 + Math.round((((r + g + b) / 3) / 255) * (GREYS - 1)); // grey ramp
+  return Math.round(r / 51) * 36 + Math.round(g / 51) * 6 + Math.round(b / 51);
 }
 function lzw(pixels, minCode = 8) {
   const out = [];

@@ -41,7 +41,9 @@ export function isAllowed(target, method = 'GET') {
   if (!rule) return false;
   const pathq = u.pathname + (u.search ? '?' : '');
   const list = method === 'POST' ? rule.post || [] : rule.paths;
-  return list.some((p) => pathq.startsWith(p) || u.pathname === p.replace(/[/?]$/, ''));
+  // a prefix matches whole path segments only: '/asc-csa/NEOSSAT_Tutorial' allows '/asc-csa/NEOSSAT_Tutorial/…' but not
+  // '/asc-csa/NEOSSAT_Tutorial-other'; prefixes ending in '/' or '?' already mark their own boundary
+  return list.some((p) => u.pathname === p.replace(/[/?]$/, '') || (pathq.startsWith(p) && (/[/?]$/.test(p) || /^[/?.]|^$/.test(pathq.slice(p.length)))));
 }
 
 const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -108,8 +110,12 @@ export async function handle(request, { clientIp = 'anon', fetchImpl = fetch } =
     return new Response(JSON.stringify({ error: 'upstream unreachable', detail: String(e?.cause?.code || e?.message || e).slice(0, 200) }),
       { status: 200, headers: { ...CORS, 'Content-Type': 'application/json', 'X-Relay-Error': 'upstream-unreachable', 'X-Relay-Upstream-Status': '0' } });
   }
+  // the 55 s limit covers waiting for the archive's answer; while the body streams, only a 30 s stall aborts it
+  clearTimeout(timer);
+  let idle = null;
+  const kick = () => { clearTimeout(idle); idle = setTimeout(() => ctl.abort(), 30000); };
   const len = Number(up.headers.get('content-length') || 0);
-  if (len > MAX_BYTES) { clearTimeout(timer); return json(413, { error: 'response too large' }); }
+  if (len > MAX_BYTES) { ctl.abort(); return json(413, { error: 'response too large' }); }
   // every relayed body is inert on the relay's origin (no scripts, no rendering as an active page)
   const headers = { ...CORS, 'X-Relay-Upstream-Status': String(up.status), 'Cache-Control': cacheControlFor(new URL(target)), 'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "default-src 'none'; sandbox", 'Content-Disposition': 'attachment' };
@@ -118,12 +124,14 @@ export async function handle(request, { clientIp = 'anon', fetchImpl = fetch } =
   }
   let seen = 0;
   const limiter = new TransformStream({
+    start() { kick(); },
     transform(chunk, c) {
+      kick();
       seen += chunk.byteLength;
-      if (seen > MAX_BYTES) { c.error(new Error('too large')); ctl.abort(); return; }
+      if (seen > MAX_BYTES) { clearTimeout(idle); c.error(new Error('too large')); ctl.abort(); return; }
       c.enqueue(chunk);
     },
-    flush() { clearTimeout(timer); },
+    flush() { clearTimeout(idle); },
   });
   // An archive's server error (e.g. IRSA's gateway answering 502) is reported in X-Relay-Upstream-Status with a
   // 200 from the relay: the relay is healthy, so clients do not fail over to another relay (the archive is down for

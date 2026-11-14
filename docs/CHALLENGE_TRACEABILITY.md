@@ -8,11 +8,11 @@ and the test or evidence that proves it. Status: ✅ done and tested · 🟡 don
 | Challenge text | Feature | Proof | Status |
 |---|---|---|---|
 | SPHEREx maps the entire sky every six months in 102 bands | Six-month survey co-adds by default; 6 detector arrays × 17 channels shown everywhere (Time Machine detector picker, Learn, Mission) | Viewer grouping (`src/lib/render.js` groupExposures), Mission per-band chart | ✅ |
-| Objects reveal themselves by shifting position between images | Movie, Blink, Difference modes; predicted-track overlay; Discover → Spot the movers | Browser runs on WISE 0855 / Barnard (scratchpad screenshots), `docs/VALIDATION.md` | ✅ |
+| Objects reveal themselves by shifting position between images | Movie, Blink, Difference modes; predicted-track overlay; Discover → Spot the movers | Browser runs on WISE 0855 / Barnard, `docs/VALIDATION.md` | ✅ |
 | Create a public-facing web tool to display images of the sky from SPHEREx | Installable PWA, all pages | Local build, browser smoke tests | ✅ |
 | Easy for anyone to quickly see how they change over time | Instant start from saved lists, autoplay, plain-language Explain panel, tour | Browser tests | ✅ |
 | Asteroids and comets orbit the Sun | Ecliptic on the map; Discover movers; solar-system tracks not available from approved sources (documented) | DATA_SOURCES "left out" | 🟡 |
-| Nearby stars march across the sky | Gaia proper motions, track overlay, Chase page, follow mode | VALIDATION.md (Barnard μδ within 2%) | ✅ |
+| Nearby stars march across the sky | Gaia proper motions, track overlay, Chase page, follow mode | VALIDATION.md (Barnard speed within 2%) | ✅ |
 | Earth's orbit changes apparent positions (distances) | Annual parallax in predicted tracks and overlays; parallax removed in the motion fit; Gaia distance in Object panel and Chase | VALIDATION.md (parallax removed, up to 0.54″ for Barnard) | ✅ |
 | Pluto discovered by comparing two images | Blink mode (first vs last epoch) | Guide, viewer | ✅ |
 | Volunteers discover objects this way (Backyard Worlds) | WiseView link and URL parameters; candidates, queue, random field | Saved page, upload queue E2E | ✅ |
@@ -42,16 +42,16 @@ and the test or evidence that proves it. Status: ✅ done and tested · 🟡 don
 | Verify facts against live pages, recorded | DATA_SOURCES.md with dates and link chains | Doc | ✅ |
 | Target positions from approved sources with proper motion | Gaia DR3 via IRSA/MAST, propagated per date | prebake | ✅ |
 | No logos/trademarks; credits and DOIs | About page credits, DOIs | About | ✅ |
-| Local first; no push until approved | Local git only | `git log` | ✅ |
-| No assistant or bot attribution | Build fails on attribution text | `scripts/build.mjs` | ✅ |
+| Published on the owner's approval (DESIGN_LOG entry 16) | Public GitHub repository | `git log` | ✅ |
+| No tool attribution in code, commits or files | Build fails on attribution text | `scripts/build.mjs` | ✅ |
 | Any device, accessible | Responsive layout, screen-fit viewer, keyboard, ARIA, colour-blind palette, reduced motion, light/dark theme | Laptop/phone screenshots | 🟡 |
 | SkyRequest schema for all inputs | `src/state.js`; text, equations, URL, uploads compile to it | `test/upload.test.mjs` (typed = uploaded) | ✅ |
 | Uploads (common formats), safe | Worker parser with limits | `test/upload.test.mjs` | ✅ |
 | Safe expression engine | `src/lib/expr.js` (no eval) | Equation E2E | ✅ |
-| Dossier HTML/PDF/ZIP, unique ID | `src/lib/dossier.js` | Dossier E2E (19 files) | ✅ |
+| Dossier HTML/PDF/ZIP, unique ID | `src/lib/dossier.js` | Dossier E2E (all quality checks pass) | ✅ |
 | Install, offline, update pop-up, Back/Forward | PWA shell, SW, toasts, history arrows, swipe | E2E: offline shell, update flow (new cache active after click), arrows via menu links | 🟡 (install on real devices pending) |
 | Validation against catalogues and Astropy | VALIDATION.md, astropy test | Docs/tests | ✅ |
-| Scheduled refresh and two hosts | GitHub Pages live; refresh every 6 h (data, image index) carried in the Actions cache; image search works there without a relay. overlays for the five targets built in; Cloudflare Pages backup live at skyshift-spherex.pages.dev with its own relay, used by the GitHub Pages copy for live overlays (docs/HOSTING.md) | GitHub Actions runs; relay test | ✅ |
+| Scheduled refresh and two hosts | GitHub Pages live; refresh every 6 h (data, image index) carried in the Actions cache; image search works there without a relay. Overlays for the five targets built in; Cloudflare Pages backup live at skyshift-spherex.pages.dev with its own relay, used by the GitHub Pages copy for live overlays (docs/HOSTING.md) | GitHub Actions runs; relay test | ✅ |
 | Space Apps terms checked | Apache-2.0 licence, NOTICE with third-party licences, every source cited | LEGAL.md, NOTICE | ✅ |
 | Presentation deliverables (video ≤30 s, ≤7 slides) | `docs/presentation/skyshift-demo-barnard.mp4` (28.4 s; WebM copy too), `slides.html` (7 slides) | Files | ✅ |
 | Every page and tab in four languages | English text stays in the page code; `src/i18n/` holds the Greek, Spanish and French menus and messages (`el.js`, `es.js`, `fr.js`), headings, buttons and tabs (`ui.js`), every page text (`pages/<lang>.js`, loaded only for the chosen language) and the rules for texts with live numbers and dates (`patterns.js`), applied on screen by `apply.js`; dates and numbers follow the chosen language; `test/i18n.test.mjs` checks the tables; the menu bar switches to the compact menu when long labels do not fit. Example commands typed into the describe box, quoted text from the live resource pages and the official SPHEREx acknowledgement wording stay in English | Settings → Language | ✅ |

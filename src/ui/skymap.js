@@ -4,7 +4,7 @@
 // counts, live from IRSA, how many SPHEREx images cover the point under the cursor.
 
 import { h } from './dom.js';
-import { formatRA, formatDec, niceDate } from '../lib/coords.js';
+import { formatRA, niceDate } from '../lib/coords.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const R2 = Math.SQRT2;

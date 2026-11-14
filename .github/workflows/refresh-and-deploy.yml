@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      HAS_CF: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}  # only whether a token exists; the token itself is given to the deploy step alone
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -54,12 +54,14 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
       - name: Deploy backup to Cloudflare Pages
-        if: env.CF_TOKEN != ''
+        if: env.HAS_CF == 'true'
+        continue-on-error: true  # a Cloudflare problem must never stop the GitHub Pages deploy
         env: { CLOUDFLARE_API_TOKEN: '${{ secrets.CLOUDFLARE_API_TOKEN }}', CLOUDFLARE_ACCOUNT_ID: '${{ secrets.CLOUDFLARE_ACCOUNT_ID }}' }
         run: |
           # create the Pages project only if it does not exist yet
-          npx --yes wrangler@3 pages project list | grep -q 'skyshift-spherex' || npx --yes wrangler@3 pages project create skyshift-spherex --production-branch main
-          npx --yes wrangler@3 pages deploy dist --project-name skyshift-spherex --branch main --commit-dirty=true
+          npx --yes wrangler@3.114.17 pages project list > "$RUNNER_TEMP/projects.txt"
+          grep -q 'skyshift-spherex' "$RUNNER_TEMP/projects.txt" || npx --yes wrangler@3.114.17 pages project create skyshift-spherex --production-branch main
+          npx --yes wrangler@3.114.17 pages deploy dist --project-name skyshift-spherex --branch main --commit-dirty=true
   deploy:
     needs: build
     runs-on: ubuntu-latest

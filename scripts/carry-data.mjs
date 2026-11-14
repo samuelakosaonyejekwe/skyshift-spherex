@@ -7,7 +7,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync, rmSync, app
 import { dirname, join } from 'node:path';
 
 const C = '.data-cache';
-const JSONS = { 'data/mission.json': 'built', 'data/coverage.json': 'built', 'data/targets.json': 'generated' };
+// every file the scheduled refresh writes, with the field that holds its time stamp
+const JSONS = { 'data/mission.json': 'built', 'data/coverage.json': 'built', 'data/targets.json': 'generated', 'data/live.json': 'checked', 'data/sources.json': 'checked', 'data/fastmovers.json': 'built' };
 const IMAGES = ['assets/allsky-1000.jpg', 'assets/allsky-1600.jpg']; // rebuilt in the same refresh as mission.json
 const IDX = 'data/idx';
 const stampOf = (f, key) => { try { return Date.parse(JSON.parse(readFileSync(f, 'utf8'))[key]) || 0; } catch { return 0; } };

@@ -59,8 +59,10 @@ export function isDirect(url) {
 function withTimeout(ms, outer) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(new DOMException('Timed out', 'TimeoutError')), ms);
-  if (outer) outer.addEventListener('abort', () => ctl.abort(outer.reason), { once: true });
-  return { signal: ctl.signal, done: () => clearTimeout(t) };
+  const onOuter = () => ctl.abort(outer.reason);
+  if (outer) { if (outer.aborted) onOuter(); else outer.addEventListener('abort', onOuter, { once: true }); }
+  // done() also detaches from the caller's signal, so long-lived signals do not collect one listener per request
+  return { signal: ctl.signal, done: () => { clearTimeout(t); outer?.removeEventListener('abort', onOuter); } };
 }
 
 /**

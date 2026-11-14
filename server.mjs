@@ -54,18 +54,23 @@ const memo = new Map();
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    if (url.pathname === '/api/relay') return relay(req, res, url);
+    if (url.pathname === '/api/relay') return await relay(req, res, url); // awaited, so a failing request is answered, not fatal
     let p = decodeURIComponent(url.pathname);
     if (p.endsWith('/')) p += 'index.html';
     const file = normalize(join(ROOT, p));
     if (file !== ROOT && !file.startsWith(ROOT + sep)) { res.writeHead(403).end(); return; }
     let st = await stat(file).catch(() => null);
     let target = file;
-    if (!st || st.isDirectory()) { target = join(ROOT, 'index.html'); st = await stat(target); }
+    if (!st || st.isDirectory()) {
+      // a missing file with an extension is a real 404 (never the app page under a script's name, which the service
+      // worker would otherwise store as that script); page addresses without one get the app
+      if (!st && extname(file)) { res.writeHead(404, { ...SECURITY, 'Content-Type': 'text/plain' }).end('Not found'); return; }
+      target = join(ROOT, 'index.html'); st = await stat(target);
+    }
     const ext = extname(target);
     const headers = { ...SECURITY, 'Content-Type': MIME[ext] || 'application/octet-stream' };
     headers['Cache-Control'] = /\/(sw\.js|index\.html|version\.json|config\.json|manifest\.webmanifest)$/.test(target) || ext === '.html'
-      ? 'no-cache' : /\/(assets|vendor|icons)\//.test(target) ? 'public, max-age=31536000, immutable' : 'public, max-age=3600';
+      ? 'no-cache' : /\/(vendor|icons)\//.test(target) ? 'public, max-age=31536000, immutable' : 'public, max-age=3600'; // assets/ is rewritten in place by the data refresh
     if (target.endsWith('sw.js')) headers['Service-Worker-Allowed'] = '/';
     const etag = `"${st.size.toString(36)}-${st.mtimeMs.toString(36)}"`;
     headers.ETag = etag;
@@ -96,6 +101,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function relay(req, res, url) {
+  // only the methods the relay serves; others (TRACE, CONNECT…) cannot even be built into a Request
+  if (!['GET', 'HEAD', 'POST', 'OPTIONS'].includes(req.method)) { res.writeHead(405, { Allow: 'GET, HEAD, POST, OPTIONS' }); return res.end(); }
   const chunks = [];
   if (req.method === 'POST') for await (const c of req) { chunks.push(c); if (chunks.reduce((a, b) => a + b.length, 0) > 65536) break; }
   const request = new Request(url, {

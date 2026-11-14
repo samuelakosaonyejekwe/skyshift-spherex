@@ -32,20 +32,23 @@ export async function checkWatchlist(newestMjd) {
   const list = read(WATCH);
   const last = Number(localStorage.getItem('skyshift.watchChecked') || 0);
   if (!list.length || newestMjd <= last) return;
-  localStorage.setItem('skyshift.watchChecked', String(newestMjd));
+  let allChecked = true;
   for (const w of list) {
     try {
       const r = await searchSpherex(w.target.ra, w.target.dec);
-      if (r.source !== 'live') continue;
+      if (r.source !== 'live') { allChecked = false; continue; }
       const newest = Math.max(...r.data.map((e) => e.mjd));
       if (w.knownNewest && newest > w.knownNewest + 0.01) {
         const added = r.data.filter((e) => e.mjd > w.knownNewest).length;
         toast({ kind: 'update', glyph: '🛰', timeout: 0, title: `New SPHEREx data for ${w.target.name || 'a saved field'}`, text: `${added} new exposure${added > 1 ? 's' : ''} up to ${niceDate(newest)}.`, actions: [{ label: 'Open', primary: true, onClick: () => { location.hash = w.url; } }, { label: 'Later' }] });
       }
-      w.knownNewest = newest; w.knownCount = r.data.length;
-    } catch { /* try next time */ }
+      // update only this field in the list as it is now, so saves or removals made meanwhile are kept
+      const now = read(WATCH), cur = now.find((x) => x.url === w.url);
+      if (cur) { cur.knownNewest = newest; cur.knownCount = r.data.length; write(WATCH, now); }
+    } catch { allChecked = false; /* try next time */ }
   }
-  write(WATCH, list);
+  // remembered only when every field was checked, so a failed check is retried next time
+  if (allChecked) localStorage.setItem('skyshift.watchChecked', String(newestMjd));
 }
 
 // ---- queue of fields to inspect (from uploads or "many hands" lists)

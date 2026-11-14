@@ -8,6 +8,8 @@ import { propagate } from '../src/lib/coords.js';
 import { parseCSV } from '../src/lib/tap.js';
 
 const TAP = 'https://irsa.ipac.caltech.edu/TAP/sync';
+// releases left out of searches, from config.json (one list shared with the app and the index)
+const EXCLUDE = new RegExp(`/(${(JSON.parse(readFileSync('config.json', 'utf8')).excludeReleases || ['qr2']).join('|')})/`);
 const EPOCH = 2026.0; // display epoch near the middle of the SPHEREx surveys to date
 
 const TARGETS = [
@@ -26,20 +28,27 @@ const TARGETS = [
     tip: 'Large-amplitude variable. Compare spectra from different surveys.' },
 ];
 
+// Each request gives up after 2 minutes; once IRSA has failed every retry of one query, the rest of this run
+// keeps the previous data instead of waiting on a service that is down.
+let tapDown = false;
 async function tap(q) {
+  if (tapDown) throw new Error('TAP skipped (IRSA unavailable earlier in this run): ' + q.slice(0, 60));
   const url = `${TAP}?LANG=ADQL&FORMAT=csv&QUERY=${encodeURIComponent(q)}`;
   for (let i = 0; i < 3; i++) {
     try {
-      const r = await fetch(url, { headers: { 'User-Agent': 'SkyShift-prebake/1.0' } });
-      if (r.ok) return parseCSV(await r.text());
+      const r = await fetch(url, { headers: { 'User-Agent': 'SkyShift-prebake/1.0' }, signal: AbortSignal.timeout(120000) });
+      const t = await r.text();
+      // IRSA can answer 200 with an error document: never treat that as an empty result
+      if (r.ok && !/QUERY_STATUS" value="ERROR|<html/i.test(t)) return parseCSV(t);
     } catch { /* retry */ }
     await new Promise((r) => setTimeout(r, 3000 * (i + 1)));
   }
+  tapDown = true;
   throw new Error('TAP failed: ' + q.slice(0, 80));
 }
 
 const out = { generated: new Date().toISOString(), epoch: EPOCH, targets: [] };
-let prev = null;
+let prev = null, fresh = 0;
 try { prev = JSON.parse(readFileSync('data/targets.json', 'utf8')); } catch { /* first run */ }
 
 for (const t of TARGETS) {
@@ -53,9 +62,11 @@ for (const t of TARGETS) {
     } else Object.assign(rec, { ra: t.ra, dec: t.dec, posNote: t.posNote });
     const rows = await tap(`SELECT a.uri, p.time_bounds_lower, p.energy_bandpassname FROM spherex.artifact a JOIN spherex.plane p ON a.planeid = p.planeid
 WHERE 1 = CONTAINS(POINT('ICRS', ${rec.ra}, ${rec.dec}), p.poly) ORDER BY p.time_bounds_lower`);
-    rec.images = rows.filter((r) => /spx_l2b.*\.fits$/.test(r.uri) && !/\/qr2\//.test(r.uri))
+    rec.images = rows.filter((r) => /spx_l2b.*\.fits$/.test(r.uri) && !EXCLUDE.test(r.uri))
       .map((r) => [r.uri, +Number(r.time_bounds_lower).toFixed(6), Number(String(r.energy_bandpassname).replace(/\D/g, ''))]);
-    out.targets.push(rec);
+    const was = prev?.targets?.find((x) => x.id === t.id);
+    if (!rec.images.length && was?.images?.length) throw new Error('no images returned (kept the previous list)');
+    out.targets.push(rec); fresh++;
     console.log(t.name, rec.ra, rec.dec, rec.images.length, 'images');
   } catch (e) {
     const old = prev?.targets?.find((x) => x.id === t.id);
@@ -66,5 +77,7 @@ try {
   const [n] = await tap('SELECT MAX(time_bounds_lower) AS newest FROM spherex.plane');
   out.newestSpherexMjd = n.newest;
 } catch { out.newestSpherexMjd = prev?.newestSpherexMjd ?? null; }
+// the time stamp says when the data were last refreshed, so a run that kept everything keeps the old stamp
+if (!fresh && prev?.generated) out.generated = prev.generated;
 writeFileSync('data/targets.json', JSON.stringify(out));
 console.log('data/targets.json written');

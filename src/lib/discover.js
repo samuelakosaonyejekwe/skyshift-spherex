@@ -1,6 +1,6 @@
 // Discovery aids. They point at things worth checking; results are always candidates.
 
-import { detectorBalanced, matchedDifference } from './render.js';
+import { detectorBalanced, matchedDifference, SURVEY_GAP_DAYS } from './render.js';
 import { robustStats } from './engine.js';
 import { gridToWorld } from './engine.js';
 import { mjdToYear } from './coords.js';
@@ -104,7 +104,9 @@ export function findVariables(display, n, grid, centre = [grid?.ra, grid?.dec]) 
     let opp = false;
     const sign = Math.sign(diff.data[k] - st.median);
     for (let dj = -3; dj <= 3 && !opp; dj++) for (let di = -3; di <= 3; di++) {
-      const kk = (p.j + dj) * n + p.i + di;
+      const jj = p.j + dj, ii = p.i + di;
+      if (jj < 0 || ii < 0 || jj >= n || ii >= n) continue; // stay inside the frame (no wrap into the next row)
+      const kk = jj * n + ii;
       if ((di || dj) && Math.sign(diff.data[kk] - st.median) === -sign && Math.abs(diff.data[kk] - st.median) > 3 * st.sigma) { opp = true; break; }
     }
     if (opp) continue;
@@ -150,7 +152,7 @@ export function epochBrightness(pts) {
   const groups = [];
   for (const p of usable) {
     const g = groups[groups.length - 1];
-    if (g && p.mjd - g[g.length - 1].mjd <= 30) g.push(p); else groups.push([p]);
+    if (g && p.mjd - g[g.length - 1].mjd <= SURVEY_GAP_DAYS) g.push(p); else groups.push([p]);
   }
   const epochs = groups.filter((g) => g.length >= 3).map((g) => {
     const v = g.map((p) => p.rel).sort((a, b) => a - b);

@@ -1,7 +1,7 @@
 // Sky atlas: Aladin Lite (CDS) showing the SPHEREx DR1 all-sky HiPS served by IRSA,
 // with the current field, Gaia DR3 and WISE overlays. Click to choose a new target.
 
-import { h, toast } from '../ui/dom.js';
+import { h } from '../ui/dom.js';
 import { normalise, fromParams, toParams } from '../state.js';
 import { gaiaCone, catwiseCone } from '../lib/tap.js';
 import { formatRA, formatDec } from '../lib/coords.js';
@@ -11,6 +11,9 @@ export const title = 'Sky atlas';
 export const SPHEREX_HIPS = 'https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube';
 // Aladin Lite has no teardown, so one map instance (and its WebGL context) is kept and re-used across visits.
 let atlas = null; // { host, aladin, A }
+
+let skyVisit = 0;
+const prevCats = [];
 
 export async function render(root, route, { go }) {
   const req = normalise(fromParams(route.params));
@@ -69,17 +72,22 @@ export async function render(root, route, { go }) {
     // catalogues
     const rad = Math.min(0.5, Math.max(0.05, req.fov / 60));
     // catalogues: brightest sources only, so the SPHEREx sky stays visible; toggles below the map
+    // catalogues belong to this visit: hide the previous visit's and ignore answers that arrive after leaving
+    const visit = ++skyVisit;
+    prevCats.forEach((c) => { try { c.hide(); } catch { /* already gone */ } }); prevCats.length = 0;
     const cats = {};
     const toggle = (key, label, on) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: on, onchange: (e) => { const c = cats[key]; if (c) (e.target.checked ? c.show() : c.hide()); } }), label);
     catBar.replaceChildren(h('span', { class: 'tiny' }, 'Catalogues:'), toggle('gaia', 'Gaia DR3 (brightest 300)', true), toggle('wise', 'CatWISE2020 (brightest 300)', false));
     gaiaCone(t.ra, t.dec, rad).then((r) => {
+      if (visit !== skyVisit) return;
       const cat = A.catalog({ name: 'Gaia DR3', color: '#5ec8ff', sourceSize: 9 });
-      aladin.addCatalog(cat); cats.gaia = cat;
+      aladin.addCatalog(cat); cats.gaia = cat; prevCats.push(cat);
       cat.addSources([...r.data.rows].sort((a, b) => (a.phot_g_mean_mag ?? 99) - (b.phot_g_mean_mag ?? 99)).slice(0, 300).map((s) => A.source(s.ra, s.dec, { name: `Gaia DR3 ${s.source_id}`, G: s.phot_g_mean_mag })));
     }).catch(() => {});
     catwiseCone(t.ra, t.dec, rad).then((r) => {
+      if (visit !== skyVisit) return;
       const cat = A.catalog({ name: 'CatWISE2020', color: '#ffb547', sourceSize: 7, shape: 'square' });
-      aladin.addCatalog(cat); cats.wise = cat;
+      aladin.addCatalog(cat); cats.wise = cat; prevCats.push(cat);
       cat.addSources([...r.data.rows].sort((a, b) => (a.w1mpro ?? 99) - (b.w1mpro ?? 99)).slice(0, 300).map((s) => A.source(s.ra, s.dec, { name: s.source_name })));
       cat.hide();
     }).catch(() => {});
@@ -98,5 +106,5 @@ export async function render(root, route, { go }) {
     host.replaceChildren(h('div', { class: 'empty' }, navigator.onLine ? `The sky map could not start (${e.message || e}).` : 'The sky map needs a connection the first time. Explore works offline for saved fields.'));
     info.textContent = '';
   }
-  return () => { if (atlas) atlas.onClick = null; host.remove(); /* the map instance is kept for the next visit */ };
+  return () => { skyVisit++; if (atlas) atlas.onClick = null; host.remove(); /* the map instance is kept for the next visit */ };
 }

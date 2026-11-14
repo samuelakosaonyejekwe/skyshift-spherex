@@ -29,7 +29,9 @@ for (const f of files) {
   const dest = join(OUT, f);
   mkdirSync(dirname(dest), { recursive: true });
   copyFileSync(f, dest);
-  hash.update(f).update(readFileSync(f));
+  // data files carry only refreshed numbers and time stamps: they are fetched fresh by the service worker, so
+  // they stay out of the version and a scheduled data refresh does not make every user re-download the app
+  if (!/^data\/[^/]+\.json$/.test(f)) hash.update(f).update(readFileSync(f));
 }
 // Backup hosts (docs/HOSTING.md): relays and mirror addresses supplied by the deploy environment (GitHub
 // repository variables RELAY_URLS and MIRROR_URLS, comma-separated) are added to the shipped config, so the
@@ -98,7 +100,7 @@ const gz = shell.reduce((a, f) => a + gzipSync(readFileSync(f), { level: 9 }).le
 console.log(`Shell (gzip): ${(gz / 1024).toFixed(1)} kB of ${(BUDGET_SHELL_GZ / 1024).toFixed(0)} kB budget`);
 if (gz > BUDGET_SHELL_GZ) { console.error('Size budget exceeded'); process.exit(1); }
 
-// ---- attribution rule: no assistant/bot attribution anywhere in shipped or source files
+// ---- attribution rule: no tool attribution anywhere in shipped or source files
 // (patterns are stored encoded so this file does not itself contain the words it rejects)
 const banned = ['XGJjbGF1ZGVcYg==', 'YW50aHJvcGlj', 'Y2hhdGdwdA==', 'b3BlbmFp', 'Y29waWxvdA==', 'Y28tYXV0aG9yZWQtYnk=', 'Z2VuZXJhdGVkIChieXx3aXRoKSAoYW4gKT9haVxi', 'XGJhaVstIF1nZW5lcmF0ZWRcYg==', 'XGJhaVstIF1hc3Npc3RlZFxi'].map((b) => new RegExp(Buffer.from(b, 'base64').toString(), 'i'));
 const scan = [...files, 'README.md', 'NOTICE', 'CITATION.cff', 'package.json', 'server.mjs', 'relay/core.mjs', ...walk('docs').filter((f) => /\.(md|html)$/.test(f)), ...walk('scripts'), ...walk('test'), ...walk('.github')].filter((f) => existsSync(f) && !LAZY.includes(f));
@@ -107,7 +109,6 @@ for (const f of scan) {
   const txt = readFileSync(f, 'utf8');
   for (const re of banned) if (re.test(txt)) hits.push(`${f}: ${re}`);
 }
-const real = hits;
-if (real.length) { console.error('Attribution check failed:\n' + real.join('\n')); process.exit(1); }
+if (hits.length) { console.error('Attribution check failed:\n' + hits.join('\n')); process.exit(1); }
 
 console.log(`Built ${files.length} files into ${OUT}/ · version ${version} · ${precache.length} precached`);

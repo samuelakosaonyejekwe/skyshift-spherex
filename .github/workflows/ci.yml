@@ -1,5 +1,6 @@
-# Checks on every push and pull request: unit tests, build (syntax check, size budget,
-# attribution check) and a dependency audit. Runs as checks only; it never commits.
+# Checks on every push and pull request: unit tests and build (syntax check, size budget, attribution
+# check). SkyShift has no package dependencies, so there is nothing for a dependency audit to check.
+# Runs as checks only; it never commits.
 name: ci
 on: [push, pull_request]
 permissions: { contents: read }
@@ -12,4 +13,3 @@ jobs:
         with: { node-version: 20 }
       - run: node scripts/build.mjs
       - run: node --test test/
-      - run: npm audit --omit=dev || true

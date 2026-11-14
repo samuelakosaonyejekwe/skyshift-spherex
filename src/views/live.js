@@ -68,16 +68,16 @@ export async function render(root, route, { go }) {
   let newestObs = Number(localStorage.getItem('skyshift.newestMjd') || 0);
   const newestCard = () => stat(newestObs ? niceDate(newestObs) : '–', 'date the newest SPHEREx image searchable at IRSA was taken');
   import('../lib/tap.js').then(async (t) => {
-    if (!newestObs) { newestObs = (await t.indexMeta())?.newestMjd || 0; if (newestObs && stats.children[2]) stats.children[2].replaceWith(newestCard()); }
+    if (!newestObs) { newestObs = (await t.indexMeta().catch(() => null))?.newestMjd || 0; if (newestObs && !disposed && stats.children[2]) stats.children[2].replaceWith(newestCard()); }
     t.latestSpherex().then((r) => { if (r.data && !disposed) { newestObs = r.data; stats.children[2]?.replaceWith(newestCard()); } }).catch(() => {});
-  });
+  }).catch(() => { /* the archive date card keeps its saved value */ });
 
   async function run(force) {
     if (!force && Date.now() - last < 5 * 60 * 1000) return;
     last = Date.now();
     // 1) at once: the newest stored snapshot (this device's last listing or the server's 6-hourly one)
     if (!drawnAt) {
-      const [mine, server] = await Promise.all([cache.get('live:snap'), fetch('./data/live.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
+      const [mine, server] = await Promise.all([cache.get('live:snap').catch(() => null), fetch('./data/live.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
       const best = [mine, server].filter((x) => x?.periods?.length).sort((a, b) => Date.parse(b.checked) - Date.parse(a.checked))[0];
       if (best && !disposed) draw(best, `Showing the archive as of ${niceDateTime(best.checked)}; checking for newer files now…`);
     }

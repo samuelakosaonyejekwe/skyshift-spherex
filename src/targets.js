@@ -4,8 +4,9 @@
 // IRSA/MAST) or coordinates: no other name resolver is reachable from the approved sources.
 
 import { loadBundled, tap, IRSA_TAP } from './lib/tap.js';
+import { NATIVE_SCALE } from './lib/engine.js';
 import { findPreset, parseText } from './state.js';
-import { parsePosition, toGalactic } from './lib/coords.js';
+import { parsePosition, toGalactic, fromGalactic } from './lib/coords.js';
 
 export async function presets() {
   const b = await loadBundled();
@@ -16,15 +17,7 @@ export async function presetById(id) {
   return (await presets()).find((t) => t.id === id) || null;
 }
 
-/** Galactic (l, b) -> ICRS (inverse of coords.toGalactic rotation). */
-export function fromGalactic(l, b) {
-  const D = Math.PI / 180;
-  const M = [[-0.0548755604, -0.8734370902, -0.4838350155], [0.4941094279, -0.4448296300, 0.7469822445], [-0.8676661490, -0.1980763734, 0.4559837762]];
-  const x = Math.cos(b * D) * Math.cos(l * D), y = Math.cos(b * D) * Math.sin(l * D), z = Math.sin(b * D);
-  const ex = M[0][0] * x + M[1][0] * y + M[2][0] * z, ey = M[0][1] * x + M[1][1] * y + M[2][1] * z, ez = M[0][2] * x + M[1][2] * y + M[2][2] * z;
-  let ra = Math.atan2(ey, ex) / D; if (ra < 0) ra += 360;
-  return { ra, dec: Math.asin(ez) / D };
-}
+export { fromGalactic }; // kept here for existing imports; the rotation lives in coords.js
 
 /**
  * Resolve the target box text. Returns
@@ -71,7 +64,7 @@ export function presetToTarget(t) {
 /** Suggested field of view / mode for a target (the "smart next step"). */
 export function suggestFor(t) {
   const pm = Math.hypot(t.pmra || 0, t.pmdec || 0) / 1000; // arcsec/yr
-  if (pm > 3) return { fov: 6, mode: 'blink', track: false, text: `This object moves ${pm.toFixed(1)}″ per year, about ${(pm / 6.15).toFixed(1)} SPHEREx pixels: one frame per six-month survey and Blink (first vs last) show it best.` };
+  if (pm > 3) return { fov: 6, mode: 'blink', track: false, text: `This object moves ${pm.toFixed(1)}″ per year, about ${(pm / NATIVE_SCALE).toFixed(1)} SPHEREx pixels: one frame per six-month survey and Blink (first vs last) show it best.` };
   if (pm > 0.5) return { fov: 6, mode: 'movie', text: `Moves ${pm.toFixed(2)}″/yr. Try Difference mode to bring out the motion.` };
   return null;
 }

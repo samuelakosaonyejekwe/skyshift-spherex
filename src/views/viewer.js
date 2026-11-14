@@ -3,13 +3,13 @@
 // Gaia / WISE / NEOSSat context; metadata and contamination flags.
 
 import { h, icon, toast, sheet, copyText, download, fmtBytes, fmtDur, downlinkMbps } from '../ui/dom.js';
-import { normalise, fromParams, toParams, MODES, GROUPS, FOV_STEPS, DEFAULTS } from '../state.js';
+import { normalise, fromParams, toParams, MODES, GROUPS, FOV_STEPS } from '../state.js';
 import { searchSpherex, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossatCone } from '../lib/tap.js';
 import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE } from '../lib/engine.js';
-import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName } from '../lib/render.js';
+import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName, SURVEY_GAP_DAYS } from '../lib/render.js';
 import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
 import { formatRA, formatDec, propagate, apparent, mjdToYear, yearToMjd, mjdToISO, niceDate, niceDateTime, separation, toGalactic } from '../lib/coords.js';
-import { presetById, presetToTarget, suggestFor, describePosition } from '../targets.js';
+import { presetById, presetToTarget, suggestFor } from '../targets.js';
 import { scatterChart, svgString } from '../ui/charts.js';
 import { pushRecent } from './home.js';
 import { saveCandidate, isWatched, toggleWatch, getQueue, clearQueue } from './saved.js';
@@ -268,7 +268,7 @@ export async function render(root, route, { go }) {
     const groups = [];
     let cur = [];
     for (const e of [...list].sort((a, b) => a.mjd - b.mjd)) {
-      if (cur.length && e.mjd - cur[cur.length - 1].mjd > 30) { groups.push(cur); cur = []; }
+      if (cur.length && e.mjd - cur[cur.length - 1].mjd > SURVEY_GAP_DAYS) { groups.push(cur); cur = []; }
       cur.push(e);
     }
     if (cur.length) groups.push(cur);
@@ -285,7 +285,7 @@ export async function render(root, route, { go }) {
     const b = loading.querySelector('#loadbar'); if (b) b.style.width = `${Math.round(f * 100)}%`;
   }
   function updateStatus(done, total, m, final) {
-    const per = estimateBytesPerExposure(req.fov, flagMode());
+    const per = estimateBytesPerExposure(req.fov, flagMode(), effectiveReadMode());
     const ms = m?.ms || performance.now() - S.t0;
     const rate = S.bytes && ms ? S.bytes / (ms / 1000) : null;
     const remaining = Math.max(0, total - done);
@@ -376,11 +376,19 @@ export async function render(root, route, { go }) {
       }
       S.display = { frames, groups, lims: limits(frames.map((f) => f.data), req.lo, req.hi, true), kind: 'diff' };
     } else if (req.mode === 'stack') {
-      const acc = [];
+      // running weighted sums per detector: each exposure is added once (the result equals perDetector(all so far))
+      const run = new Map(); let count = 0;
       for (let i = 0; i < groups.length; i++) {
-        acc.push(...groups[i]);
-        const img = detectorBalanced(perDetector(acc, N), N);
-        frames.push({ data: img, group: groups[i], note: `stack of epochs 1–${i + 1} (${acc.length} exposures)`, stackCount: acc.length });
+        for (const e of groups[i]) {
+          const det = e.meta.detector;
+          if (!run.has(det)) run.set(det, { sum: new Float64Array(N * N), w: new Float64Array(N * N) });
+          const r = run.get(det), wt = 1 / Math.max(1e-12, e.meta.sigma) ** 2, bg = e.meta.bg || 0, d = e.data;
+          for (let k = 0; k < d.length; k++) { const v = d[k]; if (Number.isFinite(v)) { r.sum[k] += (v - bg) * wt; r.w[k] += wt; } }
+          count++;
+        }
+        const dm = new Map();
+        for (const [det, r] of run) { const o = new Float32Array(N * N); for (let k = 0; k < o.length; k++) o[k] = r.w[k] ? r.sum[k] / r.w[k] : NaN; dm.set(det, o); }
+        frames.push({ data: detectorBalanced(dm, N), group: groups[i], note: `stack of epochs 1–${i + 1} (${count} exposures)`, stackCount: count });
       }
       S.display = { frames, groups, lims: limits([frames[frames.length - 1].data], req.lo, req.hi), kind: 'mono' };
     } else {
@@ -823,12 +831,12 @@ export async function render(root, route, { go }) {
 
   function sideDisplay() {
     const counts = {}; S.exposures.forEach((e) => { counts[e.det] = (counts[e.det] || 0) + 1; });
-    const perExp = estimateBytesPerExposure(req.fov, flagMode());
+    const perExp = estimateBytesPerExposure(req.fov, flagMode(), effectiveReadMode());
     const nSel = S.exposures.filter((e) => req.dets.includes(e.det)).length;
     const mbps = downlinkMbps();
     const fovSel = h('select', { 'aria-label': 'Field of view', onchange: (e) => commit({ fov: Number(e.target.value) }) },
       FOV_STEPS.map((f) => {
-        const total = estimateBytesPerExposure(f, flagMode()) * nSel;
+        const total = estimateBytesPerExposure(f, flagMode(), effectiveReadMode()) * nSel;
         return h('option', { value: f, selected: Math.abs(req.fov - f) < 0.01 }, `${f >= 60 ? '1°' : f + '′'} · ≈${fmtBytes(total)}${mbps ? ` · ~${fmtDur((total * 8) / (mbps * 1e6) * 1000)}` : ''}`);
       }));
     if (!FOV_STEPS.includes(req.fov)) fovSel.prepend(h('option', { value: req.fov, selected: true }, `${+req.fov.toFixed(2)}′ (custom)`));
@@ -932,7 +940,7 @@ export async function render(root, route, { go }) {
   function epochIndex(pts) {
     const ms = [...new Set(pts.map((p) => p.mjd))].sort((a, b) => a - b);
     const ep = new Map(); let e = 0, last = null;
-    for (const m of ms) { if (last != null && m - last > 30) e++; ep.set(m, e); last = m; }
+    for (const m of ms) { if (last != null && m - last > SURVEY_GAP_DAYS) e++; ep.set(m, e); last = m; }
     return ep;
   }
 
@@ -1000,7 +1008,7 @@ export async function render(root, route, { go }) {
       try { version = (await (await fetch('./version.json', { cache: 'no-cache' })).json()).version; } catch { /* offline */ }
       const cands = (JSON.parse(localStorage.getItem('skyshift.candidates') || '[]')).filter((c) => separation(c.ra, c.dec, req.target.ra, req.target.dec) * 60 < req.fov);
       const d = await buildDossier({ req, grid: S.grid, display: S.display, frames: selectedFrames(), phot: pts, cats: S.cats, movers: S.movers, variables: S.variables,
-        version, specSvg, lcSvg, inputs: { url: location.href, source: req.target.source || 'unknown' }, candidates: cands });
+        version, specSvg, lcSvg, inputs: { url: location.href, source: req.target.source || 'unknown' }, candidates: cands, imageList: S.search?.via === 'index' ? 'index' : S.search?.source || 'live' });
       t();
       const stem = `skyshift-dossier-${fileStem()}-${d.id}`;
       const openHtml = () => { const w = window.open(URL.createObjectURL(new Blob([d.html], { type: 'text/html' })), '_blank'); if (!w) download(`${stem}.html`, d.html, 'text/html'); else w.opener = null; };
@@ -1033,7 +1041,7 @@ export async function render(root, route, { go }) {
       return d > 1.5 && d < 2.5 * NATIVE_SCALE + 6;
     });
     if (!near.length) return null;
-    return `Possible blend: ${near.length} Gaia source${near.length > 1 ? 's' : ''} lie within the 15″ aperture (brightest G=${Math.min(...near.map((s) => s.phot_g_mean_mag || 99)).toFixed(1)}). SPHEREx pixels are 6.15″, so their light can mix with the target’s.`;
+    return `Possible blend: ${near.length} Gaia source${near.length > 1 ? 's' : ''} lie within ${(2.5 * NATIVE_SCALE + 6).toFixed(0)}″ of the target, the 15″ aperture plus the image blur (brightest G=${Math.min(...near.map((s) => s.phot_g_mean_mag || 99)).toFixed(1)}). SPHEREx pixels are 6.15″, so their light can mix with the target’s.`;
   }
 
   function sideLight() {
@@ -1131,7 +1139,7 @@ export async function render(root, route, { go }) {
     const neo = h('div', {}, h('p', { class: 'tiny' }, 'Looking for NEOSSat observations near this position (CADC)…'));
     tabBody.append(
       h('h3', {}, h('span', { class: 'legend-dot', style: { '--c': '#5ec8ff' } }), 'Gaia DR3'),
-      gaia ? (gaia.error ? h('p', { class: 'notice bad' }, `Gaia unavailable: ${gaia.error}`) : h('p', { class: 'tiny' }, `${gaia.rows.length} stars within ${((req.fov / 60) * 0.75 * 60).toFixed(1)}′ via ${gaia.via}${gaia.source === 'cache' ? ' (saved copy)' : ''}. Circles are drawn at each star’s position on the frame date (Gaia proper motion); arrows show 5 years of motion for fast movers.`)) : h('p', { class: 'tiny' }, 'Loading…'),
+      gaia ? (gaia.error ? h('p', { class: 'notice bad' }, `Gaia unavailable: ${gaia.error}`) : h('p', { class: 'tiny' }, `${gaia.rows.length} stars within ${(Math.min((req.fov / 60) * 0.75, 0.6) * 60).toFixed(1)}′ via ${gaia.via}${gaia.source === 'cache' ? ' (saved copy)' : ''}. Circles are drawn at each star’s position on the frame date (Gaia proper motion); arrows show 5 years of motion for fast movers.`)) : h('p', { class: 'tiny' }, 'Loading…'),
       gaia?.rows?.length ? h('div', { class: 'explist' }, h('table', {}, h('tr', {}, ['Gaia DR3', 'G', 'pm ″/yr', 'ϖ mas'].map((x) => h('th', {}, x))),
         gaia.rows.slice(0, 60).map((s) => h('tr', { style: { cursor: 'pointer' }, onclick: () => { S.selected = { ra: s.ra, dec: s.dec, obj: s, cat: 'gaia' }; S.tab = 'object'; renderTabs(); renderSide(); drawOverlay(); } },
           h('td', {}, s.label ? `${s.label}` : String(s.source_id)), h('td', {}, s.phot_g_mean_mag?.toFixed(2) ?? '–'), h('td', {}, s.pmra != null ? (Math.hypot(s.pmra, s.pmdec) / 1000).toFixed(3) : '–'), h('td', {}, s.parallax?.toFixed(1) ?? '–'))))) : null,
@@ -1191,7 +1199,7 @@ export async function render(root, route, { go }) {
     const N = n(), [cra, cdec] = frameCenter(i);
     let [x, y] = worldToGrid(S.grid, ra, dec, cra, cdec);
     const ring = [];
-    for (let j = Math.round(y) - 9; j <= Math.round(y) + 9; j++) for (let k = Math.round(x) - 9; k <= Math.round(x) + 9; k++) { const d = Math.hypot(k - x, j - y), v = img[j * N + k]; if (d > 5 && d < 9 && Number.isFinite(v)) ring.push(v); }
+    for (let j = Math.round(y) - 9; j <= Math.round(y) + 9; j++) for (let k = Math.round(x) - 9; k <= Math.round(x) + 9; k++) { if (k < 0 || j < 0 || k >= N || j >= N) continue; const d = Math.hypot(k - x, j - y), v = img[j * N + k]; if (d > 5 && d < 9 && Number.isFinite(v)) ring.push(v); }
     if (ring.length < 10) return null;
     ring.sort((a, b) => a - b);
     const bg = ring[ring.length >> 1], noise = 1.4826 * ring.map((v) => Math.abs(v - bg)).sort((a, b) => a - b)[ring.length >> 1] || 1e-6;
@@ -1221,15 +1229,18 @@ export async function render(root, route, { go }) {
     const id = Date.now();
     const w = getWorker();
     toast({ title: 'Measuring every exposure at this position…', glyph: '🌈', timeout: 2500 });
+    // only one position is measured at a time: a new click replaces the previous listener
+    if (S.specHandler) w.removeEventListener('message', S.specHandler);
     const handler = (ev) => {
       const m = ev.data;
       if (m.id !== `p${id}`) return;
       if (m.type === 'photDone') {
-        w.removeEventListener('message', handler);
+        w.removeEventListener('message', handler); S.specHandler = null;
         S.clickSpec = { ra, dec, points: m.points.filter((p) => Number.isFinite(p.wavelength)).map((p) => ({ ...p, det: p.detector, release: '' })) };
         S.tab = 'spectrum'; renderTabs(); renderSide();
       }
     };
+    S.specHandler = handler;
     w.addEventListener('message', handler);
     w.postMessage({ type: 'phot', id: `p${id}`, items, ra, dec });
   }
@@ -1431,9 +1442,13 @@ export async function render(root, route, { go }) {
   };
 
   return () => {
+    // results still on their way (searches, frames) belong to a page that is gone: make every check against the
+    // current load or job fail, so nothing starts streaming after leaving
+    S.loadId++; S.jobId++;
     stopPlay(); ro.disconnect();
     clearTimeout(S.tourTimer); S.endTour?.();
     if (worker && S.streamListener) worker.removeEventListener('message', S.streamListener);
+    if (worker && S.specHandler) worker.removeEventListener('message', S.specHandler);
     document.removeEventListener('keydown', onKey);
     window.removeEventListener('skyshift:newdata', onNewData);
     window.removeEventListener('skyshift:online', onNewData);

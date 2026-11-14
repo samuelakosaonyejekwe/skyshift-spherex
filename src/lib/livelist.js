@@ -27,7 +27,8 @@ export async function snapshot(releases = ['qr3', 'dr1']) {
   const versions = (await list(top.prefix)).prefixes.sort();
   const ver = versions[versions.length - 1];
   let keys = [], startAfter = '';
-  for (let page = 0; page < 3; page++) {
+  // file names sort by observation, so the newest are last: page through the whole period (capped at 20 pages)
+  for (let page = 0; page < 20; page++) {
     const l = await list(`${ver}3/`, { delimiter: '', startAfter });
     keys = keys.concat(l.keys.filter((k) => k.key.endsWith('.fits')));
     if (!l.truncated) break;
