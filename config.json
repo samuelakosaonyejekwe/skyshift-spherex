@@ -28,7 +28,7 @@
   ],
   "hosts": {
     "primary": "https://samuelakosaonyejekwe.github.io/skyshift-spherex/",
-    "backup": "not set up yet (installed copies keep working offline if this host is down)",
+    "backup": "https://skyshift-spherex.pages.dev/ (Cloudflare Pages)",
     "code": "https://github.com/samuelakosaonyejekwe/skyshift-spherex"
   },
   "deployed": true,

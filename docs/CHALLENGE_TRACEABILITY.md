@@ -51,7 +51,7 @@ and the test or evidence that proves it. Status: ✅ done and tested · 🟡 don
 | Dossier HTML/PDF/ZIP, unique ID | `src/lib/dossier.js` | Dossier E2E (19 files) | ✅ |
 | Install, offline, update pop-up, Back/Forward | PWA shell, SW, toasts, history arrows, swipe | E2E: offline shell, update flow (new cache active after click), arrows via menu links | 🟡 (install on real devices pending) |
 | Validation against catalogues and Astropy | VALIDATION.md, astropy test | Docs/tests | ✅ |
-| Scheduled refresh and two hosts | GitHub Pages live; refresh every 6 h (data, image index) carried in the Actions cache; image search works there without a relay. overlays for the five targets built in; backup hosts (Cloudflare, Netlify, Vercel) ready to import, with relays fed to the Pages copy by repository variables (docs/HOSTING.md) | GitHub Actions runs | 🟡 (backup hosts need the owner's accounts) |
+| Scheduled refresh and two hosts | GitHub Pages live; refresh every 6 h (data, image index) carried in the Actions cache; image search works there without a relay. overlays for the five targets built in; Cloudflare Pages backup live at skyshift-spherex.pages.dev with its own relay, used by the GitHub Pages copy for live overlays (docs/HOSTING.md) | GitHub Actions runs; relay test | ✅ |
 | Space Apps terms checked | Apache-2.0 licence, NOTICE with third-party licences, every source cited | LEGAL.md, NOTICE | ✅ |
 | Presentation deliverables (video ≤30 s, ≤7 slides) | `docs/presentation/skyshift-demo-barnard.webm` (28.5 s), `slides.html` (7 slides) | Files | ✅ |
 | Interface text in one file; translations possible | `src/i18n/en.js`, `src/i18n/el.js` (Greek menus and messages) | Settings → language | ✅ |

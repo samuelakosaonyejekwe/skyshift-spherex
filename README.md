@@ -7,7 +7,7 @@ Built for the 2026 NASA Space Apps Challenge "Planet X and SPHEREx" by team **Sk
 
 - Live app: https://samuelakosaonyejekwe.github.io/skyshift-spherex/
 - Code: https://github.com/samuelakosaonyejekwe/skyshift-spherex
-- Backup hosts: Cloudflare Pages, Netlify or Vercel, each a one-time import by the owner ([docs/HOSTING.md](docs/HOSTING.md))
+- Backup site (Cloudflare Pages, with its own archive relay): https://skyshift-spherex.pages.dev/ ([docs/HOSTING.md](docs/HOSTING.md))
 
 - Local: `npm start`, then open http://localhost:8080/
 

@@ -10,7 +10,15 @@ SkyShift does not depend on the owner's computer, and it is built so that no sin
 | GitHub Pages is down | Installed copies (and any browser that opened SkyShift before) start from their offline copy: the app, help, the challenge targets' image lists, and every field already viewed (its images and overlays included). New images still stream for those fields, because pixels come from NASA IRSA's cloud bucket, not from GitHub. |
 | No archive relay available | Searching any position (static image index, rebuilt every 6 hours), the overlays for the five challenge targets (built-in Gaia DR3 and CatWISE2020 lists), Live, Mission and the Sky atlas images. Only overlays for other positions, Gaia ID look-ups, NEOSSat listings and the live source checks need a relay, and the app says so. |
 
-## Adding independent backup hosts (needs a free account with each host, created by the owner)
+## Live backup
+
+**Cloudflare Pages: https://skyshift-spherex.pages.dev/** (set up 2026-11-14). Every run of the GitHub workflow uploads
+the identical build there, image index included, using the repository secrets `CLOUDFLARE_API_TOKEN` (an API token
+limited to *Cloudflare Pages: Edit*) and `CLOUDFLARE_ACCOUNT_ID`; no Cloudflare app is installed on GitHub. Cloudflare
+runs SkyShift's relay at `/api/relay`, so live search and every overlay work there, and the GitHub Pages copy uses that
+relay too (repository variables `RELAY_URLS` and `MIRROR_URLS`). Cloudflare keeps serving the last upload if GitHub is down.
+
+## Adding more backup hosts (needs a free account with each host, created by the owner)
 
 Each host below builds the same repository with the configuration files already in it, serves the full app, and runs
 its own relay at `/api/relay` (so search and all overlays work live there). Once imported, each keeps serving its last
