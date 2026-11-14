@@ -1,7 +1,7 @@
 # Design log
 
-Samuel Akosa Onyejekwe directs and reviews the design. Entries marked **Proposed** are build choices awaiting his
-review; when he accepts, changes or rejects one, the entry is updated with his decision and the date.
+Akosa Samuel Onyejekwe directs and reviews the design. Entries marked **Proposed** are build choices awaiting the owner’s
+review; when the owner accepts, changes or rejects one, the entry is updated with that decision and the date.
 
 | # | Date | Decision | Status | Reason |
 |---|---|---|---|---|

@@ -5,7 +5,7 @@ title: "SkyShift: A Time Machine for the SPHEREx Sky"
 type: software
 authors:
   - family-names: "Onyejekwe"
-    given-names: "Samuel Akosa"
+    given-names: "Akosa Samuel"
 repository-code: "https://github.com/samuelakosaonyejekwe/skyshift-spherex"
 url: "https://samuelakosaonyejekwe.github.io/skyshift-spherex/"
 license: Apache-2.0

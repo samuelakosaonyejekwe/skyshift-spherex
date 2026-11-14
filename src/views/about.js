@@ -16,7 +16,7 @@ export async function render(root) {
     h('p', { class: 'muted' }, 'A public web tool for the 2026 NASA Space Apps Challenge “Planet X and SPHEREx”, by team SkyShift Cyprus.'),
     h('p', {}, 'SkyShift lets anyone enter a patch of sky and watch NASA SPHEREx infrared images of it change over time, so moving and changing objects stand out. It is free, needs no account, installs on phones and computers, and works offline for fields you have viewed.'),
     h('div', { class: 'card' },
-      h('p', { style: { margin: 0 } }, h('b', {}, 'Copyright © 2026 Samuel Akosa Onyejekwe. Licensed under the Apache License 2.0.')),
+      h('p', { style: { margin: 0 } }, h('b', {}, 'Copyright © 2026 Akosa Samuel Onyejekwe. Licensed under the Apache License 2.0.')),
       h('p', { class: 'tiny', style: { margin: '6px 0 0' } }, 'You may use, share and adapt SkyShift under the Apache License 2.0, keeping the copyright and NOTICE file. Third-party data and software keep their own licences and credits, listed below.')),
     h('h2', {}, 'Where SkyShift lives'),
     h('ul', {},

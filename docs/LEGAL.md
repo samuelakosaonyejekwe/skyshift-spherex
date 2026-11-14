@@ -2,7 +2,7 @@
 
 ## Copyright and licence
 
-- Copyright 2026 Samuel Akosa Onyejekwe. Licensed under the **Apache License 2.0** (`LICENSE`), with a `NOTICE` file that
+- Copyright 2026 Akosa Samuel Onyejekwe. Licensed under the **Apache License 2.0** (`LICENSE`), with a `NOTICE` file that
   every redistribution must keep. Decided by Samuel on 2026-11-14 to meet the Space Apps terms (below); it replaces the
   earlier "All rights reserved" notice. The author keeps the copyright, and reusers must credit the author and mark their changes.
 - Name display: full name on the About page, LICENSE/NOTICE, README, CITATION.cff and the title slide (Space Apps asks for
