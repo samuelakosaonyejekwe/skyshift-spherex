@@ -8,12 +8,24 @@
   /* Fixed 16:9 stage (1600 x 900) scaled to fit any window: every slide renders whole and identical everywhere */
   :root { --text: #eef0ff; --muted: #b9bee6; --accent: #5ec8ff; --warm: #ffcf7a; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: #03040d; color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
-  .viewport { position: fixed; inset: 0; display: grid; place-items: center; }
-  .deck { width: 1600px; height: 900px; position: relative; transform-origin: center; flex: none; }
-  section { position: absolute; inset: 0; display: none; padding: 44px 60px 84px; overflow: hidden;
+  /* Default: all slides stacked and scaled to the window width (scrolls, prints and full-page-captures whole).
+     "Present" switches to one full-screen slide at a time. */
+  html, body { margin: 0; background: #03040d; color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; padding: 10px 16px; background: #03040dee; border-bottom: 1px solid #ffffff1a; }
+  .bar b { font-size: 16px; } .bar .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .bar a, .bar button { font: 600 14px system-ui, sans-serif; color: #fff; background: #1d2263; border: 1px solid #ffffff44; border-radius: 999px; padding: 8px 14px; text-decoration: none; cursor: pointer; }
+  .bar button.go { background: linear-gradient(90deg, #6a5cff, #2f9bff); border-color: transparent; }
+  .viewport { padding: 16px 0 24px; }
+  .deck { width: 1600px; margin: 0 auto; position: relative; }
+  section { position: relative; display: flex; flex-direction: column; justify-content: center; height: 900px; margin: 0 0 24px; border-radius: 14px; padding: 44px 60px; overflow: hidden;
     background: radial-gradient(1200px 700px at 15% -10%, #241c6b 0%, transparent 60%), radial-gradient(900px 600px at 110% 10%, #0d3d6b 0%, transparent 55%), #070919; }
-  section.on { display: flex; flex-direction: column; justify-content: center; }
+  .foot { display: none; }
+  body.presenting { overflow: hidden; height: 100vh; } body.presenting .bar { display: none; }
+  body.presenting .viewport { position: fixed; inset: 0; padding: 0; }
+  body.presenting .deck { position: absolute; left: 50%; top: 50%; height: 900px; margin: 0; transform-origin: center; }
+  body.presenting section { position: absolute; inset: 0; display: none; margin: 0; border-radius: 0; padding: 44px 60px 84px; }
+  body.presenting section.on { display: flex; }
+  body.presenting .foot { display: flex; }
   h1 { font-size: 86px; line-height: 1.08; margin: 0 0 20px; letter-spacing: -.02em; }
   h2 { font-size: 60px; line-height: 1.1; margin: 0 0 26px; letter-spacing: -.01em; }
   p, li { font-size: 34px; line-height: 1.32; }
@@ -41,18 +53,19 @@
   .links div { background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 16px; padding: 18px 22px; }
   .links span { display: block; font-size: 24px; color: var(--muted); margin-bottom: 6px; }
   .links b { font-size: 27px; color: #9fe0ff; word-break: break-all; }
-  .foot { position: absolute; left: 80px; right: 80px; bottom: 28px; display: flex; justify-content: space-between; align-items: center; font-size: 17px; color: var(--muted); z-index: 2; }
+  body.presenting .foot { position: absolute; left: 80px; right: 80px; bottom: 28px; display: flex; justify-content: space-between; align-items: center; font-size: 17px; color: var(--muted); z-index: 2; }
   .nav { display: flex; gap: 12px; }
   .nav button { width: 46px; height: 46px; border-radius: 50%; border: 1px solid #ffffff44; background: #1d2263; color: #fff; font-size: 22px; cursor: pointer; }
   .nav button:hover { background: #2b3290; }
-  .print-only { display: none; }
+  .print-only { display: none !important; }
   @media print {
     .no-print { display: none !important; }
-    .grad { background: none !important; -webkit-background-clip: border-box !important; background-clip: border-box !important; color: #9fd8ff !important; } img.print-only { display: block; } span.print-only { display: inline; }
+    .grad { background: none !important; -webkit-background-clip: border-box !important; background-clip: border-box !important; color: #9fd8ff !important; } img.print-only { display: block !important; } span.print-only { display: inline !important; }
     html, body { overflow: visible; background: #070919; }
-    .viewport { position: static; display: block; }
-    .deck { transform: none !important; width: 1600px; height: auto; }
-    section { position: relative; display: flex !important; flex-direction: column; justify-content: center; height: 900px; padding: 44px 60px; page-break-after: always; break-after: page; }
+    .bar { display: none !important; }
+    .viewport { position: static !important; display: block !important; padding: 0 !important; }
+    .deck { transform: none !important; zoom: 1 !important; width: 1600px; height: auto !important; margin: 0 !important; }
+    section { position: relative !important; display: flex !important; flex-direction: column; justify-content: center; height: 900px; margin: 0 !important; border-radius: 0 !important; padding: 44px 60px !important; page-break-after: always; break-after: page; }
     .foot { display: none !important; }
     section:last-of-type { page-break-after: auto; break-after: auto; }
     @page { size: 1600px 900px; margin: 0; }
@@ -60,6 +73,7 @@
 </style>
 </head>
 <body>
+<div class="bar no-print"><b>SkyShift · 7 slides</b><div class="acts"><button class="go" id="present" type="button">▶ Present</button><a href="SkyShift-slides.pdf">PDF</a><a href="skyshift-demo-barnard.webm">Video (28 s)</a><a href="../">Open the app</a></div></div>
 <div class="viewport"><div class="deck" id="deck">
 
 <section class="on" aria-label="Title">
@@ -166,9 +180,17 @@
   const s = [...document.querySelectorAll('section')]; let i = 0;
   const show = (k) => { i = Math.max(0, Math.min(s.length - 1, k)); s.forEach((x, j) => x.classList.toggle('on', j === i)); document.getElementById('count').textContent = `${i + 1} / ${s.length}`; };
   document.getElementById('prev').onclick = () => show(i - 1); document.getElementById('next').onclick = () => show(i + 1);
-  addEventListener('keydown', (e) => { if (['ArrowRight', 'PageDown', ' '].includes(e.key)) show(i + 1); if (['ArrowLeft', 'PageUp'].includes(e.key)) show(i - 1); });
-  const fit = () => { const k = Math.min(innerWidth / 1600, innerHeight / 900); document.getElementById('deck').style.transform = `scale(${k})`; };
-  addEventListener('resize', fit); fit();
+  addEventListener('keydown', (e) => { if (!presenting()) return; if (['ArrowRight', 'PageDown', ' '].includes(e.key)) show(i + 1); if (['ArrowLeft', 'PageUp'].includes(e.key)) show(i - 1); });
+  const deck = document.getElementById('deck'), presenting = () => document.body.classList.contains('presenting');
+  const fit = () => {
+    if (presenting()) { deck.style.zoom = ''; deck.style.transform = `translate(-50%, -50%) scale(${Math.min(innerWidth / 1600, innerHeight / 900)})`; }
+    else { deck.style.transform = ''; deck.style.zoom = Math.min(1, (document.documentElement.clientWidth - 24) / 1600); }
+  };
+  const setPresent = (on) => { document.body.classList.toggle('presenting', on); fit(); if (on) show(i); };
+  document.getElementById('present').onclick = () => { setPresent(true); document.documentElement.requestFullscreen?.().catch(() => {}); };
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) setPresent(false); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && presenting()) setPresent(false); });
+  addEventListener('resize', fit); addEventListener('beforeprint', () => { deck.style.zoom = ''; deck.style.transform = ''; }); addEventListener('afterprint', fit); fit();
   show(0);
 </script>
 </body>
