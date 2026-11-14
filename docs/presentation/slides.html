@@ -11,30 +11,36 @@
   html, body { margin: 0; height: 100%; background: #03040d; color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
   .viewport { position: fixed; inset: 0; display: grid; place-items: center; }
   .deck { width: 1600px; height: 900px; position: relative; transform-origin: center; flex: none; }
-  section { position: absolute; inset: 0; display: none; padding: 64px 80px 96px; overflow: hidden;
+  section { position: absolute; inset: 0; display: none; padding: 44px 60px 84px; overflow: hidden;
     background: radial-gradient(1200px 700px at 15% -10%, #241c6b 0%, transparent 60%), radial-gradient(900px 600px at 110% 10%, #0d3d6b 0%, transparent 55%), #070919; }
   section.on { display: flex; flex-direction: column; justify-content: center; }
-  h1 { font-size: 68px; line-height: 1.08; margin: 0 0 20px; letter-spacing: -.02em; }
-  h2 { font-size: 44px; line-height: 1.15; margin: 0 0 22px; }
-  p, li { font-size: 26px; line-height: 1.45; }
+  h1 { font-size: 86px; line-height: 1.08; margin: 0 0 20px; letter-spacing: -.02em; }
+  h2 { font-size: 60px; line-height: 1.1; margin: 0 0 26px; letter-spacing: -.01em; }
+  p, li { font-size: 34px; line-height: 1.32; }
   .grad { background: linear-gradient(90deg, #a99bff, #5ec8ff 50%, #ffcf7a); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .muted { color: var(--muted); }
-  .kicker { font-size: 22px; color: var(--muted); margin: 0 0 14px; letter-spacing: .02em; }
-  .two { display: grid; grid-template-columns: 1fr 1.15fr; gap: 56px; align-items: center; }
-  .two.flip { grid-template-columns: 1.15fr 1fr; }
+  .kicker { font-size: 28px; color: var(--muted); margin: 0 0 14px; letter-spacing: .02em; }
+  .two { display: grid; grid-template-columns: 1fr 1.1fr; gap: 44px; align-items: center; }
+  .two.flip { grid-template-columns: 1.1fr 1fr; }
   .two.even { grid-template-columns: 1fr 1fr; gap: 40px; }
-  img.shot, video.shot { display: block; width: 100%; max-height: 560px; object-fit: contain; object-position: center; border-radius: 16px; box-shadow: 0 14px 44px #000a; border: 1px solid #ffffff22; background: #05061a; }
-  figure { margin: 0; } figcaption { font-size: 20px; color: var(--muted); margin-top: 12px; }
-  ul { padding-left: 1.1em; margin: 0; } li { margin: 0 0 14px; }
-  .badge { width: 520px; height: 520px; border-radius: 26px; box-shadow: 0 18px 60px #000b; display: block; margin: 0 auto; }
-  .num { font-size: 52px; font-weight: 800; color: var(--warm); line-height: 1; }
+  .two.square { grid-template-columns: 720px 1fr; gap: 48px; }
+  .two.square img.shot { width: 720px; height: 720px; max-height: none; }
+  img.shot, video.shot { display: block; width: 100%; max-height: 720px; object-fit: contain; object-position: center; border-radius: 16px; box-shadow: 0 14px 44px #000a; border: 1px solid #ffffff22; background: #05061a; }
+  figure { margin: 0; } figcaption { font-size: 27px; line-height: 1.3; color: var(--muted); margin-top: 14px; }
+  ul { padding-left: 1.1em; margin: 0; } li { margin: 0 0 18px; } li::marker { color: var(--accent); }
+  .badge { width: 640px; height: 640px; border-radius: 26px; box-shadow: 0 18px 60px #000b; display: block; margin: 0 auto; }
+  .num { font-size: 60px; font-weight: 800; color: var(--warm); line-height: 1; }
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 26px; }
-  .stat { background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 16px; padding: 18px; }
-  .stat span { display: block; font-size: 18px; color: var(--muted); margin-top: 10px; line-height: 1.35; }
-  table { border-collapse: collapse; width: 100%; font-size: 21px; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #ffffff22; }
+  .stat { background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 16px; padding: 22px; }
+  .stat span { display: block; font-size: 24px; color: var(--muted); margin-top: 10px; line-height: 1.35; }
+  table { border-collapse: collapse; width: 100%; font-size: 33px; }
+  th, td { text-align: left; padding: 15px 16px; border-bottom: 1px solid #ffffff22; }
   th { color: var(--muted); font-weight: 600; }
   code { font-size: .9em; }
+  .links { display: grid; grid-template-columns: 1fr 1.25fr .6fr; gap: 18px; margin-top: 30px; }
+  .links div { background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 16px; padding: 18px 22px; }
+  .links span { display: block; font-size: 24px; color: var(--muted); margin-bottom: 6px; }
+  .links b { font-size: 27px; color: #9fe0ff; word-break: break-all; }
   .foot { position: absolute; left: 80px; right: 80px; bottom: 28px; display: flex; justify-content: space-between; align-items: center; font-size: 17px; color: var(--muted); z-index: 2; }
   .nav { display: flex; gap: 12px; }
   .nav button { width: 46px; height: 46px; border-radius: 50%; border: 1px solid #ffffff44; background: #1d2263; color: #fff; font-size: 22px; cursor: pointer; }
@@ -46,7 +52,7 @@
     html, body { overflow: visible; background: #070919; }
     .viewport { position: static; display: block; }
     .deck { transform: none !important; width: 1600px; height: auto; }
-    section { position: relative; display: flex !important; flex-direction: column; justify-content: center; height: 900px; page-break-after: always; break-after: page; }
+    section { position: relative; display: flex !important; flex-direction: column; justify-content: center; height: 900px; padding: 44px 60px; page-break-after: always; break-after: page; }
     .foot { display: none !important; }
     section:last-of-type { page-break-after: auto; break-after: auto; }
     @page { size: 1600px 900px; margin: 0; }
@@ -57,65 +63,61 @@
 <div class="viewport"><div class="deck" id="deck">
 
 <section class="on" aria-label="Title">
-  <div class="two">
+  <div class="two" style="grid-template-columns:1.15fr 1fr">
     <div>
       <p class="kicker">2026 NASA Space Apps Challenge · Planet X and SPHEREx</p>
       <h1>SkyShift: <span class="grad">a time machine</span> for the SPHEREx sky</h1>
       <p>Type a star or coordinates, press Play, and watch NASA SPHEREx infrared images of that patch of sky play like a film.</p>
-      <p class="muted" style="margin-top:22px">Team SkyShift Cyprus · Try it: <b style="color:#9fe0ff">samuelakosaonyejekwe.github.io/skyshift-spherex</b></p>
+      <p class="muted" style="margin-top:18px;font-size:28px">Team SkyShift Cyprus<br><b style="color:#9fe0ff">samuelakosaonyejekwe.github.io/skyshift-spherex</b></p>
     </div>
     <div><img class="badge" src="img/team-badge.png" alt="SkyShift Cyprus team badge"></div>
   </div>
 </section>
 
 <section aria-label="Problem">
-  <div class="two flip">
-    <div><img class="shot" src="img/skymap.png" alt="The whole sky as SPHEREx sees it"></div>
-    <div>
-      <h2>The problem</h2>
-      <ul>
-        <li>SPHEREx maps the <b>entire sky every six months in 102 infrared bands</b>: over 1.6 million spectral images so far.</li>
-        <li>Brown dwarfs, asteroids, comets and nearby stars reveal themselves by <b>moving</b>; variable stars by <b>changing brightness</b>.</li>
-        <li>No one person, and no single program, can look at all of it.</li>
-        <li>Volunteers found most known brown dwarfs and comets by blinking images, the way Pluto was found. They need a tool for SPHEREx.</li>
-      </ul>
-    </div>
+  <h2>The problem</h2>
+  <div class="two flip" style="grid-template-columns:1.2fr 1fr">
+    <figure><img class="shot" src="img/skymap.jpg" alt="The whole sky as SPHEREx sees it"><figcaption>The whole sky as SPHEREx sees it: brighter where imaged more often.</figcaption></figure>
+    <ul>
+      <li>SPHEREx maps the <b>entire sky every six months in 102 infrared bands</b>: 1.6 million images so far.</li>
+      <li>Brown dwarfs, asteroids and nearby stars <b>move</b>; variable stars <b>change brightness</b>.</li>
+      <li>Too much for one person to look at.</li>
+      <li>Volunteers find such objects by blinking images, as Pluto was found. They need a tool for SPHEREx.</li>
+    </ul>
   </div>
 </section>
 
 <section aria-label="Solution">
-  <div class="two">
-    <div>
-      <h2>Our solution</h2>
-      <ul>
-        <li><b>Explore</b> a real SPHEREx map of the whole sky; hover to see how often each spot was imaged; click to play it.</li>
-        <li><b>Time Machine</b>: every SPHEREx image of that spot, aligned on the sky, as a Movie, Blink, Difference, Stack, false Colour or your own equation.</li>
-        <li>Gaia and WISE overlays, contamination flags, shareable/embeddable links, saved fields, candidates and a reproducible dossier.</li>
-        <li>Installs on any phone or computer and works offline.</li>
-      </ul>
-    </div>
-    <div><img class="shot" src="img/explore.png" alt="SkyShift Explore page"></div>
+  <h2>Our solution</h2>
+  <div class="two" style="grid-template-columns:.85fr 1.25fr">
+    <ul>
+      <li><b>Explore</b>: a real SPHEREx map of the whole sky; click any spot.</li>
+      <li><b>Time Machine</b>: every image of that spot as a Movie, Blink, Difference, Stack, false Colour or your own equation.</li>
+      <li>Gaia and WISE overlays, quality flags, shareable links and a reproducible dossier.</li>
+      <li>Installs on any phone or computer; works offline.</li>
+    </ul>
+    <img class="shot" src="img/explore.jpg" alt="SkyShift Explore page">
   </div>
 </section>
 
 <section aria-label="Live demo">
   <h2>Live demo: Barnard’s Star and RW Aurigae</h2>
-  <div class="two even">
-    <figure><img class="shot print-only" src="img/blink.png" alt="Still from the demo video"><video class="shot no-print" src="skyshift-demo-barnard.webm" controls muted loop playsinline preload="metadata" poster="img/blink.png" aria-label="28-second demo: Barnard's Star moving between SPHEREx surveys"></video><figcaption>28-second demo: type a name, press Play, Blink and Difference show Barnard’s Star moving north; click it for Gaia’s 10.4″/yr and 1.8 pc.<span class="print-only"> Watch: samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/</span></figcaption></figure>
-    <figure><img class="shot" src="img/spectrum.png" alt="Spectrum of RW Aurigae"><figcaption>A spectrum built on the fly from every exposure; each SPHEREx image samples a different wavelength.</figcaption></figure>
+  <div class="two even" style="grid-template-columns:.8fr 1.2fr;align-items:start">
+    <figure><img class="shot print-only" src="img/blink.jpg" alt="Barnard’s Star in SPHEREx images"><video class="shot no-print" src="skyshift-demo-barnard.webm" controls muted loop playsinline preload="metadata" poster="img/blink.jpg" aria-label="28-second demo: Barnard's Star moving between SPHEREx surveys"></video><figcaption>Barnard’s Star moves north between surveys: 10.4″ a year, 1.8 parsecs away.<span class="print-only"> 28-s video on the live presentation page.</span></figcaption></figure>
+    <figure><img class="shot" src="img/spectrum.jpg" alt="Spectrum of RW Aurigae"><figcaption>RW Aurigae: a spectrum built on the fly, one point per SPHEREx image (hollow = flagged).</figcaption></figure>
   </div>
 </section>
 
 <section aria-label="102 bands">
-  <div class="two flip">
-    <div><img class="shot" src="img/colour.png" alt="False-colour view"></div>
+  <div class="two square">
+    <img class="shot" src="img/colour.jpg" alt="False-colour SPHEREx view">
     <div>
       <h2>Using all 102 bands</h2>
       <ul>
-        <li><b>Per-detector co-adds</b>: each of the 6 arrays averaged separately, then combined, for clean deep images.</li>
-        <li><b>False colour</b>: blue 0.75–1.6 µm, green 1.6–3.8 µm, red 3.8–5 µm; cold brown dwarfs glow red.</li>
-        <li><b>Spectra and light curves on the fly</b> for any clicked object, with hydrogen and PAH lines marked.</li>
-        <li><b>Wavelength-matched differences</b> and image equations such as <code>mean(D5,D6) − epoch(1)</code>.</li>
+        <li><b>Clean co-adds</b>: each of the 6 detectors averaged, then combined.</li>
+        <li><b>False colour</b>: blue 0.75–1.6 µm, green 1.6–3.8 µm, red 3.8–5 µm. Cold brown dwarfs glow red.</li>
+        <li><b>Spectra and light curves</b> for any clicked object.</li>
+        <li><b>Image equations</b> such as <code>mean(D5,D6) − epoch(1)</code>.</li>
       </ul>
     </div>
   </div>
@@ -124,36 +126,38 @@
 <section aria-label="Validation">
   <h2>Validation</h2>
   <div class="stats">
-    <div class="stat"><div class="num">4×10⁻¹⁰″</div><span>largest position difference vs Astropy on real SPHEREx files</span></div>
-    <div class="stat"><div class="num">10⁻¹⁵ µm</div><span>largest wavelength difference vs Astropy (WCS-WAVE table)</span></div>
-    <div class="stat"><div class="num">9×</div><span>less data per image with column-precise byte ranges (identical pixels)</span></div>
+    <div class="stat"><div class="num">4×10⁻¹⁰″</div><span>position error vs Astropy on real SPHEREx files</span></div>
+    <div class="stat"><div class="num">10⁻¹⁵ µm</div><span>wavelength error vs Astropy</span></div>
+    <div class="stat"><div class="num">9×</div><span>less data per image, identical pixels</span></div>
     <div class="stat"><div class="num">8 / 8</div><span>challenge resources used and checked live</span></div>
   </div>
-  <div id="val">
-    <table><tr><th>Target</th><th>Proper motion: SkyShift vs Gaia DR3 (parallax removed)</th><th>Verdict</th></tr><tr><td>Barnard’s Star</td><td>μδ 10,139 vs 10,362 mas/yr (2.2%)</td><td>agrees (1σ); saturated core</td></tr><tr><td>RW Aurigae</td><td>residual 386 ± 433, −20 ± 433</td><td>agrees</td></tr><tr><td>Epsilon Indi B</td><td>residual −1,229 ± 512, −1,381 ± 486</td><td>≈2.5σ: direction right</td></tr><tr><td>R Draconis</td><td>2 epochs, saturated</td><td>not reliable</td></tr><tr><td>WISE 0855</td><td>too faint at 0.75–5 µm</td><td>no reliable motion</td></tr></table><p class="muted">RW Aurigae brightness changed −13.5% ± 5.3% between surveys (2.5σ, below the 3σ candidate threshold). Full report: docs/VALIDATION.md.</p>
-  </div>
+  <table><tr><th>Target</th><th>Proper motion vs Gaia DR3</th><th>Verdict</th></tr><tr><td>Barnard’s Star</td><td>10,139 vs 10,362 mas/yr</td><td>agrees (2.2%)</td></tr><tr><td>RW Aurigae</td><td>residual 386 ± 433 mas/yr</td><td>agrees</td></tr><tr><td>Epsilon Indi B</td><td>residual ≈1,300 ± 500 mas/yr</td><td>direction right (2.5σ)</td></tr><tr><td>R Draconis · WISE 0855</td><td>saturated · too faint</td><td>not reliable</td></tr></table>
 </section>
 
 <section aria-label="Impact and next steps">
-  <div class="two">
+  <div class="two even" style="align-items:start;gap:56px">
     <div>
       <h2>Impact</h2>
       <ul>
-        <li>Anyone with a phone can inspect SPHEREx data minutes after it reaches the archive, with no account and no software to install.</li>
-        <li>Discovery helpers flag <b>candidates</b> for human checking; finds are saved with full provenance and exportable (CSV, JSON, MPC ADES).</li>
-        <li>Classroom activities built on the five challenge targets.</li>
+        <li>Anyone with a phone can inspect new SPHEREx data: no account, nothing to install.</li>
+        <li>Finds are saved with full provenance; export as CSV, JSON or MPC ADES.</li>
+        <li>Reproducible dossiers let others check every find.</li>
       </ul>
     </div>
     <div>
-      <h2>What's next</h2>
+      <h2>What’s next</h2>
       <ul>
-        <li>Public hosting on two independent hosts with scheduled data refresh.</li>
-        <li>Forced photometry for blended sources; parallax fits from SPHEREx alone.</li>
-        <li>More languages (Greek interface already started) and shared crowd classification.</li>
+        <li>A second host and search relay.</li>
+        <li>Photometry for blended stars; parallax from SPHEREx alone.</li>
+        <li>More languages (Greek started) and crowd classification.</li>
       </ul>
     </div>
   </div>
-  <p class="muted" style="margin-top:34px">Live app: <b style="color:#9fe0ff">samuelakosaonyejekwe.github.io/skyshift-spherex</b> · Code: <b style="color:#9fe0ff">github.com/samuelakosaonyejekwe/skyshift-spherex</b></p>
+  <div class="links">
+    <div><span>Try it</span><b>samuelakosaonyejekwe.github.io/skyshift-spherex</b></div>
+    <div><span>Code</span><b>github.com/samuelakosaonyejekwe/skyshift-spherex</b></div>
+    <div><span>Team</span><b>SkyShift Cyprus</b></div>
+  </div>
 </section>
 
   <div class="foot"><span>SkyShift Cyprus · SPHEREx data: NASA/IPAC Infrared Science Archive (IRSA)</span><div class="nav"><button id="prev" aria-label="Previous slide">‹</button><button id="next" aria-label="Next slide">›</button></div><span id="count"></span></div>

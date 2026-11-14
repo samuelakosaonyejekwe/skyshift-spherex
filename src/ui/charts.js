@@ -48,6 +48,9 @@ export function scatterChart(host, cfg) {
   let y0 = Math.min(...ys), y1 = Math.max(...ys);
   const px = (x1 - x0) * 0.04 || 1, py = (y1 - y0) * 0.08 || Math.abs(y1) * 0.1 || 1;
   x0 -= px; x1 += px; y0 -= py; y1 += py;
+  // Left margin sized to the widest y tick label (11px font ≈ 6.6 units a character) so the axis title never overlaps it
+  const yTicks = niceTicks(y0, y1, 5);
+  m.l = Math.max(48, 30 + 6.6 * Math.max(...yTicks.map((v) => fmt(v).length)));
   const X = (v) => m.l + ((v - x0) / (x1 - x0)) * (W - m.l - m.r);
   const Y = (v) => H - m.b - ((v - y0) / (y1 - y0)) * (H - m.t - m.b);
   const g = el('g', {}, svg);
@@ -64,7 +67,7 @@ export function scatterChart(host, cfg) {
     el('line', { x1: X(v), x2: X(v), y1: m.t, y2: H - m.b, class: 'chart-grid' }, g);
     const t = el('text', { x: X(v), y: H - m.b + 16, 'text-anchor': 'middle', class: 'chart-tick' }, g); t.textContent = xf(v);
   }
-  for (const v of niceTicks(y0, y1, 5)) {
+  for (const v of yTicks) {
     el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), class: 'chart-grid' }, g);
     const t = el('text', { x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end', class: 'chart-tick' }, g); t.textContent = fmt(v);
   }
