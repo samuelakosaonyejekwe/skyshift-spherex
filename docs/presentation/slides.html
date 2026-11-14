@@ -75,7 +75,7 @@
   .print-only { display: none !important; }
   @media print {
     .no-print { display: none !important; }
-    .grad { background: none !important; -webkit-background-clip: border-box !important; background-clip: border-box !important; color: #9fd8ff !important; } img.print-only { display: block !important; } span.print-only { display: inline !important; }
+    .grad { background: none !important; -webkit-background-clip: border-box !important; background-clip: border-box !important; color: #9fd8ff !important; } img.print-only { display: block !important; } span.print-only { display: inline !important; } span.print-only { display: inline !important; }
     html, body { overflow: visible; background: #070919; }
     .bar { display: none !important; }
     .viewport { position: static !important; display: block !important; padding: 0 !important; }
@@ -88,7 +88,7 @@
 </style>
 </head>
 <body>
-<div class="bar no-print"><b>SkyShift · Planet X and SPHEREx · 7 slides</b><div class="acts"><button class="go" id="present" type="button">▶ Present</button><a href="SkyShift-slides.pdf">PDF</a><a href="skyshift-demo-barnard.mp4">Video (28 s)</a><a href="../">Open the app</a></div></div>
+<div class="bar no-print"><b>SkyShift · Planet X and SPHEREx · 7 slides</b><div class="acts"><button class="go" id="present" type="button">▶ Present</button><a href="SkyShift-slides.pdf">PDF</a><a href="skyshift-demo-barnard.mp4">Silent video (28 s)</a><a href="../">Open the app</a></div></div>
 <div class="viewport"><div class="deck" id="deck">
 
 <section class="on" aria-label="Title">
@@ -142,7 +142,7 @@
 <section aria-label="Live demo">
   <h2>Live demo: Barnard’s Star and RW Aurigae</h2>
   <div class="two even" style="grid-template-columns:.8fr 1.2fr;align-items:start">
-    <figure><img class="shot print-only" src="img/blink.jpg" alt="Barnard’s Star in SPHEREx images"><video class="shot no-print" controls muted loop playsinline preload="metadata" poster="img/blink.jpg" aria-label="28-second demo: Barnard's Star moving between SPHEREx surveys"><source src="skyshift-demo-barnard.mp4" type="video/mp4"><source src="skyshift-demo-barnard.webm" type="video/webm"></video><figcaption>Barnard’s Star moves north between surveys: 10.4″ a year, 1.8 parsecs away.<span class="print-only"> 28-s video on the live presentation page.</span></figcaption></figure>
+    <figure><img class="shot print-only" src="img/blink.jpg" alt="Barnard’s Star in SPHEREx images"><video class="shot no-print" controls muted loop playsinline preload="metadata" poster="img/blink.jpg" aria-label="28-second demo: Barnard's Star moving between SPHEREx surveys"><source src="skyshift-demo-barnard.mp4" type="video/mp4"><source src="skyshift-demo-barnard.webm" type="video/webm"></video><figcaption><span class="no-print"><b>Silent 28-s screen recording of the live app.</b> </span><span class="print-only"><b>Still from the silent 28-s screen recording on the live presentation page.</b> </span>Barnard’s Star moves north between surveys: 10.4″ a year, 1.8 parsecs away.</figcaption></figure>
     <figure><img class="shot" src="img/spectrum.jpg" alt="Spectrum of RW Aurigae"><figcaption>RW Aurigae: a spectrum built on the fly, one point per SPHEREx image (hollow = flagged).</figcaption></figure>
   </div>
 </section>

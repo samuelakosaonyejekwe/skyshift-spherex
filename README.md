@@ -39,7 +39,7 @@ and the images still work.
 | Creativity | Sky as a film; wavelength-true colours across 102 bands; user image equations; coverage-glow sky map; all processing in the browser | Time Machine, Explore |
 | Validity | Real data only from the challenge's resources; Astropy-level maths; motions checked against Gaia; limits stated; 24 unit tests, 24 browser checks | [docs/VALIDATION.md](docs/VALIDATION.md), `test/` |
 | Relevance | Every point of the challenge statement mapped to a feature | [docs/CHALLENGE_TRACEABILITY.md](docs/CHALLENGE_TRACEABILITY.md) |
-| Presentation | 28-second demo video, 7-slide deck per the Space Apps checklist; every page and tab in English, Greek, Spanish and French | [Presentation](https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/) |
+| Presentation | 7-slide deck per the Space Apps checklist (the demo), with a silent 28-second screen recording of the app; every page and tab in English, Greek, Spanish and French | [Presentation](https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/) |
 
 ## Install and offline use
 
@@ -101,11 +101,11 @@ No runtime dependencies. Aladin Lite (CDS, LGPL-3.0-or-later) is vendored in `ve
 
 ## Presentation
 
-Watch online (slides with the playable demo video): https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/
+Watch online (slides with the silent screen recording of the app): https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/
 
 Slide deck as PDF (7 slides): [docs/presentation/SkyShift-slides.pdf](docs/presentation/SkyShift-slides.pdf)
 
-Files in `docs/presentation/`: 28-second demo video (`skyshift-demo-barnard.mp4`, plays everywhere including GitHub; `skyshift-demo-barnard.webm` as a smaller alternative), 7-slide deck (`slides.html` for the browser,
+Files in `docs/presentation/`: silent 28-second screen recording of the app (`skyshift-demo-barnard.mp4`, plays everywhere including GitHub; `skyshift-demo-barnard.webm` as a smaller alternative), 7-slide deck (`slides.html` for the browser,
 `SkyShift-slides.pdf` for submission) and the slide images.
 
 ## Copyright
