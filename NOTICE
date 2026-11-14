@@ -1,0 +1,22 @@
+SkyShift: A Time Machine for the SPHEREx Sky
+Copyright 2026 Samuel Akosa Onyejekwe
+
+Licensed under the Apache License, Version 2.0 (see LICENSE). Redistributions must keep this
+NOTICE file, the copyright notice and the licence, and must mark any files that were changed.
+
+Original work by Samuel Akosa Onyejekwe (team SkyShift Cyprus) for the 2026 NASA Space Apps
+Challenge "Planet X and SPHEREx". Source: https://github.com/samuelakosaonyejekwe/skyshift-spherex
+
+Third-party material (each keeps its own licence)
+- Aladin Lite 3.9.2-beta, CDS Strasbourg, LGPL-3.0-or-later (OSI approved). vendor/aladin.js,
+  licence in vendor/ALADIN-LICENSE.txt; only change: usage logger disabled (vendor/README.txt).
+- SPHEREx data, NASA/JPL-Caltech via NASA/IPAC IRSA (DOIs 10.26131/IRSA678, IRSA662, IRSA679):
+  NASA data, freely available; acknowledgement per IRSA. assets/allsky-*.jpg and
+  data/coverage.json, data/mission.json are derived from these data.
+- Gaia DR3, ESA/Gaia/DPAC via MAST and IRSA: CC BY-NC 3.0 IGO. data/targets.json contains Gaia
+  DR3 positions, motions and parallaxes for five targets under that licence.
+- CatWISE2020 and AllWISE catalogues (NASA WISE/NEOWISE) via IRSA: NASA data, freely available.
+- NEOSSat data and metadata, Canadian Space Agency via CADC: Open Government Licence - Canada
+  (http://open.canada.ca/en/open-government-licence-canada).
+Development tools (not distributed): Node.js (MIT), Playwright (Apache-2.0), Astropy (BSD-3-Clause),
+NumPy (BSD-3-Clause), FFmpeg (LGPL-2.1-or-later), GitHub Actions and Pages.

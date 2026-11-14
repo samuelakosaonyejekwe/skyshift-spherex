@@ -17,7 +17,7 @@ review; when he accepts, changes or rejects one, the entry is updated with his d
 | 10 | 2026-11-14 | Sky atlas shows HiPS cube channel 49 when Aladin requests the blank middle channel 50/51 | Proposed | Aladin's core opens cubes at the middle channel; IRSA leaves 50/51 blank by design. |
 | 11 | 2026-11-14 | Ice band markers (H₂O, CO₂, CO) omitted | Proposed | Exact wavelengths not found in approved sources (rule 2). |
 | 12 | 2026-11-14 | Questionable photometry = saturated core or >20% of the aperture masked | Proposed | Any-flag rule marked nearly every point; threshold keeps useful data visible and honest. |
-| 13 | 2026-11-14 | Licence: All rights reserved (proprietary) instead of MIT | **Decided by Samuel** | Intellectual-property protection. |
+| 13 | 2026-11-14 | Licence: All rights reserved (proprietary) instead of MIT (replaced by entry 22) | **Decided by Samuel** | Intellectual-property protection. |
 | 14 | 2026-11-14 | Owner's name shown on the About page (and LICENSE/README/CITATION.cff) only; footer and dossiers show "© 2026 SkyShift" | **Decided by Samuel** | Space Apps does not require the name in the footer. |
 | 15 | 2026-11-14 | Home map in the style of the earlier SkyShift build (equatorial Mollweide, hour grid, ecliptic, target markers, hover readout) but drawn from real SPHEREx DR1 data only | **Requested by Samuel** | Confine to the eight challenge resources. |
 | 16 | 2026-11-14 | Publish as a public GitHub repository with Pages | **Decided by Samuel** | Judges can open the app and code; licence stays "All rights reserved". |
@@ -26,3 +26,4 @@ review; when he accepts, changes or rejects one, the entry is updated with his d
 | 19 | 2026-11-14 | Default colour map tints each frame by the wavelengths it shows | Proposed | Owner found grey images unclear; grey remains selectable. |
 | 20 | 2026-11-14 | On static hosts (GitHub Pages) the same-origin relay is skipped | Proposed | Avoids failing requests; external relays still used when configured. |
 | 21 | 2026-11-14 | Demo video re-shot with Barnard's Star | **Decided by Samuel** | Its motion is clearly visible; WISE 0855 is too faint. |
+| 22 | 2026-11-14 | Licence changed from All rights reserved to Apache-2.0, with a NOTICE file | **Decided by Samuel** | The Space Apps terms require original content to be open source (OSI); Apache-2.0 is NASA's default and keeps the author's copyright and credit. |

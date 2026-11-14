@@ -90,5 +90,6 @@ Files in `docs/presentation/`: 28-second demo video (`skyshift-demo-barnard.webm
 
 ## Copyright
 
-Copyright (c) 2026 Samuel Akosa Onyejekwe. All rights reserved. See [LICENSE](LICENSE). Third-party data and software keep
-their own licences and credits ([docs/LEGAL.md](docs/LEGAL.md)).
+Copyright 2026 Samuel Akosa Onyejekwe. Licensed under the [Apache License 2.0](LICENSE), as the NASA Space Apps terms require
+for submissions; keep the [NOTICE](NOTICE) file when redistributing. Third-party data and software keep their own licences
+([NOTICE](NOTICE), [docs/LEGAL.md](docs/LEGAL.md)).

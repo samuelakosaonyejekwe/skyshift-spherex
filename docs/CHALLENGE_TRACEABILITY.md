@@ -52,6 +52,6 @@ and the test or evidence that proves it. Status: ✅ done and tested · 🟡 don
 | Install, offline, update pop-up, Back/Forward | PWA shell, SW, toasts, history arrows, swipe | E2E: offline shell, update flow (new cache active after click), arrows via menu links | 🟡 (install on real devices pending) |
 | Validation against catalogues and Astropy | VALIDATION.md, astropy test | Docs/tests | ✅ |
 | Scheduled refresh and two hosts | GitHub Pages live (deploy workflow passing, refresh every 6 h); Cloudflare backup and external relay need the owner's Cloudflare account | GitHub Actions runs | 🟡 |
-| Space Apps terms checked | Site unreadable from build environment | LEGAL.md open item | ⏳ |
+| Space Apps terms checked | Apache-2.0 licence, NOTICE with third-party licences, every source cited | LEGAL.md, NOTICE | ✅ |
 | Presentation deliverables (video ≤30 s, ≤7 slides) | `docs/presentation/skyshift-demo-barnard.webm` (28.5 s), `slides.html` (7 slides) | Files | ✅ |
 | Interface text in one file; translations possible | `src/i18n/en.js`, `src/i18n/el.js` (Greek menus and messages) | Settings → language | ✅ |

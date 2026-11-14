@@ -11,7 +11,7 @@ import { toParams, normalise } from '../state.js';
 
 export const DOIS = { dr1: '10.26131/IRSA678', qr3: '10.26131/IRSA662', qr2: '10.26131/IRSA652' };
 export const SPHEREX_ACK = 'This publication makes use of data products from the Spectro-Photometer for the History of the Universe, Epoch of Reionization and Ices Explorer (SPHEREx), which is a joint project of the Jet Propulsion Laboratory and the California Institute of Technology, and is funded by the National Aeronautics and Space Administration.';
-const COPYRIGHT = '© 2026 SkyShift. All rights reserved.';
+const COPYRIGHT = '© 2026 SkyShift · Apache-2.0';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 

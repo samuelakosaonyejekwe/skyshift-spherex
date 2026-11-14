@@ -150,7 +150,7 @@ export async function render(root) {
 <h2>Summary</h2><p>${rows.filter((r) => r.n).length} of ${rows.length} fields have SPHEREx images (${rows.reduce((a, r) => a + (r.n || 0), 0).toLocaleString()} spectral images in total). Each row links to the full analysis; open it and use “Dossier” for a per-target report with figures.</p>
 <h2>Fields</h2><table><tr><th>#</th><th>Field</th><th>RA (deg)</th><th>Dec (deg)</th><th>SPHEREx images</th><th>First</th><th>Latest</th><th>Releases</th><th>Open</th></tr>
 ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.name)}</td><td>${r.ra.toFixed(5)}</td><td>${r.dec.toFixed(5)}</td><td>${r.n ?? `unavailable (${esc(r.error)})`}</td><td>${iso(r.from)}</td><td>${iso(r.to)}</td><td>${(r.rel || []).map((x) => `${x.toUpperCase()}${DOIS[x] ? ` (DOI ${DOIS[x]})` : ''}`).join(', ')}</td><td><a href="${esc(r.url)}">view</a></td></tr>`).join('')}</table>
-<h2>Credits and data use</h2><p>${esc(SPHEREX_ACK)}</p><footer>© 2026 SkyShift. All rights reserved. · Dossier ${id}</footer></body></html>`;
+<h2>Credits and data use</h2><p>${esc(SPHEREX_ACK)}</p><footer>© 2026 SkyShift · Apache-2.0 · Dossier ${id}</footer></body></html>`;
     const csv = ['name,ra_deg,dec_deg,spherex_images,first_utc,latest_utc,releases,url', ...rows.map((r) => [JSON.stringify(r.name), r.ra, r.dec, r.n ?? '', iso(r.from), iso(r.to), (r.rel || []).join('|'), r.url].join(','))].join('\n');
     download(`skyshift-queue-dossier-${id}.zip`, await zip([{ name: 'dossier.html', data: html }, { name: 'fields.csv', data: csv }, { name: 'queue.json', data: JSON.stringify(q, null, 2) }]));
     status.textContent = `Multi-target dossier ${id} downloaded (HTML, CSV, queue JSON).`;

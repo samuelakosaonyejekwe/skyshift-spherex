@@ -2,22 +2,21 @@
 
 ## Copyright and licence
 
-- Copyright (c) 2026 Samuel Akosa Onyejekwe. **All rights reserved** (`LICENSE`). Decided by Samuel on 2026-11-14, replacing the
-  MIT licence of the original brief so the work is protected: no copying, modification or reuse without written permission.
-- Public visibility (e.g. for judging) grants no rights. If the Space Apps terms require an open licence for submissions, this
-  must be revisited before submission (see the open item below).
-- Name display (Samuel, 2026-11-14): full name on the About page, LICENSE, README and CITATION.cff only; the app footer and
-  generated dossiers show "© 2026 SkyShift".
-- Third-party material keeps its own copyright and licence (see below and the About page).
+- Copyright 2026 Samuel Akosa Onyejekwe. Licensed under the **Apache License 2.0** (`LICENSE`), with a `NOTICE` file that
+  every redistribution must keep. Decided by Samuel on 2026-11-14 to meet the Space Apps terms (below); it replaces the
+  earlier "All rights reserved" notice. The author keeps the copyright, and reusers must credit the author and mark their changes.
+- Name display: full name on the About page, LICENSE/NOTICE, README, CITATION.cff and the title slide (Space Apps asks for
+  team member names on the slides); the app footer and generated dossiers show "© 2026 SkyShift · Apache-2.0".
+- Third-party material keeps its own copyright and licence (see below and `NOTICE`).
 
 ## Third-party data and software
 
 | Item | Owner / terms | How SkyShift complies |
 |---|---|---|
 | SPHEREx data (IRSA) | NASA/JPL/Caltech; IRSA acknowledgement and DOIs | Acknowledgement text and DOIs on the About page; release shown for every frame |
-| Gaia DR3 | ESA / Gaia DPAC, via IRSA and MAST | Credit and DOI link on the About page |
+| Gaia DR3 | ESA / Gaia DPAC, via IRSA and MAST; CC BY-NC 3.0 IGO | Credit and DOI link on the About page; licence in `NOTICE` |
 | CatWISE2020, AllWISE | via IRSA | Credit on the About page |
-| NEOSSat data | Canadian Space Agency; CADC (NRC); Directive on Open Government | Credit on the About page; listed, never mixed with SPHEREx frames |
+| NEOSSat data | Canadian Space Agency; CADC (NRC); Open Government Licence – Canada | Credit on the About page; listed, never mixed with SPHEREx frames |
 | Aladin Lite 3.9.2-beta | CDS Strasbourg, LGPL-3.0-or-later | Vendored unmodified except the disabled usage logger (documented in `vendor/README.txt`); licence in `vendor/ALADIN-LICENSE.txt` |
 | WiseView | Backyard Worlds tools | Linked only; no code copied |
 | NEOSSAT_Tutorial | Canadian Space Agency, modified MIT | Read for methods; no code copied |
@@ -26,11 +25,21 @@ No logos or trademarks of NASA, SPHEREx, Space Apps, ESA, CSA, NRC/CADC or CDS a
 
 ## 2026 Space Apps Terms and Conditions
 
-**Open item: not yet checked.** On 2026-11-14 the Space Apps website (https://www.spaceappschallenge.org/) could not be read
-from the build environment because its TLS certificate could not be verified there. The rights participants grant to the
-organisers, and any rules on tool use or disclosure, therefore still need to be read and recorded here before submission.
-Rule 14 of the project brief applies: if those terms require anything that conflicts with the project's attribution rule
-(rule 8), stop and decide before acting.
+Read on 2026-11-14 from the participant terms (spaceappschallenge.org/legal, updated 7 August 2026) and the Project
+Submission Guide (13 November 2026), as transcribed by Samuel. How SkyShift meets the licensing and reuse rules:
+
+| Term | How SkyShift meets it |
+|---|---|
+| Original content must be freely available or OSI open source (Apache-2.0 by default) | Apache-2.0 (`LICENSE`, `NOTICE`, `package.json`, `CITATION.cff`) |
+| NASA may display, copy, combine, distribute the Solution; all posted Solutions may be downloaded and used | Compatible with Apache-2.0 |
+| Non-NASA materials must be freely available or OSI-licensed, with licences documented | Aladin Lite LGPL-3.0 (OSI); data licences listed in `NOTICE` and the table above |
+| Cite every source used | `docs/DATA_SOURCES.md`, About page, `NOTICE`, submission form links |
+| No personal data beyond names; nothing of persons under 18; no commercial promotion | Only the author's name; no images of people; no adverts |
+| Demo and slides hosted on a public site without login | GitHub repository and GitHub Pages |
+| Videos: the participant's own recording, no third-party copyright | The demo video is a screen recording of SkyShift itself |
+
+Gaia DR3 values in `data/targets.json` are distributed under ESA's CC BY-NC 3.0 IGO licence (non-commercial); ESA is a Space
+Apps partner agency and Gaia is listed by the challenge itself.
 
 ## Privacy
 

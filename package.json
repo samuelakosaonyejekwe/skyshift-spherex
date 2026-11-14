@@ -16,7 +16,7 @@
   "engines": {
     "node": ">=18"
   },
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "author": "Samuel Akosa Onyejekwe",
   "repository": {
     "type": "git",
