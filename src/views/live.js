@@ -4,7 +4,7 @@
 
 import { h, icon, toast } from '../ui/dom.js';
 import { SpherexImage, describeUri } from '../lib/spherex.js';
-import { niceDate, niceDateTime } from '../lib/coords.js';
+import { niceDate, niceDateTime, niceTime } from '../lib/coords.js';
 import { normalise, toParams } from '../state.js';
 import { paint, limits, upsampleRGBA } from '../lib/render.js';
 import { robustStats } from '../lib/engine.js';
@@ -86,7 +86,7 @@ export async function render(root, route, { go }) {
     try {
       const snap = await snapshot();
       if (disposed) return;
-      draw(snap, `${snap.keys.length} detector-3 frames listed in ${snap.top.period}. Archive checked just now (${new Date().toLocaleTimeString()}).`);
+      draw(snap, `${snap.keys.length} detector-3 frames listed in ${snap.top.period}. Archive checked just now (${niceTime()}).`);
       await cache.set('live:snap', snap);
     } catch (e) {
       if (disposed) return;

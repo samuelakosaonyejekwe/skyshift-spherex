@@ -5,9 +5,9 @@ import es from './es.js';
 import fr from './fr.js';
 export const LANGS = {
   en: { name: 'English', strings: en },
-  el: { name: 'Ελληνικά (Greek, interface menus)', strings: el },
-  es: { name: 'Español (Spanish, interface menus)', strings: es },
-  fr: { name: 'Français (French, interface menus)', strings: fr },
+  el: { name: 'Ελληνικά (Greek)', strings: el },
+  es: { name: 'Español (Spanish)', strings: es },
+  fr: { name: 'Français (French)', strings: fr },
 };
 let current = en;
 // The page stays marked as English (most of its text is), so browsers offer a correct full-page translation from

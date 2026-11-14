@@ -186,7 +186,7 @@ export async function render(root, route, { go }) {
     } catch (e) {
       if (id !== S.loadId) return;
       if (quick?.data?.length) {
-        toast({ title: 'Showing the saved image list', text: `The live archive search did not answer (${e.message}). ${quick.ts ? 'List saved ' + new Date(quick.ts).toLocaleString() + '.' : 'Built-in list.'}`, glyph: '📦', timeout: 7000 });
+        toast({ title: 'Showing the saved image list', text: `The live archive search did not answer (${e.message}). ${quick.ts ? 'List saved ' + niceDateTime(quick.ts) + '.' : 'Built-in list.'}`, glyph: '📦', timeout: 7000 });
         return;
       }
       setLoad(navigator.onLine ? `The image search did not answer (${e.message}). The five challenge targets, saved fields and every field you have opened before still work; try again shortly.` : 'You are offline and this field is not saved on this device yet.', 0);

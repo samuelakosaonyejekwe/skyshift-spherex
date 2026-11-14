@@ -237,6 +237,7 @@ async function setupSW() {
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
   try {
     const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+    if (!reg) return; // registration refused (private mode, some embedded browsers): the app still runs online
     const promptUpdate = (worker) => {
       pendingWorker = worker; // also applied automatically at the next page change (the view lives in the URL)
       toast({
@@ -316,7 +317,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
     h('label', { class: 'field' }, 'Default field of view for new targets', sel('fov', [[4, '4′ (small, fastest)'], [6, '6′ (default)'], [10, '10′'], [15, '15′'], [30, '30′ (large, more data)']])),
     h('label', { class: 'field' }, 'Images per target (spread across all epochs and detectors)', sel('maxImages', [[60, '60'], [120, '120 (default)'], [240, '240'], [480, '480'], [0, 'All']])),
     h('label', { class: 'field' }, 'Download mode', sel('readMode', [['auto', 'Auto: first images fastest, then data saver (switches to saver on slow or Save-Data connections)'], ['saver', 'Data saver: only the pixels needed (≈0.1 MB per image)'], ['fast', 'Fast: whole image rows (≈0.6 MB per image)']])),
-    h('label', { class: 'field' }, 'Interface language (menus, buttons, tabs and headings; for the longer explanations use your browser’s Translate feature)', sel('lang', Object.entries(LANGS).map(([k, v]) => [k, v.name]))),
+    h('label', { class: 'field' }, 'Language (all pages and tabs)', sel('lang', Object.entries(LANGS).map(([k, v]) => [k, v.name]))),
     chk('mask', 'Remove bad pixels from measurements using SPHEREx quality flags'),
     chk('reduceMotion', 'Reduce motion (no automatic playback)'),
     chk('noShortcuts', 'Turn off single-key keyboard shortcuts (for screen-reader and switch users)'),

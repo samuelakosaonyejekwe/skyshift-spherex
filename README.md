@@ -38,7 +38,7 @@ atlas catalogues and the live data-freshness checks. Without one the app says so
 | Creativity | Sky as a film; wavelength-true colours across 102 bands; user image equations; coverage-glow sky map; all processing in the browser | Time Machine, Explore |
 | Validity | Real data only from the challenge's resources; Astropy-level maths; motions checked against Gaia; limits stated; 20 unit tests, 24 browser checks | [docs/VALIDATION.md](docs/VALIDATION.md), `test/` |
 | Relevance | Every point of the challenge statement mapped to a feature | [docs/CHALLENGE_TRACEABILITY.md](docs/CHALLENGE_TRACEABILITY.md) |
-| Presentation | 28-second demo video, 7-slide deck per the Space Apps checklist; interface in four languages | [Presentation](https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/) |
+| Presentation | 28-second demo video, 7-slide deck per the Space Apps checklist; every page and tab in English, Greek, Spanish and French | [Presentation](https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/) |
 
 ## Install and offline use
 

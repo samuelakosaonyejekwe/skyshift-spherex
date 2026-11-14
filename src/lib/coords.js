@@ -127,9 +127,21 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 /** Readable UTC date with the month named, e.g. "5 Oct 2026" (or "Oct 2026" with monthOnly). Accepts MJD, Date or ISO text. */
 // Dates without a timezone (FITS DATE-OBS/DATE-AVG, archive listings) are UTC by definition, not local time.
 const toUTCDate = (x) => (typeof x === 'number' ? mjdToDate(x) : x instanceof Date ? x : new Date(/T\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(String(x)) ? `${x}Z` : x));
+// Month names follow the interface language chosen in Settings (html data-ui-lang); English otherwise.
+const uiLang = () => (typeof document !== 'undefined' && document.documentElement?.dataset?.uiLang) || 'en';
+const fmtCache = new Map();
+function dateFmt(monthOnly) {
+  const lang = uiLang(), key = lang + monthOnly;
+  if (!fmtCache.has(key)) {
+    try { fmtCache.set(key, new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang, monthOnly ? { month: 'short', year: 'numeric', timeZone: 'UTC' } : { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })); } catch { fmtCache.set(key, null); }
+  }
+  return fmtCache.get(key);
+}
 export function niceDate(x, monthOnly = false) {
   const d = toUTCDate(x);
   if (Number.isNaN(d.getTime())) return '–';
+  const f = dateFmt(monthOnly);
+  if (f) return f.format(d).replace(/\.$/, '');
   return monthOnly ? `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` : `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
@@ -138,6 +150,13 @@ export function niceDateTime(x) {
   const d = toUTCDate(x);
   return Number.isNaN(d.getTime()) ? '–' : `${niceDate(d)} ${d.toISOString().slice(11, 16)} UTC`;
 }
+
+/** Locale for numbers and clock times, following the interface language. */
+export const uiLocale = () => { const l = uiLang(); return l === 'en' ? 'en-GB' : l; };
+/** Local clock time, e.g. "20:26", in the interface language. */
+export const niceTime = (d = new Date()) => new Date(d).toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' });
+/** A whole number with the interface language's digit grouping. */
+export const niceNum = (n) => Number(n).toLocaleString(uiLocale());
 
 export function mjdToISO(mjd, withTime = true) {
   const s = mjdToDate(mjd).toISOString();

@@ -3,7 +3,7 @@
 
 import { h, toast, download, icon } from '../ui/dom.js';
 import { toParams, normalise } from '../state.js';
-import { formatRA, formatDec, mjdToISO, niceDate } from '../lib/coords.js';
+import { formatRA, formatDec, mjdToISO, niceDate, niceDateTime } from '../lib/coords.js';
 import { searchSpherex } from '../lib/tap.js';
 import { cache } from '../lib/store.js';
 
@@ -103,7 +103,7 @@ export async function render(root) {
             h('td', {}, h('span', { class: 'chip' }, c.type)),
             h('td', { class: 'mono' }, `${formatRA(c.ra)} ${formatDec(c.dec)}`, c.catalog ? h('div', { class: 'tiny' }, c.catalog) : null),
             h('td', {}, c.note || '–'),
-            h('td', {}, new Date(c.created).toLocaleString()),
+            h('td', {}, niceDateTime(c.created)),
             h('td', {}, h('a', { class: 'btn small', href: c.url && c.url.includes('#/view') ? c.url.slice(c.url.indexOf('#')) : '#/' }, 'Open'), ' ',
               h('button', { class: 'btn small ghost', onclick: () => { write(CANDS, read(CANDS).filter((x) => x.id !== c.id)); draw(); } }, 'Delete')))))
           : h('p', { class: 'empty compact' }, 'No candidates yet. Click an object in the viewer and choose “Mark candidate”.'))),
@@ -147,7 +147,7 @@ export async function render(root) {
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SkyShift multi-target dossier ${id}</title>
 <style>body{font:14px/1.5 system-ui,sans-serif;max-width:1000px;margin:0 auto;padding:24px;color:#111}h1{font-size:24px}table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{border-bottom:1px solid #dde;padding:4px 6px;text-align:left}th{background:#f1f0ff}footer{margin-top:24px;font-size:12px;color:#444;border-top:1px solid #ccd;padding-top:8px}@page{margin:14mm}</style></head><body>
 <h1>SkyShift multi-target dossier</h1><p>Dossier ID <b>${id}</b> · ${new Date().toISOString()} · SkyShift ${esc(version)} · ${q.items.length} fields from an uploaded or typed list.</p>
-<h2>Summary</h2><p>${rows.filter((r) => r.n).length} of ${rows.length} fields have SPHEREx images (${rows.reduce((a, r) => a + (r.n || 0), 0).toLocaleString()} spectral images in total). Each row links to the full analysis; open it and use “Dossier” for a per-target report with figures.</p>
+<h2>Summary</h2><p>${rows.filter((r) => r.n).length} of ${rows.length} fields have SPHEREx images (${rows.reduce((a, r) => a + (r.n || 0), 0).toLocaleString('en-GB')} spectral images in total). Each row links to the full analysis; open it and use “Dossier” for a per-target report with figures.</p>
 <h2>Fields</h2><table><tr><th>#</th><th>Field</th><th>RA (deg)</th><th>Dec (deg)</th><th>SPHEREx images</th><th>First</th><th>Latest</th><th>Releases</th><th>Open</th></tr>
 ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.name)}</td><td>${r.ra.toFixed(5)}</td><td>${r.dec.toFixed(5)}</td><td>${r.n ?? `unavailable (${esc(r.error)})`}</td><td>${iso(r.from)}</td><td>${iso(r.to)}</td><td>${(r.rel || []).map((x) => `${x.toUpperCase()}${DOIS[x] ? ` (DOI ${DOIS[x]})` : ''}`).join(', ')}</td><td><a href="${esc(r.url)}">view</a></td></tr>`).join('')}</table>
 <h2>Credits and data use</h2><p>${esc(SPHEREX_ACK)}</p><footer>© 2026 SkyShift · Apache-2.0 · Dossier ${id}</footer></body></html>`;

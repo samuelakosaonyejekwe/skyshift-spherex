@@ -130,7 +130,9 @@ main { flex: 1; width: 100%; max-width: 1680px; margin: 0 auto; padding: 18px ma
 .btn.small { min-height: 32px; padding: 5px 10px; font-size: .84rem; border-radius: 8px; }
 .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .btn.icon { width: 40px; padding: 0; }
-.chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: .78rem; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--text-2); white-space: nowrap; }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: .78rem; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--text-2); white-space: nowrap; max-width: 100%; }
+/* a chip longer than its row (long sentences, longer languages) wraps inside instead of widening the page */
+.chip { text-wrap: balance; } @supports (width: fit-content) { .chip { white-space: normal; } }
 .chip.warn { color: #ffd38a; border-color: #ffb54766; background: #ffb5471a; }
 .chip.bad { color: #ffb0bd; border-color: #ff6b8166; background: #ff6b811a; }
 .chip.good { color: #9ff0c9; border-color: #3ddc9766; background: #3ddc971a; }

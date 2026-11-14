@@ -2,7 +2,7 @@
 
 import { h, icon, toast } from '../ui/dom.js';
 import { presets, resolveTarget, presetToTarget, presetById, describePosition, fromGalactic } from '../targets.js';
-import { parsePosition, formatRA, formatDec, niceDate } from '../lib/coords.js';
+import { parsePosition, formatRA, formatDec, niceDate, niceNum } from '../lib/coords.js';
 import { normalise, toParams, parseText, DEFAULTS } from '../state.js';
 import { searchSpherex } from '../lib/tap.js';
 import { splitStatements } from '../lib/expr.js';
@@ -200,7 +200,7 @@ export async function render(root, route, { go }) {
       h('div', { class: 'row', style: { alignItems: 'baseline' } },
         h('h2', { id: 'map-h', style: { margin: 0 } }, 'The whole sky, as SPHEREx sees it'), h('div', { class: 'spacer' }), freshness),
       mission ? h('div', { class: 'stat-grid compact' },
-        h('div', { class: 'stat' }, h('b', {}, mission.images.toLocaleString()), h('span', { class: 'tiny' }, 'SPHEREx images in the archive')),
+        h('div', { class: 'stat' }, h('b', {}, niceNum(mission.images)), h('span', { class: 'tiny' }, 'SPHEREx images in the archive')),
         h('div', { class: 'stat' }, h('b', {}, `${(mission.skyFraction * 100).toFixed(0)}%`), h('span', { class: 'tiny' }, 'of the sky covered')),
         h('div', { class: 'stat' }, h('b', {}, niceDate(mission.built)), h('span', { class: 'tiny' }, 'map refreshed from NASA’s archive')),
         h('div', { class: 'stat' }, h('b', {}, niceDate(mission.lastMjd)), h('span', { class: 'tiny' }, 'newest SPHEREx image taken (NASA publishes images weeks later)'))) : null,

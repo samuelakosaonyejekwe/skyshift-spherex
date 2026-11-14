@@ -5,7 +5,7 @@
 import { h, icon, masonry } from '../ui/dom.js';
 import { smartFetch } from '../lib/net.js';
 import { latestSpherex, latestNeossat, loadBundled } from '../lib/tap.js';
-import { niceDate, niceDateTime } from '../lib/coords.js';
+import { niceDate, niceDateTime, niceTime } from '../lib/coords.js';
 
 const ago = (iso) => { const m = Math.max(0, (Date.now() - Date.parse(iso)) / 60000); return m < 90 ? `${Math.round(m)} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 import { cache } from '../lib/store.js';
@@ -115,7 +115,7 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
   const relayout = masonry(grid, cardEls);
   let timer;
   async function run() {
-    stamp.textContent = `Last checked ${new Date().toLocaleTimeString()}`;
+    stamp.textContent = `Last checked ${niceTime()}`;
     await Promise.all(SOURCES.map(async (s) => {
       const c = cards.get(s.id);
       c.status.className = 'src-status wait'; c.status.textContent = 'Checking…';
@@ -133,7 +133,7 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
         c.body.replaceChildren(
           r.extra ? h('p', {}, r.extra) : null,
           r.lastModified ? h('p', {}, `Page last modified: ${r.lastModified}`) : null,
-          r.lines?.length ? h('ul', {}, r.lines.slice(0, 6).map((l) => h('li', {}, l))) : null,
+          r.lines?.length ? h('ul', { lang: 'en', title: 'Quoted from the live page' }, r.lines.slice(0, 6).map((l) => h('li', {}, l))) : null,
           r.error ? h('p', { class: 'notice warn' }, r.error) : null);
         await cache.set(`src:${s.id}`, { at: Date.now(), extra: r.extra || null, lines: r.lines || [] });
         relayout();
@@ -148,12 +148,12 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
             h('p', { class: 'tiny muted' }, `Checked from SkyShift’s build server on ${niceDateTime(scheduled.checked)} (${sched.ms} ms)${sched.stale ? '; latest attempt failed, showing the last good check' : ''}.${e.useScheduled ? '' : ' This host has no archive relay for a live check.'}`),
             sched.extra ? h('p', {}, sched.extra) : null,
             sched.lastModified ? h('p', {}, `Page last modified: ${sched.lastModified}`) : null,
-            sched.lines?.length ? h('ul', {}, sched.lines.slice(0, 6).map((l) => h('li', {}, l))) : null);
+            sched.lines?.length ? h('ul', { lang: 'en', title: 'Quoted from the live page' }, sched.lines.slice(0, 6).map((l) => h('li', {}, l))) : null);
         } else {
           c.status.className = 'src-status bad';
           c.status.textContent = navigator.onLine ? 'Not reachable now' : 'Offline';
           c.body.replaceChildren(h('p', { class: 'notice warn' }, `${e.message || e}`),
-            prev ? h('p', {}, `Last good check ${new Date(prev.at).toLocaleString()}: ${prev.extra || (prev.lines || []).slice(0, 2).join(' · ')}`) : null);
+            prev ? h('p', {}, `Last good check ${niceDateTime(prev.at)}: ${prev.extra || (prev.lines || []).slice(0, 2).join(' · ')}`) : null);
         }
         relayout();
       }
