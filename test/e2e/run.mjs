@@ -2,7 +2,8 @@
 // http://localhost:8080/):  npm run test:e2e   — needs `npm i -D playwright` (browsers installed).
 // Covers: every page loads without console errors, the five presets stream real frames, URL
 // loading (incl. WiseView-style params), typed text and equations, uploads (CSV = typed),
-// dossier generation, update pop-up wiring, offline shell, Back/Forward.
+// dossier generation, update pop-up wiring, offline shell, Back/Forward, search without a relay
+// (needs the image index in dist/data/idx: node scripts/index.mjs, then npm run build).
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch { console.log('playwright not installed: skipping e2e (npm i -D playwright)'); process.exit(0); }
 const BASE = process.env.BASE || 'http://localhost:8080/';
@@ -33,6 +34,18 @@ await check('CSV upload gives the same request as typed coordinates', async () =
 await check('dossier builds with all quality checks passing', async () => { await page.goto(`${BASE}#/view?target=rwaur`); await loaded(); await page.waitForTimeout(20000); await page.click('button:has-text("Dossier")'); await page.waitForSelector('text=Dossier ready', { timeout: 60000 }); const t = await page.textContent('.sheet ul'); if (/✘/.test(t)) throw new Error(t); });
 await check('Back and Forward arrows move between pages', async () => { await page.goto(`${BASE}#/`); await page.click('#mainnav a[data-route=chase]'); await page.waitForTimeout(500); await page.click('#navBack'); await page.waitForTimeout(800); if (!/#\/$|#\/?$/.test(page.url())) throw new Error(page.url()); await page.click('#navFwd'); await page.waitForTimeout(800); if (!page.url().includes('chase')) throw new Error(page.url()); });
 await check('app shell works offline (airplane mode)', async () => { await page.goto(BASE); await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 20000 }); await ctx.setOffline(true); await page.reload(); await page.waitForSelector('.home-hero', { timeout: 15000 }); await ctx.setOffline(false); });
+await check('new positions are searchable without a relay (static host, image index)', async () => {
+  const c2 = await browser.newContext({ viewport: { width: 1366, height: 860 }, serviceWorkers: 'block' });
+  await c2.route('**/config.json', async (r) => { const res = await r.fetch(); const j = await res.json(); j.staticHosts = [new URL(BASE).hostname]; r.fulfill({ response: res, json: j }); });
+  await c2.route('**/api/relay**', (r) => r.fulfill({ status: 404, body: 'no relay' }));
+  const p2 = await c2.newPage();
+  try {
+    await p2.goto(`${BASE}#/view?ra=37.123&dec=41.5`);
+    await p2.waitForFunction(() => document.querySelector('.stage .loading')?.hidden === true, null, { timeout: 90000 });
+    const s = await p2.textContent('body');
+    if (!/image index/.test(s)) throw new Error('search did not use the image index');
+  } finally { await c2.close(); }
+});
 await check('install control is visible', async () => { await page.goto(BASE); if (!(await page.isVisible('#installBtn'))) throw new Error('hidden'); });
 
 await browser.close();

@@ -112,7 +112,8 @@ example link (133.786245, −7.244372), which SkyShift uses as the field centre.
 
 - https://www.asc-csa.gc.ca/eng/satellites/neossat/ (date modified 2026-03-20): launch 25 February 2013, active; "world's first
   space telescope dedicated to detecting and tracking asteroids, comets, satellites and space debris"; data released under
-  Canada's Directive on Open Government.
+  Canada's Directive on Open Government; the CSA open-data catalogue (seed 8) licenses the dataset under the Open
+  Government Licence – Canada.
 - https://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/en/ → /en/neossat/ (15-cm Maksutov, 3″/pixel, 0.85° field; collection `NEOSSAT`) and
   /en/services/ (TAP `argus`, `caom2ops`, SIA, data). Verified live: `ivoa.ObsCore WHERE obs_collection='NEOSSAT'` returns rows
   (e.g. target `BarnardStar`, 2019) with `access_url` DataLink links. No CORS header.
@@ -131,7 +132,8 @@ directly. `relay/core.mjs` is a stateless allow-list relay (hosts and path prefi
 40 MB cap, 55 s timeout, no cookies, no logging, per-client rate limit). It runs as the local server's `/api/relay`, and is
 packaged for Cloudflare Pages Functions, Cloudflare Workers, Netlify Edge, Vercel Edge and Deno Deploy, so two or more
 independent relays can be listed in `config.json`. GitHub Pages cannot run it: there the app skips the same-origin relay
-(`config.json` → `staticHosts`) and uses any external relay listed, otherwise saved and built-in data. Image pixels never pass through the relay: they stream from the public
+(`config.json` → `staticHosts`), searches images through the static index (below) and uses any external relay listed
+for catalogues; otherwise saved and built-in data. Image pixels never pass through the relay: they stream from the public
 S3 bucket straight to the user's browser.
 
 ## Features left out because no approved source provides the data
@@ -143,10 +145,11 @@ S3 bucket straight to the user's browser.
   and release notes, tutorials) do not state their wavelengths. Lines that are stated are marked.
 - **unWISE image overlay**: WiseView's image backend could not be read; WiseView is linked instead.
 
-## Pre-built indexes (refreshed by scripts, on a schedule once hosting is enabled)
+## Pre-built indexes (rebuilt by the scheduled workflow every 6 hours; refreshed copies kept in the Actions cache)
 
 | File | Built by | Source | Checked |
 |---|---|---|---|
 | `data/targets.json` | `scripts/prebake.mjs` | IRSA TAP (Gaia DR3, spherex.artifact/plane) | 2026-11-14 |
 | `data/coverage.json`, `data/mission.json` | `scripts/mission.mjs` | IRSA TAP `spherex.obscore` aggregates in 20-day windows (1,628,230 images, 100% of sky, 530 days) | 2026-11-14 |
+| `data/idx/` (not committed) | `scripts/index.mjs` | IRSA TAP `spherex.artifact` JOIN `spherex.plane`, level-2b images: path, start time, detector, footprint; 5-day windows; one file per ~2° sky tile (1,628,230 images, 10,312 tiles, 190 MB on 2026-11-14). Checked against IRSA `CONTAINS` at 10 positions (targets, RA 0/360 wrap, both poles, both deep fields): identical except 3 of 29,398 images at the north deep field, positions within 0.36″ of a footprint edge (corners stored to 0.0001°) | every scheduled run |
 | `assets/allsky-1000.jpg`, `assets/allsky-1600.jpg` | `scripts/allsky.mjs` | IRSA HiPS `spherex_allsky_cube`, order-3 Allsky previews of cube channels 8, 42, 95 | 2026-11-14 |

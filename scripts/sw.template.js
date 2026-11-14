@@ -7,7 +7,9 @@ const SHELL = `skyshift-shell-${VERSION}`;
 const RUNTIME = 'skyshift-runtime-v1';
 const HIPS = 'skyshift-hips-v1';
 const PRECACHE = __PRECACHE__;
-const NETWORK_FIRST = /\/(config\.json|version\.json|data\/targets\.json)$/;
+const NETWORK_FIRST = /\/(version\.json|data\/idx\/.+)$/;
+// served at once from the last copy and refreshed in the background (fast start; updates arrive on the next visit)
+const STALE_REVALIDATE = /\/(config\.json|data\/targets\.json)$/;
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -74,6 +76,17 @@ self.addEventListener('fetch', (event) => {
       const hit = (await c.match('./index.html')) || (await c.match('./'));
       if (hit) return hit;
       try { return (await event.preloadResponse) || (await fetch(req)); } catch { return Response.error(); }
+    })());
+    return;
+  }
+
+  if (STALE_REVALIDATE.test(url.pathname)) {
+    event.respondWith((async () => {
+      const c = await caches.open(RUNTIME);
+      const hit = (await c.match(req, { ignoreSearch: true })) || (await (await caches.open(SHELL)).match(req, { ignoreSearch: true }));
+      const update = fetch(req, { cache: 'no-cache' }).then((res) => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => null);
+      if (hit) { event.waitUntil(update); return hit; }
+      return (await update) || Response.error();
     })());
     return;
   }

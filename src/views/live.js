@@ -4,7 +4,7 @@
 
 import { h, icon, toast } from '../ui/dom.js';
 import { SpherexImage, describeUri } from '../lib/spherex.js';
-import { mjdToISO } from '../lib/coords.js';
+import { niceDate, niceDateTime } from '../lib/coords.js';
 import { normalise, toParams } from '../state.js';
 import { paint, limits, upsampleRGBA } from '../lib/render.js';
 import { robustStats } from '../lib/engine.js';
@@ -38,7 +38,7 @@ export async function render(root, route, { go }) {
     h('p', { class: 'muted prose' }, 'New SPHEREx images reach the IRSA archive every week. This page reads the archive directly from your device, so it always shows what is there right now. Press Develop on any new frame for a quick look, then open that spot.'),
     stats, status,
     h('h2', {}, 'Newest observing periods in the archive'), periods,
-    h('h2', {}, 'Latest frames'), h('p', { class: 'tiny' }, 'Detector 3 (1.63–2.41 µm) frames from the newest planning period; each frame is one 3.5° × 3.5° patch of sky.'), frames);
+    h('h2', {}, 'Latest frames'), h('p', { class: 'tiny' }, 'Detector 3 (1.63–2.41 µm) frames from the newest planning period. Each picture is the central 15′ of a 3.5° × 3.5° frame, shown as recorded (north is not necessarily up); the position given is its centre.'), frames);
 
   let last = 0, disposed = false;
   async function run(force) {
@@ -53,7 +53,13 @@ export async function render(root, route, { go }) {
         for (const p of l.prefixes) all.push({ rel, prefix: p, period: p.split('/')[2] });
       }
       all.sort((a, b) => (a.period < b.period ? 1 : -1));
-      const newest = all.slice(0, 5);
+      // show whole rows only: as many items as fill the grid's columns at this width (no half-empty last row)
+      const colsFor = (el, minW) => Math.max(1, Math.floor(((el.clientWidth || root.clientWidth || 1000) + 12) / (minW + 12)));
+      const narrow = (root.clientWidth || 1000) < 560;
+      const pCols = colsFor(periods, 260); let fCols = colsFor(frames, narrow ? 150 : 210);
+      periods.style.gridTemplateColumns = `repeat(${pCols}, minmax(0, 1fr))`;
+      frames.style.gridTemplateColumns = `repeat(${fCols}, minmax(0, 1fr))`;
+      const newest = all.slice(0, pCols * Math.max(1, Math.ceil(4 / pCols)));
       // newest period: its newest version folder, then detector-3 files
       const top = newest[0];
       const versions = (await list(top.prefix)).prefixes.sort();
@@ -71,12 +77,16 @@ export async function render(root, route, { go }) {
       try { const { latestSpherex } = await import('../lib/tap.js'); const r = await latestSpherex(); if (r.data) newestObs = r.data; } catch { /* keep */ }
       stats.replaceChildren(
         stat(top.period, `newest SPHEREx planning period in the IRSA archive (${top.rel.toUpperCase()})`),
-        stat(newestFile ? newestFile.slice(0, 10) : '–', `newest SPHEREx files reached the IRSA archive${newestFile ? ` (${ago(newestFile)})` : ''}`),
-        stat(newestObs ? mjdToISO(newestObs, false) : '–', 'date of the newest SPHEREx exposure searchable at IRSA'),
+        stat(newestFile ? niceDate(newestFile) : '–', `newest SPHEREx files reached the IRSA archive${newestFile ? ` (${ago(newestFile)})` : ''}`),
+        stat(newestObs ? niceDate(newestObs) : '–', 'date of the newest SPHEREx exposure searchable at IRSA'),
         stat(String(all.length), 'SPHEREx planning periods served by IRSA now (DR1 + QR3)'));
       periods.className = 'period-grid';
       periods.replaceChildren(...newest.map((p, i) => h('div', { class: 'card row' }, h('span', { class: `chip ${p.rel === 'qr3' ? 'good' : 'info'}` }, p.rel.toUpperCase()), h('b', {}, `Planning period ${p.period}`), h('span', { class: 'tiny' }, `${weekLabel(p.period)}${i === 0 ? ' · newest' : ''}`))));
-      const latest = keys.slice(-8).reverse();
+      // whole rows of the frames that exist (a period may hold fewer frames than two full rows)
+      let nShow = Math.min(keys.length, fCols * Math.max(1, Math.ceil(8 / fCols)));
+      if (nShow < fCols) fCols = Math.max(1, nShow); else nShow = Math.floor(nShow / fCols) * fCols;
+      frames.style.gridTemplateColumns = `repeat(${fCols}, minmax(0, 1fr))`;
+      const latest = keys.slice(-nShow).reverse();
       const cardsEls = latest.map((k) => frameCard(k));
       frames.replaceChildren(...cardsEls);
       // develop the newest frames automatically, one after another (about 0.3 MB each)
@@ -93,7 +103,7 @@ export async function render(root, route, { go }) {
   function frameCard(k) {
     const d = describeUri(k.key);
     const canvas = h('canvas', { width: 192, height: 192, class: 'live-thumb', 'aria-label': 'Quick-look picture' });
-    const info = h('p', { class: 'tiny' }, `${d.obsid || ''} D${d.detector || '?'} · reached IRSA ${k.modified?.slice(0, 10)} · ${(k.size / 1048576).toFixed(0)} MB`);
+    const info = h('p', { class: 'tiny' }, `${d.obsid || ''} D${d.detector || '?'} · reached IRSA ${k.modified ? niceDate(k.modified) : '–'} · ${(k.size / 1048576).toFixed(0)} MB`);
     const btn = h('button', { class: 'btn small primary' }, 'Develop');
     const card = h('div', { class: 'card live-card' }, canvas, info, btn);
     btn.addEventListener('click', async () => {
@@ -118,7 +128,7 @@ export async function render(root, route, { go }) {
         off.getContext('2d').putImageData(new ImageData(up.data, up.size, up.size), 0, 0);
         const ctx = canvas.getContext('2d'); ctx.imageSmoothingQuality = 'high'; ctx.drawImage(off, 0, 0, 192, 192);
         const [ra, dec] = img.wcs.pixToWorld(c + 0.5, c + 0.5);
-        info.textContent = `${ra.toFixed(3)}°, ${dec >= 0 ? '+' : ''}${dec.toFixed(3)}° · ${String(m.header['DATE-AVG'] || '').slice(0, 16).replace('T', ' ')} UTC · D${m.header.DETECTOR} · centre of the frame (not mirrored: north is not necessarily up)`;
+        info.textContent = `${ra.toFixed(3)}°, ${dec >= 0 ? '+' : ''}${dec.toFixed(3)}° · ${m.header['DATE-AVG'] ? niceDateTime(m.header['DATE-AVG']) : '–'} · D${m.header.DETECTOR}`;
         btn.replaceWith(h('button', { class: 'btn small', onclick: () => go(`#/view?${toParams(normalise({ target: { ra: +ra.toFixed(5), dec: +dec.toFixed(5), source: 'coords', name: `New frame ${d.obsid || ''}` } }))}`) }, 'Open this spot'));
         const pts = JSON.parse(localStorage.getItem('skyshift.livePts') || '[]').filter((p) => Math.abs(p.ra - ra) > 1e-3);
         pts.unshift({ ra, dec, date: m.header['DATE-AVG'] }); localStorage.setItem('skyshift.livePts', JSON.stringify(pts.slice(0, 30)));

@@ -90,7 +90,7 @@ export async function render(root) {
       h('li', {}, 'Known solar-system objects are not overlaid: no ephemeris service is reachable from the challenge’s resources.'),
       h('li', {}, 'Object names resolve only for the five challenge targets and Gaia DR3 source IDs; use coordinates for anything else.'),
       h('li', {}, 'Exact water, CO₂ and CO ice band wavelengths were not found in the approved sources, so they are not marked on spectra.'),
-      h('li', {}, 'Some archive services do not allow direct browser access; SkyShift reaches them through a small relay. If every relay is down, image searches fall back to saved or built-in lists, while image pixels still stream directly from IRSA’s cloud bucket.')),
+      h('li', {}, 'Image pixels stream directly from IRSA’s cloud bucket. Searches for new positions use IRSA’s live search through a small relay where one is available, and otherwise a pre-built index of every SPHEREx image, refreshed from IRSA every 6 hours. Gaia, WISE and NEOSSat overlays need the relay; without it the app says so and the images still work.')),
   ));
   root.append(article);
   return () => article.dispose?.();

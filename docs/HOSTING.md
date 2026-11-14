@@ -1,0 +1,44 @@
+# Hosting and redundancy
+
+SkyShift does not depend on the owner's computer, and it is built so that no single host is essential.
+
+## What already keeps working without any extra account
+
+| Failure | What still works |
+|---|---|
+| The owner's computer is off | Everything: GitHub Actions builds, refreshes (every 6 hours) and deploys; GitHub Pages serves. |
+| GitHub Pages is down | Installed copies (and any browser that opened SkyShift before) start from their offline copy: the app, help, the challenge targets' image lists, and every field already viewed (its images and overlays included). New images still stream for those fields, because pixels come from NASA IRSA's cloud bucket, not from GitHub. |
+| No archive relay available | Searching any position (static image index, rebuilt every 6 hours), the overlays for the five challenge targets (built-in Gaia DR3 and CatWISE2020 lists), Live, Mission and the Sky atlas images. Only overlays for other positions, Gaia ID look-ups, NEOSSat listings and the live source checks need a relay, and the app says so. |
+
+## Adding independent backup hosts (needs a free account with each host, created by the owner)
+
+Each host below builds the same repository with the configuration files already in it, serves the full app, and runs
+its own relay at `/api/relay` (so search and all overlays work live there). Once imported, each keeps serving its last
+build even when GitHub is down. Any one of them is enough; two give more redundancy.
+
+| Host | One-time setup by the owner | Files already in the repository |
+|---|---|---|
+| Cloudflare Pages | Dashboard → Workers & Pages → Create → Pages → Connect to Git → choose `skyshift-spherex`; build command `node scripts/build.mjs`, output `dist` | `functions/api/relay.js`, `relay/core.mjs` |
+| Netlify | Add new site → Import an existing project → GitHub → `skyshift-spherex` (settings are read from `netlify.toml`) | `netlify.toml`, `netlify/edge-functions/relay.js` |
+| Vercel | Add New → Project → Import `skyshift-spherex` (settings are read from `vercel.json`) | `vercel.json`, `api/relay.js` |
+
+Optional, for Cloudflare: instead of connecting Git, add the repository secrets `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID`; the workflow then deploys the exact GitHub build to Cloudflare Pages on every run.
+`wrangler.toml` also defines a stand-alone relay Worker (`npx wrangler deploy`) with its own 6-hourly schedule.
+
+## Telling the GitHub Pages copy about the backups
+
+In the GitHub repository: Settings → Secrets and variables → Actions → Variables, add
+
+- `RELAY_URLS`: the backup relays, comma-separated, e.g. `https://skyshift-spherex.pages.dev/api/relay,https://skyshift-spherex.netlify.app/api/relay`
+- `MIRROR_URLS`: the backup sites, comma-separated, e.g. `https://skyshift-spherex.pages.dev,https://skyshift-spherex.netlify.app`
+
+The next deploy writes them into the shipped `config.json` (`scripts/build.mjs`): the GitHub Pages copy then uses the
+backup relays for live overlays (it tries each in turn and remembers the first that answers), and the About page lists
+the mirrors. No code change is needed.
+
+## Keeping a copy of the code outside GitHub
+
+The repository is public, so it can also be archived permanently by the Software Heritage archive
+(https://archive.softwareheritage.org/save/) or mirrored to another Git host. Both are owner decisions and are not done
+automatically.

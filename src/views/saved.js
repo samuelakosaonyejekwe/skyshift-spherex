@@ -3,7 +3,7 @@
 
 import { h, toast, download, icon } from '../ui/dom.js';
 import { toParams, normalise } from '../state.js';
-import { formatRA, formatDec, mjdToISO } from '../lib/coords.js';
+import { formatRA, formatDec, mjdToISO, niceDate } from '../lib/coords.js';
 import { searchSpherex } from '../lib/tap.js';
 import { cache } from '../lib/store.js';
 
@@ -40,7 +40,7 @@ export async function checkWatchlist(newestMjd) {
       const newest = Math.max(...r.data.map((e) => e.mjd));
       if (w.knownNewest && newest > w.knownNewest + 0.01) {
         const added = r.data.filter((e) => e.mjd > w.knownNewest).length;
-        toast({ kind: 'update', glyph: '🛰', timeout: 0, title: `New SPHEREx data for ${w.target.name || 'a saved field'}`, text: `${added} new exposure${added > 1 ? 's' : ''} up to ${mjdToISO(newest, false)}.`, actions: [{ label: 'Open', primary: true, onClick: () => { location.hash = w.url; } }, { label: 'Later' }] });
+        toast({ kind: 'update', glyph: '🛰', timeout: 0, title: `New SPHEREx data for ${w.target.name || 'a saved field'}`, text: `${added} new exposure${added > 1 ? 's' : ''} up to ${niceDate(newest)}.`, actions: [{ label: 'Open', primary: true, onClick: () => { location.hash = w.url; } }, { label: 'Later' }] });
       }
       w.knownNewest = newest; w.knownCount = r.data.length;
     } catch { /* try next time */ }
@@ -77,8 +77,8 @@ export async function render(root) {
           watch.map((w) => h('tr', {},
             h('td', {}, h('a', { href: w.url }, w.target.name || 'Field')),
             h('td', { class: 'mono' }, `${formatRA(w.target.ra)} ${formatDec(w.target.dec)}`),
-            h('td', {}, new Date(w.saved).toLocaleDateString()),
-            h('td', {}, w.knownCount != null ? `${w.knownCount} exposures to ${mjdToISO(w.knownNewest, false)}` : '–'),
+            h('td', {}, niceDate(w.saved)),
+            h('td', {}, w.knownCount != null ? `${w.knownCount} exposures to ${niceDate(w.knownNewest)}` : '–'),
             h('td', {}, h('button', { class: 'btn small ghost', onclick: () => { write(WATCH, read(WATCH).filter((x) => !same(x.target, w.target))); draw(); } }, 'Remove')))))
           : h('p', { class: 'empty compact' }, 'No saved fields yet. Use “Save” in the Time Machine to keep a field offline and get new-data alerts.')),
       h('section', { class: 'card' },

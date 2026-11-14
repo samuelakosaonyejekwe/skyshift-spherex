@@ -49,6 +49,7 @@
   th, td { text-align: left; padding: 13px 16px; border-bottom: 1px solid #ffffff22; }
   th { color: var(--muted); font-weight: 600; }
   code { font-size: .9em; }
+  table.val { table-layout: fixed; } table.val td, table.val th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .facts { display: grid; gap: 12px; margin-top: 26px; }
   .facts div { display: flex; align-items: baseline; gap: 20px; background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 14px; padding: 18px 24px; }
   .facts span { flex: 0 0 190px; font-size: 25px; color: var(--muted); }
@@ -168,11 +169,11 @@
   <div class="stats">
     <div class="stat"><div class="num">4×10⁻¹⁰″</div><span>position error vs Astropy on real SPHEREx files</span></div>
     <div class="stat"><div class="num">10⁻¹⁵ µm</div><span>wavelength error vs Astropy</span></div>
-    <div class="stat"><div class="num">9×</div><span>less data per image, identical pixels</span></div>
+    <div class="stat"><div class="num">270×</div><span>less data per image than the full 65 MB file</span></div>
     <div class="stat"><div class="num">8 / 8</div><span>challenge resources used and checked live</span></div>
   </div>
-  <table><tr><th>Target</th><th>Proper motion vs Gaia DR3</th><th>Verdict</th></tr><tr><td>Barnard’s Star</td><td>10,139 vs 10,362 mas/yr</td><td>agrees (2.2%)</td></tr><tr><td>RW Aurigae</td><td>residual 386 ± 433 mas/yr</td><td>agrees</td></tr><tr><td>Epsilon Indi B</td><td>residual ≈1,300 ± 500 mas/yr</td><td>direction right (2.5σ)</td></tr><tr><td>R Draconis · WISE 0855</td><td>saturated · too faint</td><td>not reliable</td></tr></table>
-  <p class="muted" style="margin:22px 0 0;font-size:30px">RW Aurigae dimmed 13.5% ± 5.3% between surveys (2.5σ, below the 3σ candidate threshold). Full report: docs/VALIDATION.md</p>
+  <table class="val"><colgroup><col style="width:29%"><col style="width:37%"><col style="width:34%"></colgroup><tr><th>Target</th><th>Motion vs Gaia DR3</th><th>Verdict</th></tr><tr><td>Barnard’s Star</td><td>10,139 vs 10,362 mas/yr</td><td>agrees (2.2%)</td></tr><tr><td>RW Aurigae</td><td>residual 386 ± 433</td><td>agrees (1σ)</td></tr><tr><td>Epsilon Indi B</td><td>4,731 vs 4,684 mas/yr</td><td>speed 1%; 23° off</td></tr><tr><td>R Dra · WISE 0855</td><td>saturated · too faint</td><td>not reliable</td></tr></table>
+  <p class="muted" style="margin:22px 0 0;font-size:30px">RW Aurigae dimmed 13.5% ± 5.3% between surveys (2.5σ; candidates need 3σ). Report: docs/VALIDATION.md</p>
 </section>
 
 <section aria-label="Impact and next steps">
@@ -189,7 +190,7 @@
     <div>
       <h2>What’s next</h2>
       <ul>
-        <li>A second host and search relay.</li>
+        <li>A second host and a catalogue relay.</li>
         <li>Photometry for blended stars; parallax from SPHEREx alone.</li>
         <li>More languages (Greek started) and crowd classification.</li>
         <li>Testing on many phones with volunteers.</li>

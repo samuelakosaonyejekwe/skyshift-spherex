@@ -3,7 +3,8 @@
 //  MAST API (Gaia DR3 cone, fallback), CADC TAP "argus" (NEOSSat observations).
 // Every result is cached so the tool keeps working offline and when a service is down.
 
-import { smartFetch, getConfig } from './net.js';
+import { smartFetch, getConfig, relayCount } from './net.js';
+import { tilesNear, tilePath, decodeRow, contains } from './skyindex.js';
 import { cache } from './store.js';
 import { describeUri } from './spherex.js';
 
@@ -82,6 +83,37 @@ export async function loadBundled() {
   return bundledTargets;
 }
 
+// Fixed per detector at IRSA (spherex.plane energy_bounds_lower/upper, metres) and the exposure length (days)
+const BAND_BOUNDS = { 1: [7.455e-7, 1.1167e-6], 2: [1.1033e-6, 1.6499e-6], 3: [1.6301e-6, 2.4346e-6], 4: [2.4027e-6, 3.8473e-6], 5: [3.8113e-6, 4.43e-6], 6: [4.4115e-6, 5.0096e-6] };
+const EXPOSURE_DAYS = 0.0013324;
+
+let idxMeta;
+/** The static image index on this host (data/idx/meta.json), or null when there is none. */
+export async function indexMeta() {
+  if (idxMeta !== undefined) return idxMeta;
+  try { const r = await fetch('./data/idx/meta.json', { cache: 'no-cache' }); idxMeta = r.ok ? await r.json() : null; } catch { idxMeta = null; }
+  return idxMeta;
+}
+
+/** Image search from the static index: same rows as the TAP search, as of the index build time. */
+async function searchIndex(ra, dec) {
+  const meta = await indexMeta();
+  if (!meta) throw new Error('no archive relay or image index is available on this host');
+  const texts = await Promise.all(tilesNear(ra, dec, meta.r).map(async (t) => {
+    const r = await fetch(`./${tilePath(t)}`);
+    if (r.ok) return r.text();
+    if (r.status === 404) return ''; // empty tile
+    throw new Error(`image index tile answered ${r.status}`);
+  }));
+  const rows = [];
+  for (const txt of texts) for (const line of txt.split('\n')) {
+    const x = line && decodeRow(line);
+    if (x && contains(x.corners, ra, dec)) rows.push(x);
+  }
+  rows.sort((a, b) => a.t - b.t);
+  return rows.map((x) => ({ uri: x.uri, time_bounds_lower: x.t, time_bounds_upper: x.t + EXPOSURE_DAYS, energy_bandpassname: `SPHEREx-D${x.det}`, energy_bounds_lower: BAND_BOUNDS[x.det][0], energy_bounds_upper: BAND_BOUNDS[x.det][1] }));
+}
+
 /**
  * All SPHEREx spectral images (every release currently ingested at IRSA) whose
  * footprint contains the position. Query pattern follows the IRSA SPHEREx cutouts
@@ -94,8 +126,14 @@ export async function searchSpherex(ra, dec, opts = {}) {
 FROM spherex.artifact a JOIN spherex.plane p ON a.planeid = p.planeid
 WHERE 1 = CONTAINS(POINT('ICRS', ${num(ra)}, ${num(dec)}), p.poly)
 ORDER BY p.time_bounds_lower`;
+  let via = 'tap';
   const r = await fresh(key, async () => {
-    const rows = await tap(IRSA_TAP, adql, opts);
+    // Live TAP search through a relay when this host has one; otherwise (static hosts) the pre-built index.
+    let rows;
+    if (relayCount() > 0) {
+      try { rows = await tap(IRSA_TAP, adql, opts); } catch (e) { if (!(await indexMeta())) throw e; }
+    }
+    if (!rows) { rows = await searchIndex(ra, dec); via = 'index'; }
     // Superseded releases are listed in config.json ("excludeReleases"), so a new release needs no code change.
     const excluded = getConfig().excludeReleases || ['qr1', 'qr2'];
     return rows.filter((x) => /spx_l2b.*\.fits$/.test(x.uri) && !excluded.some((r) => x.uri.includes(`/${r}/`))).map(normalise);
@@ -106,7 +144,7 @@ ORDER BY p.time_bounds_lower`;
       return t?.images?.map((x) => normalise({ uri: x[0], time_bounds_lower: x[1], energy_bandpassname: `SPHEREx-D${x[2]}` }));
     },
   });
-  return { ...r, adql };
+  return { ...r, adql, via, indexBuilt: via === 'index' ? (await indexMeta())?.built : undefined };
 }
 
 /** Saved (IndexedDB) or built-in image list for a position, without touching the network. */
@@ -132,12 +170,32 @@ function normalise(x) {
   };
 }
 
-/** Newest SPHEREx exposure date ingested at IRSA (signals new data). */
+/** Newest SPHEREx exposure date ingested at IRSA (signals new data); from the image index on static hosts. */
 export async function latestSpherex() {
   return fresh('latest:spherex', async () => {
-    const r = await tap(IRSA_TAP, 'SELECT MAX(time_bounds_lower) AS newest FROM spherex.plane', { timeout: 60000 });
-    return r[0]?.newest ?? null;
+    if (relayCount() > 0) {
+      try { const r = await tap(IRSA_TAP, 'SELECT MAX(time_bounds_lower) AS newest FROM spherex.plane', { timeout: 60000 }); return r[0]?.newest ?? null; }
+      catch (e) { if (!(await indexMeta())) throw e; }
+    }
+    const m = await indexMeta();
+    if (!m) throw new Error('no archive relay or image index is available on this host');
+    return m.newestMjd;
   });
+}
+
+// Built-in catalogue cones for the challenge targets (scripts/overlays.mjs), used when no relay answers.
+const overlayFiles = new Map();
+async function bundledCone(kind, ra, dec, radiusDeg) {
+  const b = await loadBundled();
+  const t = b.targets?.find((x) => Math.abs(x.ra - ra) < 0.01 && Math.abs(x.dec - dec) < 0.01);
+  if (!t) return null;
+  if (!overlayFiles.has(t.id)) overlayFiles.set(t.id, fetch(`./data/overlays/${t.id}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+  const o = await overlayFiles.get(t.id);
+  if (!o?.[kind] || radiusDeg > o.radiusDeg + 1e-6) return null;
+  const cosd = Math.cos((dec * Math.PI) / 180);
+  const rows = o[kind].rows.map((r) => Object.fromEntries(o[kind].cols.map((c, i) => [c, r[i]])))
+    .filter((r) => Math.hypot((r.ra - ra) * cosd, r.dec - dec) <= radiusDeg);
+  return { via: `built-in ${kind === 'gaia' ? 'Gaia DR3' : 'CatWISE2020'} list from IRSA TAP (${o.built.slice(0, 10)})`, rows };
 }
 
 /** Gaia DR3 cone: MAST's Mast.Catalogs.GaiaDR3.Cone (challenge resource 4) first, IRSA's gaia_dr3_source as fallback. */
@@ -163,7 +221,7 @@ FROM gaia_dr3_source WHERE 1 = CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', $
 ORDER BY phot_g_mean_mag`);
       return { via: `IRSA TAP gaia_dr3_source (MAST unavailable: ${e.message})`, rows };
     }
-  });
+  }, { bundled: () => bundledCone('gaia', ra, dec, radiusDeg) });
 }
 
 /** CatWISE2020 (positions at MJD meanobsmjd, motions in arcsec/yr) from IRSA. */
@@ -173,7 +231,7 @@ export async function catwiseCone(ra, dec, radiusDeg, limit = 3000) {
     via: 'IRSA TAP catwise_2020',
     rows: await tap(IRSA_TAP, `SELECT TOP ${limit} source_name, ra, dec, pmra, pmdec, w1mpro, w2mpro, meanobsmjd
 FROM catwise_2020 WHERE 1 = CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${num(ra)}, ${num(dec)}, ${num(radiusDeg, 5)}))`),
-  }));
+  }), { bundled: () => bundledCone('catwise', ra, dec, radiusDeg) });
 }
 
 /** AllWISE point sources from IRSA. */

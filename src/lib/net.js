@@ -20,10 +20,17 @@ export function onNetStatus(fn) { listeners.add(fn); return () => listeners.dele
 function emit() { for (const fn of listeners) fn(netStatus); }
 
 export async function loadConfig() {
-  try {
-    const r = await fetch('./config.json', { cache: 'no-cache' });
-    if (r.ok) config = { ...config, ...(await r.json()) };
-  } catch { /* offline: keep defaults */ }
+  // Start from the stored copy at once (no network wait at startup); refresh it in the background for next time.
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem('skyshift.config') || 'null'); } catch { /* ignore */ }
+  const refresh = fetch('./config.json', { cache: 'no-cache' }).then(async (r) => {
+    if (!r.ok) return null;
+    const j = await r.json();
+    try { localStorage.setItem('skyshift.config', JSON.stringify(j)); } catch { /* storage full */ }
+    return j;
+  }).catch(() => null);
+  const base = stored || (await refresh); // first visit only: wait for the network
+  if (base) config = { ...config, ...base };
   try {
     const extra = JSON.parse(localStorage.getItem('skyshift.relays') || '[]');
     if (Array.isArray(extra) && extra.length) config.relays = [...new Set([...extra, ...config.relays])];
@@ -39,6 +46,8 @@ export async function loadConfig() {
   return config;
 }
 export const getConfig = () => config;
+/** Number of archive relays this host can use (0 on static hosts without an external relay). */
+export const relayCount = () => new Set([preferred, ...config.relays].filter(Boolean)).size;
 
 export function isDirect(url) {
   try {
@@ -60,7 +69,8 @@ function withTimeout(ms, outer) {
  */
 export async function smartFetch(url, opts = {}) {
   const { timeout = 45000, signal, ...init } = opts;
-  if (isDirect(url)) {
+  // outside a browser (build and refresh scripts) there is no CORS restriction: fetch directly
+  if (typeof window === 'undefined' || isDirect(url)) {
     const t = withTimeout(timeout, signal);
     try { return await fetch(url, { ...init, signal: t.signal }); } finally { t.done(); }
   }

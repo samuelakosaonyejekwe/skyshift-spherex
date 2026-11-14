@@ -4,7 +4,7 @@
 // counts, live from IRSA, how many SPHEREx images cover the point under the cursor.
 
 import { h } from './dom.js';
-import { formatRA, formatDec } from '../lib/coords.js';
+import { formatRA, formatDec, niceDate } from '../lib/coords.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const R2 = Math.SQRT2;
@@ -147,7 +147,7 @@ export function skyMap({ targets = [], onPick, onTarget, count, coverage = null,
       im.data[o + 3] = 14 + 96 * t;
     }
     ctx.putImageData(im, 0, 0);
-    legend.replaceChildren(h('span', { class: 'tiny' }, covMode === 'counts' ? 'fewer' : `${new Date((covGrid.mjd0 + lo - 40587) * 864e5).toISOString().slice(0, 10)}`), h('i', { class: 'ramp' }), h('span', { class: 'tiny' }, covMode === 'counts' ? 'more images' : `${new Date((covGrid.mjd0 + hi - 40587) * 864e5).toISOString().slice(0, 10)}`));
+    legend.replaceChildren(h('span', { class: 'tiny' }, covMode === 'counts' ? 'fewer' : niceDate(covGrid.mjd0 + lo)), h('i', { class: 'ramp' }), h('span', { class: 'tiny' }, covMode === 'counts' ? 'more images' : niceDate(covGrid.mjd0 + hi)));
   }
   const legend = h('div', { class: 'row skymap-legend' });
 

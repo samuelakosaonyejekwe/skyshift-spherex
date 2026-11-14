@@ -43,7 +43,7 @@ and the test or evidence that proves it. Status: ✅ done and tested · 🟡 don
 | Target positions from approved sources with proper motion | Gaia DR3 via IRSA/MAST, propagated per date | prebake | ✅ |
 | No logos/trademarks; credits and DOIs | About page credits, DOIs | About | ✅ |
 | Local first; no push until approved | Local git only | `git log` | ✅ |
-| No AI/bot attribution | Build fails on attribution text | `scripts/build.mjs` | ✅ |
+| No assistant or bot attribution | Build fails on attribution text | `scripts/build.mjs` | ✅ |
 | Any device, accessible | Responsive layout, screen-fit viewer, keyboard, ARIA, colour-blind palette, reduced motion, light/dark theme | Laptop/phone screenshots | 🟡 |
 | SkyRequest schema for all inputs | `src/state.js`; text, equations, URL, uploads compile to it | `test/upload.test.mjs` (typed = uploaded) | ✅ |
 | Uploads (common formats), safe | Worker parser with limits | `test/upload.test.mjs` | ✅ |
@@ -51,7 +51,7 @@ and the test or evidence that proves it. Status: ✅ done and tested · 🟡 don
 | Dossier HTML/PDF/ZIP, unique ID | `src/lib/dossier.js` | Dossier E2E (19 files) | ✅ |
 | Install, offline, update pop-up, Back/Forward | PWA shell, SW, toasts, history arrows, swipe | E2E: offline shell, update flow (new cache active after click), arrows via menu links | 🟡 (install on real devices pending) |
 | Validation against catalogues and Astropy | VALIDATION.md, astropy test | Docs/tests | ✅ |
-| Scheduled refresh and two hosts | GitHub Pages live (deploy workflow passing, refresh every 6 h); Cloudflare backup and external relay need the owner's Cloudflare account | GitHub Actions runs | 🟡 |
+| Scheduled refresh and two hosts | GitHub Pages live; refresh every 6 h (data, image index) carried in the Actions cache; image search works there without a relay. overlays for the five targets built in; backup hosts (Cloudflare, Netlify, Vercel) ready to import, with relays fed to the Pages copy by repository variables (docs/HOSTING.md) | GitHub Actions runs | 🟡 (backup hosts need the owner's accounts) |
 | Space Apps terms checked | Apache-2.0 licence, NOTICE with third-party licences, every source cited | LEGAL.md, NOTICE | ✅ |
 | Presentation deliverables (video ≤30 s, ≤7 slides) | `docs/presentation/skyshift-demo-barnard.webm` (28.5 s), `slides.html` (7 slides) | Files | ✅ |
 | Interface text in one file; translations possible | `src/i18n/en.js`, `src/i18n/el.js` (Greek menus and messages) | Settings → language | ✅ |

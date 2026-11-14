@@ -2,7 +2,7 @@
 
 import { h, icon, toast } from '../ui/dom.js';
 import { presets, resolveTarget, presetToTarget, presetById, describePosition, fromGalactic } from '../targets.js';
-import { parsePosition, formatRA, formatDec, mjdToISO } from '../lib/coords.js';
+import { parsePosition, formatRA, formatDec, niceDate } from '../lib/coords.js';
 import { normalise, toParams, parseText, DEFAULTS } from '../state.js';
 import { searchSpherex } from '../lib/tap.js';
 import { splitStatements } from '../lib/expr.js';
@@ -69,14 +69,25 @@ export async function render(root, route, { go }) {
       const hay = `${t.name} ${t.id} ${t.kind}`.toLowerCase();
       if (!v || hay.includes(v) || v.split(/\s+/).every((w) => hay.includes(w))) items.push({ label: t.name, sub: 'Challenge target', pick: () => openTarget(presetToTarget(t), t.id === 'wise0855' ? { dets: [4, 5, 6], mode: 'blink' } : {}) });
     }
+    // Positions from definitions only (no outside catalogue): the ecliptic poles, where SPHEREx's deep fields lie
+    // (the most-imaged spots in the archive), and the Galactic centre (l = 0°, b = 0°).
+    const gc = fromGalactic(0, 0), EP = 90 - 23.4392911;
+    const extras = [
+      { label: 'North ecliptic pole deep field', sub: 'Most-imaged spot', keys: 'deep field north ecliptic pole nep most imaged', icon: 'star', pick: () => openTarget({ ra: 270, dec: +EP.toFixed(5), name: 'North ecliptic pole deep field', source: 'coords' }) },
+      { label: 'South ecliptic pole deep field', sub: 'Deep field', keys: 'deep field south ecliptic pole sep', icon: 'star', pick: () => openTarget({ ra: 90, dec: -EP.toFixed(5), name: 'South ecliptic pole deep field', source: 'coords' }) },
+      { label: 'Galactic centre', sub: 'Milky Way core', keys: 'galactic centre center milky way core sgr', icon: 'star', pick: () => openTarget({ ra: +gc.ra.toFixed(5), dec: +gc.dec.toFixed(5), name: 'Galactic centre', source: 'coords' }) },
+      { label: 'Random field', sub: 'Surprise me', keys: 'random field surprise any', icon: 'dice', pick: () => randomField() },
+      { label: 'Gaia DR3 source ID…', sub: 'Type an ID', keys: 'gaia dr3 source id star', icon: 'info', pick: () => { input.value = 'Gaia DR3 '; input.focus(); updateSuggest(); } },
+    ];
+    for (const x of extras) if (!v || x.keys.includes(v) || v.split(/\s+/).every((w) => x.keys.includes(w))) items.push(x);
     for (const r of recent()) {
       const label = r.name || `${r.ra.toFixed(4)} ${r.dec >= 0 ? '+' : ''}${r.dec.toFixed(4)}`;
-      if (!v || label.toLowerCase().includes(v)) items.push({ label, sub: 'Recent', pick: () => openTarget(r) });
+      if (!v || label.toLowerCase().includes(v)) items.push({ label, sub: 'Recent', icon: 'refresh', pick: () => openTarget(r) });
     }
-    items = items.slice(0, 8);
+    items = items.slice(0, 11);
     sel = -1;
     sugg.replaceChildren(...items.map((it, i) => h('button', { type: 'button', role: 'option', id: `sg${i}`, 'aria-selected': 'false', onmousedown: (e) => { e.preventDefault(); it.pick(); } },
-      icon(it.sub === 'Recent' ? 'refresh' : 'star'), h('span', {}, it.label), h('span', { class: 'k' }, it.sub))));
+      icon(it.icon || 'star'), h('span', {}, it.label), h('span', { class: 'k' }, it.sub))));
     const show = document.activeElement === input && items.length > 0 && !pos;
     sugg.hidden = !show; input.setAttribute('aria-expanded', String(show));
   };
@@ -148,18 +159,14 @@ export async function render(root, route, { go }) {
     targets: list.map((t) => ({ id: t.id, name: t.name, ra: t.ra, dec: t.dec, kind: t.kind.split(/ [—(]/)[0] })),
     onPick: (ra, dec) => openTarget({ ra: +ra.toFixed(5), dec: +dec.toFixed(5), source: 'coords' }),
     onTarget: (t) => { const p = list.find((x) => x.id === t.id); openTarget(presetToTarget(p), PRESET_EXTRA[p.id] || {}); },
-    count: async (ra, dec) => {
-      const { tap, IRSA_TAP } = await import('../lib/tap.js');
-      const r = await tap(IRSA_TAP, `SELECT COUNT(*) AS n FROM spherex.plane WHERE 1 = CONTAINS(POINT('ICRS', ${ra.toFixed(4)}, ${dec.toFixed(4)}), poly)`, { timeout: 30000 });
-      return r[0]?.n ?? 0;
-    },
+    count: async (ra, dec) => (await searchSpherex(ra, dec)).data.length,
   });
 
   const freshness = h('span', { class: 'chip info' }, 'Checking the newest SPHEREx data…');
   const newest = Number(localStorage.getItem('skyshift.newestMjd') || 0);
-  if (newest) freshness.textContent = `Newest SPHEREx images in the archive: ${mjdToISO(newest, false)}`;
+  if (newest) freshness.textContent = `Newest SPHEREx images in the archive: ${niceDate(newest)}`;
   else import('../lib/tap.js').then(async ({ latestSpherex }) => {
-    try { const r = await latestSpherex(); if (r.data) freshness.textContent = `Newest SPHEREx images in the archive: ${mjdToISO(r.data, false)}${r.source !== 'live' ? ' (saved)' : ''}`; }
+    try { const r = await latestSpherex(); if (r.data) freshness.textContent = `Newest SPHEREx images in the archive: ${niceDate(r.data)}${r.source !== 'live' ? ' (saved)' : ''}`; }
     catch { freshness.textContent = 'Archive check unavailable; saved data still works'; }
   });
   const randomField = () => {
@@ -188,8 +195,8 @@ export async function render(root, route, { go }) {
       mission ? h('div', { class: 'stat-grid compact' },
         h('div', { class: 'stat' }, h('b', {}, mission.images.toLocaleString()), h('span', { class: 'tiny' }, 'SPHEREx images in the archive')),
         h('div', { class: 'stat' }, h('b', {}, `${(mission.skyFraction * 100).toFixed(0)}%`), h('span', { class: 'tiny' }, 'of the sky covered')),
-        h('div', { class: 'stat' }, h('b', {}, mjdToISO(mission.lastMjd, false)), h('span', { class: 'tiny' }, 'latest observation in the map')),
-        h('div', { class: 'stat' }, h('b', {}, new Date(mission.built).toISOString().slice(0, 10)), h('span', { class: 'tiny' }, 'map refreshed'))) : null,
+        h('div', { class: 'stat' }, h('b', {}, niceDate(mission.lastMjd)), h('span', { class: 'tiny' }, 'latest observation in the map')),
+        h('div', { class: 'stat' }, h('b', {}, niceDate(mission.built)), h('span', { class: 'tiny' }, 'map refreshed'))) : null,
       h('p', { class: 'tiny', style: { margin: '4px 0 8px' } }, 'Hover to read coordinates and how many SPHEREx images cover that spot. Click anywhere to play it, or a ✦ star for a challenge target. Ctrl + scroll or pinch to zoom.'),
       map,
       h('p', { class: 'tiny map-cap' }, 'Real SPHEREx Data Release 1 all-sky map (IRSA), false colour from three of its 102 bands: blue 0.9 µm, green 2.0 µm, red 4.6 µm. Equatorial grid, RA 12h at the centre; dotted line: the ecliptic, where asteroids and comets travel. ', h('a', { href: '#/sky' }, 'Zoom in with the Sky atlas →'))),

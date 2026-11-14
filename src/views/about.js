@@ -39,7 +39,7 @@ export async function render(root) {
     h('h3', {}, 'WISE'),
     h('p', {}, 'CatWISE2020 and AllWISE catalogues, served by IRSA. Image comparisons with WISE/NEOWISE open in WiseView (Backyard Worlds: Planet 9).'),
     h('h3', {}, 'NEOSSat (Canadian Space Agency)'),
-    h('p', {}, 'NEOSSat observations are listed from the Canadian Astronomy Data Centre (CADC, National Research Council of Canada). NEOSSat astronomy data are released under Canada’s Directive on Open Government.'),
+    h('p', {}, 'NEOSSat observations are listed from the Canadian Astronomy Data Centre (CADC, National Research Council of Canada). NEOSSat astronomy data are released under Canada’s Directive on Open Government and licensed under the Open Government Licence – Canada.'),
     h('h3', {}, 'Software'),
     h('ul', {},
       h('li', {}, 'Aladin Lite (CDS, Strasbourg Astronomical Data Centre), LGPL-3.0-or-later: the sky atlas.'),
@@ -47,7 +47,7 @@ export async function render(root) {
       h('li', {}, 'Everything else is original code written for SkyShift.')),
     h('p', { class: 'tiny' }, 'SkyShift is an independent project. It is not endorsed by NASA, Caltech/IPAC, ESA, the Canadian Space Agency, NRC/CADC or CDS, and it uses none of their logos.'),
     h('h2', {}, 'Privacy'),
-    h('p', {}, 'No accounts, no tracking, no analytics. Searches go from your device to the archives (directly, or via a relay that forwards the request and keeps no logs of it). Saved fields, candidates and cached images stay in your browser’s storage.'),
+    h('p', {}, 'No accounts, no tracking, no analytics. Searches go from your device to the archives (directly, or via a relay that forwards the request and keeps no logs of it), or use the image index published with the app. Saved fields, candidates and cached images stay in your browser’s storage.'),
   ));
   root.append(article);
   return () => article.dispose?.();

@@ -1,0 +1,83 @@
+{
+ "checked": "2026-11-14T14:43:33.482Z",
+ "results": {
+  "irsa": {
+   "ok": true,
+   "ms": 31015,
+   "extra": "Newest SPHEREx exposure in the archive: 2026-10-05 00:01 UTC",
+   "lastModified": null,
+   "lines": [],
+   "error": null
+  },
+  "tutorials": {
+   "ok": true,
+   "ms": 876,
+   "extra": "Latest tutorial repository change: 2026-11-13 — “Merge pull request #417 from xoubish/paperlinks”",
+   "lastModified": null,
+   "lines": [
+    "SPHEREx Tutorial Notebooks - IRSA Notebooks",
+    "SPHEREx Tutorial Notebooks",
+    "SPHEREx observes the sky from roughly 0.75–5.0 µm using a single instrument that provid",
+    "SPHEREx data releases include weekly",
+    "SPHEREx recommends using QR3 and DR1 over QR2.",
+    "SPHEREx point spread function (PSF) information is organized and accessed."
+   ],
+   "error": "GitHub API 403",
+   "stale": "2026-11-14T14:36:20.115Z"
+  },
+  "wiseview": {
+   "ok": false,
+   "ms": 27073,
+   "error": "Timed out"
+  },
+  "gaia": {
+   "ok": true,
+   "ms": 1386,
+   "extra": "MAST Gaia DR3 cone search answered live (1 row test).",
+   "lastModified": null,
+   "lines": [
+    "Gaia DR2 Columns"
+   ],
+   "error": null
+  },
+  "neossat": {
+   "ok": true,
+   "ms": 860,
+   "extra": null,
+   "lastModified": null,
+   "lines": [],
+   "error": null
+  },
+  "cadc": {
+   "ok": true,
+   "ms": 8621,
+   "extra": "Newest NEOSSat observation at CADC: 2026-11-08 01:43 UTC (363790)",
+   "lastModified": null,
+   "lines": [],
+   "error": null
+  },
+  "neotut": {
+   "ok": true,
+   "ms": 661,
+   "extra": "Latest change: 2025-10-03 — “Update README.md”",
+   "lastModified": null,
+   "lines": [],
+   "error": "GitHub API 403",
+   "stale": "2026-11-14T14:36:20.115Z"
+  },
+  "neodata": {
+   "ok": true,
+   "ms": 1740,
+   "extra": "NEOSSAT - Astronomy Data · 8 resources · licence: Open Government Licence - Canada",
+   "lastModified": "2026-06-11 (catalogue record)",
+   "lines": [
+    "CADC Data Archive",
+    "Astronomy Data",
+    "NEOSSat FITS Image User’s Guide",
+    "XML",
+    "NEOSSat supporting document"
+   ],
+   "error": null
+  }
+ }
+}

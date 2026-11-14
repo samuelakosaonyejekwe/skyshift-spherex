@@ -1,7 +1,9 @@
-# Keeps data fresh with no personal computer switched on: rebuilds the pre-built indexes from
-# the challenge resources (IRSA) and deploys the same build to GitHub Pages (primary) and
-# Cloudflare Pages (backup). Build artefacts are deployed directly; nothing is committed.
-# The Cloudflare backup step runs only when the secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are set.
+# Keeps data fresh with no personal computer switched on: rebuilds the pre-built data from the
+# challenge resources (IRSA) and deploys the same build to GitHub Pages (primary) and Cloudflare
+# Pages (backup, only when the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets are set).
+# Nothing is committed: refreshed data and the image index (data/idx/, too large for git) are
+# carried between runs in the Actions cache, so a push never redeploys older data than the last
+# scheduled refresh, and the index is rebuilt only when it is missing or on the schedule.
 name: refresh-and-deploy
 on:
   push: { branches: [main] }
@@ -12,12 +14,21 @@ concurrency: { group: pages, cancel-in-progress: false }
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     env:
       CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - name: Restore the last refreshed data and image index
+        uses: actions/cache/restore@v4
+        with:
+          path: .data-cache
+          key: skyshift-data-${{ github.run_id }}
+          restore-keys: skyshift-data-
+      - name: Use the cached data where it is newer than the committed files
+        run: node scripts/carry-data.mjs restore
       - name: Refresh data from IRSA (scheduled and manual runs; keeps previous files if a source is down)
         if: github.event_name != 'push'
         run: |
@@ -25,7 +36,20 @@ jobs:
           node scripts/mission.mjs || true
           ALLSKY_W=1000 node scripts/allsky.mjs || true
           ALLSKY_W=1600 node scripts/allsky.mjs || true
+          GITHUB_TOKEN=${{ github.token }} NODE_EXTRA_CA_CERTS=relay/certs/entrust-ov-tls-issuing-rsa-ca-2.pem node scripts/sources.mjs || true
+      - name: Build the image index (scheduled and manual runs, or when none is cached)
+        run: |
+          if [ "${{ github.event_name }}" != "push" ] || [ ! -f data/idx/meta.json ]; then INDEX_PARALLEL=4 node scripts/index.mjs; fi
+      - name: Keep refreshed data and index for later runs
+        id: carry
+        run: node scripts/carry-data.mjs save
+      - uses: actions/cache/save@v4
+        if: steps.carry.outputs.changed == 'true'
+        with:
+          path: .data-cache
+          key: skyshift-data-${{ github.run_id }}
       - run: node scripts/build.mjs
+        env: { RELAY_URLS: '${{ vars.RELAY_URLS }}', MIRROR_URLS: '${{ vars.MIRROR_URLS }}' }
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
       - name: Deploy backup to Cloudflare Pages

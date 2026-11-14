@@ -7,14 +7,15 @@ Built for the 2026 NASA Space Apps Challenge "Planet X and SPHEREx" by team **Sk
 
 - Live app: https://samuelakosaonyejekwe.github.io/skyshift-spherex/
 - Code: https://github.com/samuelakosaonyejekwe/skyshift-spherex
-- Backup mirror: Cloudflare Pages (to be set up; needs a Cloudflare account)
+- Backup hosts: Cloudflare Pages, Netlify or Vercel, each a one-time import by the owner ([docs/HOSTING.md](docs/HOSTING.md))
 
-On GitHub Pages there is no search relay yet. What works there: the five challenge targets (built-in image lists, with
-pixels streamed live from IRSA's cloud bucket), the Explore sky map and coverage, Live (newest frames, read straight from
-IRSA's bucket), Mission statistics (pre-built from IRSA), the Sky atlas imagery, saved fields, uploads, equations and dossiers.
-What needs a relay host (see `wrangler.toml`): searching new positions, Gaia and WISE overlays, Gaia ID look-ups, NEOSSat
-listings, Sky atlas catalogues and the live data-freshness checks; without it the app says so and uses saved data.
 - Local: `npm start`, then open http://localhost:8080/
+
+On GitHub Pages (no relay): searching **any** position works through a pre-built index of every SPHEREx image
+(rebuilt from IRSA every 6 hours), with pixels streamed live from IRSA's cloud bucket; so do the Explore map, Live,
+Mission statistics, the Sky atlas imagery, saved fields, uploads, equations and dossiers. Services that allow no direct
+browser access need a relay host (see `wrangler.toml`): Gaia and WISE overlays, Gaia ID look-ups, NEOSSat listings, Sky
+atlas catalogues and the live data-freshness checks. Without one the app says so and the images still work.
 
 ## What you can do
 
@@ -38,9 +39,12 @@ pop-up offers updates when a new version or new SPHEREx data is available.
 ## How it gets fresh data without anyone's computer switched on
 
 - **Image pixels** stream from IRSA's public cloud copy of SPHEREx (AWS bucket `nasa-irsa-spherex`) straight to each
-  visitor's browser using HTTP byte ranges: about 0.06 MB per image for a 6′ field instead of a 65 MB file. Requests are
+  visitor's browser using HTTP byte ranges: about 0.24 MB per image for the default 6′ field instead of a 65 MB file (measured; see docs/VALIDATION.md). Requests are
   spread across the bucket's CORS-enabled hostnames.
-- **Searches and catalogues** (IRSA TAP, MAST, CADC) do not allow direct browser calls, so they go through a tiny stateless
+- **Image searches** use IRSA TAP live through the relay where one is available; otherwise a static index of every
+  SPHEREx image (`scripts/index.mjs`, `src/lib/skyindex.js`), rebuilt every 6 hours by the scheduled workflow and kept in
+  the Actions cache (never committed).
+- **Catalogues** (IRSA TAP, MAST, CADC) do not allow direct browser calls, so they go through a tiny stateless
   allow-listed relay (`relay/core.mjs`). The same code runs on the local server, Cloudflare Pages/Workers, Netlify Edge,
   Vercel Edge and Deno Deploy; several relays can be listed in `config.json` and the app fails over between them.
 - **Fallbacks**: every result is cached on the device (IndexedDB); built-in image lists for the five targets
@@ -74,6 +78,7 @@ npm run build      # build only (syntax check, size budget, attribution check)
 node scripts/prebake.mjs    # refresh target image lists (data/targets.json)
 node scripts/allsky.mjs     # rebuild the all-sky map from IRSA's HiPS
 node scripts/mission.mjs    # rebuild coverage map and mission statistics
+node scripts/index.mjs      # build the static image index (data/idx/, ~40 min, not committed)
 node scripts/validate.mjs   # five-target validation report
 ```
 

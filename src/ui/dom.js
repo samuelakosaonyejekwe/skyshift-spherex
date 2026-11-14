@@ -1,6 +1,7 @@
 // Conditional UI pieces are written as `cond ? el : null`; make append/replaceChildren skip
 // null/false/undefined instead of printing them as text.
-for (const name of ['append', 'replaceChildren', 'prepend']) {
+// (guarded so the module also loads where there is no DOM, e.g. the build scripts)
+if (typeof Element !== 'undefined') for (const name of ['append', 'replaceChildren', 'prepend']) {
   for (const proto of [Element.prototype, DocumentFragment.prototype]) {
     const orig = proto[name];
     proto[name] = function (...nodes) { return orig.apply(this, nodes.flat(Infinity).filter((n) => n != null && n !== false)); };
@@ -50,7 +51,9 @@ const ICONS = {
 export function icon(name) {
   const NS = 'http://www.w3.org/2000/svg';
   const s = document.createElementNS(NS, 'svg');
-  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+  // default size (CSS rules override presentation attributes), so an icon never grows to fill its container
+  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true'); s.setAttribute('width', '1.2em'); s.setAttribute('height', '1.2em'); s.setAttribute('class', 'ic');
+  for (const [k, v] of [['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '1.9'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round']]) s.setAttribute(k, v);
   const p = document.createElementNS(NS, 'path');
   p.setAttribute('d', ICONS[name] || ICONS.info);
   if (name === 'play' || name === 'pause') { p.setAttribute('fill', 'currentColor'); p.setAttribute('stroke', 'none'); }
@@ -121,6 +124,47 @@ export function downlinkMbps() {
  * and cards are placed in reading order into whichever column is currently shortest (masonry),
  * re-balanced when the width changes. No empty gaps under short columns.
  */
+/** Deal measured cards ({c, hgt}) into cols columns so the columns end as level as possible: tallest first into
+ * the shortest column, then single-card moves and swaps between the tallest and shortest columns while that
+ * narrows the gap. Reading order is kept inside each column by the caller. */
+function balanceColumns(sized, cols, gap = 14) {
+  const b = Array.from({ length: cols }, () => []), hs = new Array(cols).fill(0);
+  for (const it of [...sized].sort((x, y) => y.hgt - x.hgt)) { let k = 0; for (let j = 1; j < cols; j++) if (hs[j] < hs[k]) k = j; b[k].push(it); hs[k] += it.hgt + gap; }
+  for (let round = 0; round < 60 && cols > 1; round++) {
+    let hi = 0, lo = 0; for (let j = 1; j < cols; j++) { if (hs[j] > hs[hi]) hi = j; if (hs[j] < hs[lo]) lo = j; }
+    const spread = hs[hi] - hs[lo];
+    let best = null;
+    for (const a of b[hi]) {
+      const d = a.hgt + gap; // move a from hi to lo
+      const s1 = Math.abs(spread - 2 * d); if (s1 < spread && (!best || s1 < best.s)) best = { s: s1, a };
+      for (const c of b[lo]) { const e = a.hgt - c.hgt; if (e <= 0) continue; const s2 = Math.abs(spread - 2 * e); if (s2 < spread && (!best || s2 < best.s)) best = { s: s2, a, c }; }
+    }
+    if (!best || spread - best.s < 4) break;
+    b[hi].splice(b[hi].indexOf(best.a), 1); b[lo].push(best.a); hs[hi] -= best.a.hgt + gap; hs[lo] += best.a.hgt + gap;
+    if (best.c) { b[lo].splice(b[lo].indexOf(best.c), 1); b[hi].push(best.c); hs[lo] -= best.c.hgt + gap; hs[hi] += best.c.hgt + gap; }
+  }
+  return b.map((col) => col.map((it) => it.c));
+}
+
+/** Measure the cards at the column width for n and n-1 columns and return the layout that leaves the least empty
+ * space at the column bottoms (as a share of the tallest column): { cols, buckets }. */
+function bestLayout(cards, width, maxCols, gap = 14) {
+  let best = null;
+  for (const cols of [maxCols, maxCols - 1].filter((n) => n >= 1)) {
+    const colW = (width - gap * (cols - 1)) / cols;
+    const meas = h('div', { style: { position: 'absolute', visibility: 'hidden', left: '-9999px', width: `${colW}px` } });
+    document.body.appendChild(meas);
+    const sized = cards.map((c) => { meas.appendChild(c); return { c, hgt: c.offsetHeight || 200 }; });
+    meas.remove();
+    const buckets = balanceColumns(sized, cols, gap);
+    const hs = buckets.map((b) => b.reduce((t, c) => t + (sized.find((x) => x.c === c)?.hgt || 0) + gap, 0));
+    const waste = hs.reduce((t, x) => t + (Math.max(...hs) - x), 0) / (Math.max(...hs) * cols || 1);
+    // prefer more columns unless fewer clearly leave less empty space
+    if (!best || waste < best.waste - 0.04) best = { cols, buckets, waste };
+  }
+  return best;
+}
+
 export function cardify(article, { keep = 0, minWidth = 380 } = {}) {
   const kids = [...article.childNodes];
   const head = [], groups = [];
@@ -143,26 +187,12 @@ export function cardify(article, { keep = 0, minWidth = 380 } = {}) {
   cards.forEach((c, i) => { c.dataset.order = String(i); });
   const grid = h('div', { class: 'masonry' });
   article.replaceChildren(...head, grid);
-  let lastCols = 0;
   const layout = () => {
     const width = grid.clientWidth || article.clientWidth || window.innerWidth;
     const cols = Math.max(1, Math.min(4, Math.floor((width + 14) / (minWidth + 14))));
-    if (cols === lastCols && grid.children.length) {
-      // heights may have changed (fonts, images): re-balance only if needed
-    }
-    lastCols = cols;
-    const colEls = Array.from({ length: cols }, () => h('div', { class: 'masonry-col' }));
+    const { cols: n, buckets } = bestLayout(cards, width, cols);
+    const colEls = Array.from({ length: n }, () => h('div', { class: 'masonry-col' }));
     grid.replaceChildren(...colEls);
-    // measure, then place largest first into the shortest column (balanced), keeping reading order inside each column
-    const meas = h('div', { style: { position: 'absolute', visibility: 'hidden', width: `${(width - 14 * (cols - 1)) / cols}px` } });
-    document.body.appendChild(meas);
-    const sized = cards.map((c) => { meas.appendChild(c); const hgt = c.offsetHeight; return { c, hgt }; });
-    meas.remove();
-    const heights = new Array(cols).fill(0), buckets = Array.from({ length: cols }, () => []);
-    for (const it of [...sized].sort((a, b) => b.hgt - a.hgt)) {
-      let k = 0; for (let j = 1; j < cols; j++) if (heights[j] < heights[k]) k = j;
-      buckets[k].push(it.c); heights[k] += it.hgt + 14;
-    }
     buckets.forEach((b, k) => b.sort((x, y) => x.dataset.order - y.dataset.order).forEach((c) => colEls[k].appendChild(c)));
   };
   requestAnimationFrame(layout);
@@ -179,13 +209,9 @@ export function masonry(container, cards, minWidth = 320) {
   const lay = () => {
     const width = container.clientWidth || window.innerWidth;
     const cols = Math.max(1, Math.min(4, Math.floor((width + 14) / (minWidth + 14))));
-    const colEls = Array.from({ length: cols }, () => h('div', { class: 'masonry-col' }));
-    const heights = new Array(cols).fill(0);
     cards.forEach((c, i) => { c.dataset.order = String(i); });
-    const sized = cards.map((c) => ({ c, hgt: c.offsetHeight || 200 }));
-    const buckets = Array.from({ length: cols }, () => []);
-    // reading order: each card goes to the currently shortest column (first row reads left to right)
-    for (const it of sized) { let k = 0; for (let j = 1; j < cols; j++) if (heights[j] < heights[k] - 4) k = j; buckets[k].push(it.c); heights[k] += it.hgt + 14; }
+    const { cols: n, buckets } = bestLayout(cards, width, cols);
+    const colEls = Array.from({ length: n }, () => h('div', { class: 'masonry-col' }));
     buckets.forEach((b, k) => b.sort((x, y) => x.dataset.order - y.dataset.order).forEach((c) => colEls[k].appendChild(c)));
     container.classList.add('masonry');
     container.replaceChildren(...colEls);

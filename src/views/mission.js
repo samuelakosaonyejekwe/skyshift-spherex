@@ -2,7 +2,7 @@
 // aggregates, plus the live newest-exposure date), and data freshness of every source.
 
 import { h } from '../ui/dom.js';
-import { mjdToISO } from '../lib/coords.js';
+import { niceDate } from '../lib/coords.js';
 import { DETECTORS } from '../lib/spherex.js';
 import * as sources from './sources.js';
 
@@ -22,7 +22,7 @@ function bars(values, { color = (i) => 'var(--accent-2)', label = (i) => '', tip
     const t = document.createElementNS(NS, 'title'); t.textContent = tip(i); r.appendChild(t);
     svg.appendChild(r);
     const l = label(i);
-    if (l) { const tx = document.createElementNS(NS, 'text'); tx.setAttribute('x', String(i * bw + bw / 2)); tx.setAttribute('y', String(H + 16)); tx.setAttribute('text-anchor', 'middle'); tx.setAttribute('class', 'chart-tick'); tx.textContent = l; svg.appendChild(tx); }
+    if (l) { const tx = document.createElementNS(NS, 'text'); tx.setAttribute('x', String(Math.max(2, Math.min(W - 2, i * bw + bw / 2)))); tx.setAttribute('y', String(H + 16)); const cx = i * bw + bw / 2; tx.setAttribute('text-anchor', cx < 40 ? 'start' : cx > W - 40 ? 'end' : 'middle'); /* edge labels stay inside the chart */ tx.setAttribute('class', 'chart-tick'); tx.textContent = l; svg.appendChild(tx); }
   });
   return svg;
 }
@@ -40,14 +40,14 @@ export async function render(root, route, ctx) {
         stat(m.images.toLocaleString(), 'spectral images in the archive (one per detector per exposure)'),
         stat(`${(m.skyFraction * 100).toFixed(1)}%`, 'of the sky imaged'),
         stat(m.days.toLocaleString(), 'days with observations'),
-        stat(mjdToISO(m.firstMjd, false), 'first survey image'),
-        stat(mjdToISO(m.lastMjd, false), 'latest image in these statistics'),
+        stat(niceDate(m.firstMjd), 'first survey image'),
+        stat(niceDate(m.lastMjd), 'latest image in these statistics'),
         stat('102', 'infrared colours (0.75–5 µm, 6 detector arrays × 17 channels)')),
       h('section', { class: 'card', style: { marginBottom: '14px' } },
         h('h2', {}, 'Images taken per day'),
         bars(m.perDay.map((x) => x[1]), {
-          tip: (i) => `${mjdToISO(m.perDay[i][0], false)}: ${m.perDay[i][1].toLocaleString()} images`,
-          label: (i) => (i % Math.ceil(m.perDay.length / 8) === 0 ? mjdToISO(m.perDay[i][0], false).slice(0, 7) : ''),
+          tip: (i) => `${niceDate(m.perDay[i][0])}: ${m.perDay[i][1].toLocaleString()} images`,
+          label: (i) => (i % Math.ceil(m.perDay.length / 8) === 0 ? niceDate(m.perDay[i][0], true) : ''),
         })),
       h('section', { class: 'card', style: { marginBottom: '14px' } },
         h('h2', {}, '102 colours of infrared, in 6 detector arrays'),

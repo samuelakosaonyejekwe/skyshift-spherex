@@ -8,7 +8,7 @@ import { searchSpherex, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossa
 import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE } from '../lib/engine.js';
 import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName } from '../lib/render.js';
 import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
-import { formatRA, formatDec, propagate, apparent, mjdToYear, mjdToISO, separation, toGalactic } from '../lib/coords.js';
+import { formatRA, formatDec, propagate, apparent, mjdToYear, mjdToISO, niceDate, niceDateTime, separation, toGalactic } from '../lib/coords.js';
 import { presetById, presetToTarget, suggestFor, describePosition } from '../targets.js';
 import { scatterChart, svgString } from '../ui/charts.js';
 import { pushRecent } from './home.js';
@@ -189,7 +189,7 @@ export async function render(root, route, { go }) {
         toast({ title: 'Showing the saved image list', text: `The live archive search did not answer (${e.message}). ${quick.ts ? 'List saved ' + new Date(quick.ts).toLocaleString() + '.' : 'Built-in list.'}`, glyph: '📦', timeout: 7000 });
         return;
       }
-      setLoad(navigator.onLine ? `Searching a new position needs SkyShift's archive relay, which is not available on this host right now (${e.message}). The five challenge targets, saved fields and every field you have opened before still work.` : 'You are offline and this field is not saved on this device yet.', 0);
+      setLoad(navigator.onLine ? `The image search did not answer (${e.message}). The five challenge targets, saved fields and every field you have opened before still work; try again shortly.` : 'You are offline and this field is not saved on this device yet.', 0);
       loading.querySelector('.boot-orbit').hidden = true;
       loading.firstChild.append(h('button', { class: 'btn primary', style: { marginTop: '10px' }, onclick: () => load() }, 'Retry'));
       return;
@@ -292,7 +292,7 @@ export async function render(root, route, { go }) {
     const eta = rate ? (remaining * per) / rate * 1000 : null;
     statusLine.replaceChildren();
     if (final && S.moreAvailable > 0) statusLine.append(h('button', { class: 'btn small', style: { marginRight: '8px' }, onclick: () => { S.extraImages = (S.extraImages || 0) + Math.max(60, getSettings().maxImages || 60); stream(S.loadId); } }, `Load ${Math.min(S.moreAvailable, Math.max(60, getSettings().maxImages || 60))} more images`), h('button', { class: 'btn small ghost', style: { marginRight: '8px' }, onclick: () => { S.extraImages = Infinity; stream(S.loadId); } }, `all ${S.moreAvailable + total}`));
-    statusLine.append(`${done}/${total} exposures loaded${S.moreAvailable > 0 ? ` (of ${S.moreAvailable + total} available)` : ''}${S.skipped ? ` (${S.skipped} skipped: outside field or unreadable)` : ''} · ${fmtBytes(S.bytes)} transferred${rate ? ` at ${fmtBytes(rate)}/s` : ''}${!final && eta ? ` · about ${fmtDur(eta)} left` : ''} · source: ${S.search?.source === 'live' ? 'IRSA live' : S.search?.source || '…'}${S.search?.source === 'live' ? '' : ' (not live)'}`);
+    statusLine.append(`${done}/${total} exposures loaded${S.moreAvailable > 0 ? ` (of ${S.moreAvailable + total} available)` : ''}${S.skipped ? ` (${S.skipped} skipped: outside field or unreadable)` : ''} · ${fmtBytes(S.bytes)} transferred${rate ? ` at ${fmtBytes(rate)}/s` : ''}${!final && eta ? ` · about ${fmtDur(eta)} left` : ''} · source: ${S.search?.source === 'live' ? (S.search.via === 'index' ? `IRSA image index (${S.search.indexBuilt ? new Date(S.search.indexBuilt).toLocaleString() : 'pre-built'})` : 'IRSA live') : S.search?.source || '…'}${S.search?.source === 'live' ? '' : ' (not live)'}`);
   }
 
   // ------------------------------------------------------------------ display building
@@ -597,7 +597,7 @@ export async function render(root, route, { go }) {
     const wls = fr.group.map((e) => e.meta.wavelength).filter(Number.isFinite);
     hud.append(
       h('span', { class: 'chip' }, req.mode === 'blink' ? (S.blinkPhase % 2 ? 'B · later' : 'A · earlier') : `Frame ${i + 1}/${D.frames.length}`),
-      h('span', { class: 'chip' }, mjdToISO(frameMjd(i), req.group === 'exposure')),
+      h('span', { class: 'chip' }, (req.group === 'exposure' ? niceDateTime(frameMjd(i)) : niceDate(frameMjd(i)))),
       h('span', { class: 'chip' }, dets.map((d) => 'D' + d).join(' ')),
       wls.length ? h('span', { class: 'chip' }, wls.length === 1 ? `λ ${wls[0].toFixed(3)} µm` : `λ ${Math.min(...wls).toFixed(2)}–${Math.max(...wls).toFixed(2)} µm`) : null,
       h('span', { class: 'chip' }, `${fr.group.length} exp.`),
@@ -611,7 +611,7 @@ export async function render(root, route, { go }) {
     const fr = D.frames[i];
     const ms = fr.group.map((e) => e.meta.mjd);
     const rel = [...new Set(fr.group.map((e) => e.meta.release.toUpperCase()))].join(', ');
-    frameLabel.textContent = `${MODE_INFO[req.mode][0]} · ${req.group === 'survey' ? 'six-month survey co-add' : req.group === 'day' ? 'one-day co-add' : 'single exposure'} · ${mjdToISO(Math.min(...ms), false)}${ms.length > 1 ? ` to ${mjdToISO(Math.max(...ms), false)}` : ''} (MJD ${Math.min(...ms).toFixed(2)}) · ${rel}${fr.note ? ' · ' + fr.note : ''}`;
+    frameLabel.textContent = `${MODE_INFO[req.mode][0]} · ${req.group === 'survey' ? 'six-month survey co-add' : req.group === 'day' ? 'one-day co-add' : 'single exposure'} · ${niceDate(Math.min(...ms))}${ms.length > 1 ? ` to ${niceDate(Math.max(...ms))}` : ''} (MJD ${Math.min(...ms).toFixed(2)}) · ${rel}${fr.note ? ' · ' + fr.note : ''}`;
   }
   function updateTimeline() {
     const D = S.display;
@@ -623,7 +623,7 @@ export async function render(root, route, { go }) {
     if (!N) return;
     const ms = D.frames.map((_, i) => frameMjd(i));
     const t0 = Math.min(...ms), t1 = Math.max(...ms);
-    ms.forEach((m, i) => ticks.append(h('i', { class: i === S.frame ? 'cur' : '', style: { left: `${t1 > t0 ? ((m - t0) / (t1 - t0)) * 100 : 50}%` }, title: mjdToISO(m, false) })));
+    ms.forEach((m, i) => ticks.append(h('i', { class: i === S.frame ? 'cur' : '', style: { left: `${t1 > t0 ? ((m - t0) / (t1 - t0)) * 100 : 50}%` }, title: niceDate(m) })));
   }
 
   // ------------------------------------------------------------------ playback
@@ -900,7 +900,7 @@ export async function render(root, route, { go }) {
     const D = S.display;
     const cur = D.blink || [0, D.frames.length - 1];
     return h('select', { onchange: (e) => { const b = [...cur]; b[k] = Number(e.target.value); commit({ blink: b }); } },
-      D.frames.map((_, i) => h('option', { value: i, selected: cur[k] === i }, `${i + 1}: ${mjdToISO(frameMjd(i), false)}`)));
+      D.frames.map((_, i) => h('option', { value: i, selected: cur[k] === i }, `${i + 1}: ${niceDate(frameMjd(i))}`)));
   }
   function segment(opts, value, on) {
     return h('div', { class: 'seg', role: 'group' }, opts.map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(value === v), onclick: () => on(v) }, l)));
@@ -949,7 +949,7 @@ export async function render(root, route, { go }) {
       title: 'Spectrum', xLabel: 'Wavelength (µm)', yLabel: 'Flux density (µJy)',
       empty: S.frames.size ? 'No valid measurements (target saturated, outside the images or masked)' : 'Spectrum appears as exposures load…',
       points: pts.map((p) => ({ x: p.wavelength, y: p.flux, err: p.err, color: EPOCH_COLORS[(ep.get(p.mjd) || 0) % EPOCH_COLORS.length], hollow: questionable(p),
-        tip: `λ ${p.wavelength.toFixed(3)} µm (D${p.det})\n${p.flux.toFixed(0)} ± ${p.err.toFixed(0)} µJy\n${mjdToISO(p.mjd)}\nMJD ${p.mjd.toFixed(3)} · ${String(p.release).toUpperCase()}${p.flags ? '\nflags: ' + decodeFlags(p.flags).join(', ') : ''}`, ref: p })),
+        tip: `λ ${p.wavelength.toFixed(3)} µm (D${p.det})\n${p.flux.toFixed(0)} ± ${p.err.toFixed(0)} µJy\n${niceDateTime(p.mjd)}\nMJD ${p.mjd.toFixed(3)} · ${String(p.release).toUpperCase()}${p.flags ? '\nflags: ' + decodeFlags(p.flags).join(', ') : ''}`, ref: p })),
       markers: LINES,
       bands: DETECTORS.map((d) => ({ x0: d.range[0], x1: d.range[1], color: getComputedStyle(document.documentElement).getPropertyValue(`--d${d.id}`) || '#888', label: `D${d.id}`, short: `D${d.id}` })),
       xRange: [0.72, 5.03],
@@ -963,7 +963,7 @@ export async function render(root, route, { go }) {
       xFormat: (v) => v.toFixed(2),
       empty: 'Light curve appears as exposures load…',
       points: ptsR.map((p) => ({ x: mjdToYear(p.mjd), y: rel ? p.rel : p.flux, err: rel ? p.relErr : p.err, color: getComputedStyle(document.documentElement).getPropertyValue(`--d${p.det}`).trim() || '#ccc', hollow: questionable(p),
-        tip: `${mjdToISO(p.mjd)} (MJD ${p.mjd.toFixed(3)})\nD${p.det} λ ${p.wavelength.toFixed(3)} µm\n${p.flux.toFixed(0)} ± ${p.err.toFixed(0)} µJy${rel ? `\nrelative ${p.rel.toFixed(3)}` : ''}`, ref: p })),
+        tip: `${niceDateTime(p.mjd)} (MJD ${p.mjd.toFixed(3)})\nD${p.det} λ ${p.wavelength.toFixed(3)} µm\n${p.flux.toFixed(0)} ± ${p.err.toFixed(0)} µJy${rel ? `\nrelative ${p.rel.toFixed(3)}` : ''}`, ref: p })),
       legend: DETECTORS.filter((d) => ptsR.some((p) => p.det === d.id)).map((d) => ({ color: getComputedStyle(document.documentElement).getPropertyValue(`--d${d.id}`).trim(), label: `D${d.id}` })),
       onPoint: (pt) => focusExposure(pt.ref.uri),
     };
@@ -1030,7 +1030,7 @@ export async function render(root, route, { go }) {
       segment([['rel', 'Relative to average spectrum'], ['abs', 'Flux (µJy)']], rel ? 'rel' : 'abs', (v) => { S.relLC = v === 'rel'; renderSide(); }),
       host,
       eb.epochs.length > 1 ? h('table', { class: 'table' }, h('tr', {}, h('th', {}, 'Survey pass'), h('th', {}, 'Dates'), h('th', {}, 'Mean relative brightness'), h('th', {}, 'N')),
-        eb.epochs.map((e, i) => h('tr', {}, h('td', {}, i + 1), h('td', {}, `${mjdToISO(e.t0, false)} – ${mjdToISO(e.t1, false)}`), h('td', {}, `${((e.mean - 1) * 100).toFixed(1)}% ± ${(e.err * 100).toFixed(1)}%`), h('td', {}, e.n)))) : null,
+        eb.epochs.map((e, i) => h('tr', {}, h('td', {}, i + 1), h('td', {}, `${niceDate(e.t0)} – ${niceDate(e.t1)}`), h('td', {}, `${((e.mean - 1) * 100).toFixed(1)}% ± ${(e.err * 100).toFixed(1)}%`), h('td', {}, e.n)))) : null,
       eb.change ? h('div', { class: eb.change.sig >= 3 ? 'notice warn' : 'notice' }, eb.change.sig >= 3
         ? `Brightness-change candidate: ${(eb.change.delta * 100).toFixed(1)}% ± ${(eb.change.err * 100).toFixed(1)}% between survey passes (${eb.change.sig.toFixed(1)}σ). Check flags and neighbours before trusting it.`
         : `No significant change between survey passes (${(eb.change.delta * 100).toFixed(1)}% ± ${(eb.change.err * 100).toFixed(1)}%, ${eb.change.sig.toFixed(1)}σ).`) : null,
@@ -1060,7 +1060,7 @@ export async function render(root, route, { go }) {
     const N = n();
     const grid = h('div', { class: 'thumbs' });
     D.frames.slice(0, 400).forEach((fr, i) => {
-      const c = h('canvas', { width: N, height: N, class: 'thumb' + (i === currentIndex() ? ' cur' : ''), title: `${i + 1}: ${mjdToISO(frameMjd(i), false)}`, tabindex: 0, role: 'button', 'aria-label': `Frame ${i + 1}, ${mjdToISO(frameMjd(i), false)}` });
+      const c = h('canvas', { width: N, height: N, class: 'thumb' + (i === currentIndex() ? ' cur' : ''), title: `${i + 1}: ${niceDate(frameMjd(i))}`, tabindex: 0, role: 'button', 'aria-label': `Frame ${i + 1}, ${niceDate(frameMjd(i))}` });
       const im = new ImageData(N, N);
       if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch });
       else if (D.kind === 'diff') paintDiff(fr.data, im.data, D.lims, { invert: req.invert });
@@ -1068,7 +1068,7 @@ export async function render(root, route, { go }) {
       c.getContext('2d').putImageData(im, 0, 0);
       const pick = () => { stopPlay(); if (req.mode === 'blink') commit({ mode: 'movie' }); S.frame = i; slider.value = i; draw(); renderSide(); };
       c.addEventListener('click', pick); c.addEventListener('keydown', (e) => { if (e.key === 'Enter') pick(); });
-      grid.append(h('figure', { class: 'thumb-fig' }, c, h('figcaption', { class: 'tiny' }, `${i + 1} · ${mjdToISO(frameMjd(i), false)}`)));
+      grid.append(h('figure', { class: 'thumb-fig' }, c, h('figcaption', { class: 'tiny' }, `${i + 1} · ${niceDate(frameMjd(i))}`)));
     });
     tabBody.append(h('p', { class: 'tiny' }, `${D.frames.length} frames with the shared stretch. Click one to show it.`), grid);
   }
@@ -1096,7 +1096,7 @@ export async function render(root, route, { go }) {
       h('div', { class: 'explist', style: { marginTop: '10px' } }, h('table', {},
         h('tr', {}, ['Date (UTC)', 'Det', 'λ µm', 'Release', 'QA', 'Files'].map((x) => h('th', {}, x))),
         fr.group.map((e) => h('tr', {},
-          h('td', {}, mjdToISO(e.meta.mjd)), h('td', {}, `D${e.meta.detector}`), h('td', {}, e.meta.wavelength?.toFixed(3) ?? '–'),
+          h('td', {}, niceDateTime(e.meta.mjd)), h('td', {}, `D${e.meta.detector}`), h('td', {}, e.meta.wavelength?.toFixed(3) ?? '–'),
           h('td', {}, String(e.meta.release).toUpperCase()), h('td', {}, e.meta.header?.L2DQAFLG || '–'),
           h('td', {}, h('a', { href: `${uriToIbe(e.meta.uri)}?center=${cra.toFixed(6)},${cdec.toFixed(6)}d&size=${(req.fov / 60).toFixed(4)}`, target: '_blank', rel: 'noopener', title: 'FITS cutout from the IRSA cutout service' }, 'cutout'), ' · ',
             h('a', { href: uriToS3(e.meta.uri), target: '_blank', rel: 'noopener', title: 'Full spectral image (about 65 MB)' }, 'full')))))),
@@ -1127,7 +1127,7 @@ export async function render(root, route, { go }) {
       neo.replaceChildren(
         h('p', { class: 'tiny' }, rows.length ? `${rows.length} NEOSSat observations within 0.5° (CADC archive, ${r.data.via}${r.source !== 'live' ? ', saved copy' : ''}). NEOSSat is an optical microsatellite (15-cm telescope, 3″ pixels); its images are separate from SPHEREx and are not mixed into the movie.` : 'NEOSSat has not observed within 0.5° of this position (its fields are sparse).'),
         rows.length ? h('div', { class: 'explist' }, h('table', {}, h('tr', {}, ['Date (UTC)', 'Target', 'Exp. s', 'Data'].map((x) => h('th', {}, x))),
-          rows.slice(0, 80).map((o) => h('tr', {}, h('td', {}, mjdToISO(o.t_min)), h('td', {}, String(o.target_name ?? '')), h('td', {}, o.t_exptime ?? '–'),
+          rows.slice(0, 80).map((o) => h('tr', {}, h('td', {}, niceDateTime(o.t_min)), h('td', {}, String(o.target_name ?? '')), h('td', {}, o.t_exptime ?? '–'),
             h('td', {}, /^https:\/\/ws\.cadc-ccda\.hia-iha\.nrc-cnrc\.gc\.ca\//.test(o.access_url) ? h('a', { href: o.access_url, target: '_blank', rel: 'noopener' }, 'CADC') : '–'))))) : null);
     }).catch((e) => neo.replaceChildren(h('p', { class: 'notice bad' }, `NEOSSat search unavailable right now (${e.message}).`)));
   }

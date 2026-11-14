@@ -24,16 +24,24 @@ async function tap(q, tries = 3) {
 
 try {
   const t0 = Date.now();
-  const span = await tap('SELECT MIN(t_min) AS t0, MAX(t_min) AS t1, COUNT(*) AS n FROM spherex.obscore');
-  const T0 = Math.floor(span[0].t0), T1 = Math.ceil(span[0].t1);
-  const cells = [], perDayRows = [];
-  for (let a = T0; a <= T1; a += 20) {
-    const b = Math.min(T1 + 1, a + 20);
-    const w = `t_min >= ${a} AND t_min < ${b}`;
-    cells.push(...await tap(`SELECT FLOOR(s_ra) AS ra, FLOOR(s_dec) AS dc, COUNT(*) AS n, MAX(t_min) AS tlast FROM spherex.obscore WHERE ${w} GROUP BY ra, dc`));
-    perDayRows.push(...await tap(`SELECT FLOOR(t_min) AS d, COUNT(*) AS n FROM spherex.obscore WHERE ${w} GROUP BY d`));
-    process.stdout.write(`window ${a}-${b}: ${cells.length} cells\n`);
-  }
+  // Spectral images only (detector bands D1-D6 with a footprint): the all-band cube products and the few
+  // planes without a position are not images on the sky. Every total below uses the same filter and the
+  // same snapshot (images starting before T1), so images = sum per day = sum per detector.
+  const IMG = "energy_bandpassname LIKE 'SPHEREx-D%' AND s_ra IS NOT NULL";
+  const span = await tap(`SELECT MIN(t_min) AS t0, MAX(t_min) AS t1 FROM spherex.obscore WHERE ${IMG}`);
+  const T0 = Math.floor(span[0].t0), T1 = Math.floor(span[0].t1) + 1;
+  const cells = [], perDayBand = [];
+  const windows = []; for (let a = T0; a < T1; a += 20) windows.push([a, Math.min(T1, a + 20)]);
+  const runWindow = async ([a, b]) => {
+    const w = `${IMG} AND t_min >= ${a} AND t_min < ${b}`;
+    const [c, db] = await Promise.all([
+      tap(`SELECT FLOOR(s_ra) AS ra, FLOOR(s_dec) AS dc, COUNT(*) AS n, MAX(t_min) AS tlast FROM spherex.obscore WHERE ${w} GROUP BY ra, dc`),
+      tap(`SELECT FLOOR(t_min) AS d, energy_bandpassname AS band, COUNT(*) AS n FROM spherex.obscore WHERE ${w} GROUP BY d, band`),
+    ]);
+    cells.push(...c); perDayBand.push(...db);
+    process.stdout.write(`window ${a}-${b}: ${c.length} cells\n`);
+  };
+  for (let i = 0; i < windows.length; i += 3) await Promise.all(windows.slice(i, i + 3).map(runWindow));
   console.log('cells', cells.length, ((Date.now() - t0) / 1000).toFixed(0), 's');
   const W = 360, H = 180;
   const centres = new Float64Array(W * H), lastC = new Float64Array(W * H);
@@ -63,13 +71,16 @@ try {
   for (let j = 0; j < H; j++) { const w = Math.cos(((j - 90 + 0.5) * Math.PI) / 180); for (let i = 0; i < W; i++) { area += w; if (counts[j * W + i]) covered += w; } }
   writeFileSync('data/coverage.json', JSON.stringify({ w: W, h: H, mjd0: MJD0, note: 'SPHEREx spectral images per 1° cell (IRSA spherex.obscore, spread over each image footprint); lastDay = days after mjd0', counts: u16(counts, (v) => v), lastDay: u16(last, (v) => (v ? v - MJD0 : 0)), built: new Date().toISOString() }));
 
-  const dayMap = new Map(); for (const r of perDayRows) dayMap.set(r.d, (dayMap.get(r.d) || 0) + r.n);
+  const dayMap = new Map(), bandMap = new Map();
+  for (const r of perDayBand) { dayMap.set(r.d, (dayMap.get(r.d) || 0) + r.n); bandMap.set(r.band, (bandMap.get(r.band) || 0) + r.n); }
   const perDay = [...dayMap].sort((x, y) => x[0] - y[0]).map(([d, n]) => ({ d, n }));
-  const perBand = await tap('SELECT energy_bandpassname AS band, COUNT(*) AS n FROM spherex.obscore GROUP BY band ORDER BY band');
+  const perBand = [...bandMap].sort((x, y) => (x[0] < y[0] ? -1 : 1)).map(([band, n]) => ({ band, n }));
+  const sumDay = perDay.reduce((s, r) => s + r.n, 0), sumBand = perBand.reduce((s, r) => s + r.n, 0);
+  if (sumDay !== total || sumBand !== total) throw new Error(`inconsistent totals: images ${total}, per day ${sumDay}, per detector ${sumBand}`);
   const mission = {
     built: new Date().toISOString(), images: total, firstMjd: span[0].t0, lastMjd: span[0].t1, skyFraction: covered / area,
-    days: perDay.length, perDay: perDay.map((r) => [r.d, r.n]), perBand: perBand.filter((r) => /^SPHEREx-D[1-6]$/.test(r.band)).map((r) => [r.band, r.n]), // cube products ('SPHEREx-All') excluded
-    source: 'IRSA TAP spherex.obscore (all releases currently served)',
+    days: perDay.length, perDay: perDay.map((r) => [r.d, r.n]), perBand: perBand.map((r) => [r.band, r.n]),
+    source: 'IRSA TAP spherex.obscore, spectral images D1-D6 (all releases currently served)',
   };
   writeFileSync('data/mission.json', JSON.stringify(mission));
   console.log('data/coverage.json and data/mission.json written', { images: total, sky: mission.skyFraction.toFixed(3), days: mission.days, s: ((Date.now() - t0) / 1000).toFixed(0) });

@@ -4,7 +4,7 @@ export default {
   'nav.explore': 'Explore', 'nav.tm': 'Time Machine', 'nav.chase': 'Chase', 'nav.live': 'Live', 'nav.mission': 'Mission',
   'nav.sky': 'Sky atlas', 'nav.saved': 'Saved', 'nav.learn': 'Learn', 'nav.about': 'About',
   'top.install': 'Install SkyShift', 'top.back': 'Back', 'top.forward': 'Forward', 'top.theme': 'Light / dark theme', 'top.settings': 'Settings',
-  'net.online': 'Online · live data', 'net.offline': 'Offline · saved data', 'net.relayDown': 'Online · archive relay unavailable',
+  'net.online': 'Online · live data', 'net.offline': 'Offline · saved data', 'net.relayDown': 'Online · catalogue overlays unavailable',
   'toast.online.title': 'Back online', 'toast.online.text': 'Live SPHEREx data is available again. Views refresh automatically.',
   'toast.offline.title': 'You are offline', 'toast.offline.text': 'SkyShift keeps working with the fields and data saved on this device.',
   'update.title': 'A new version of SkyShift is ready', 'update.text': 'Update now to get the latest features. Your current view is kept.',

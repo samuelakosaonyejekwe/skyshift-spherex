@@ -123,6 +123,22 @@ export const mjdToDate = (mjd) => new Date((mjd - 40587) * 86400000);
 export const mjdToYear = (mjd) => 2000 + (mjd - 51544.5) / 365.25;
 export const yearToMjd = (yr) => 51544.5 + (yr - 2000) * 365.25;
 export const nowMjd = () => Date.now() / 86400000 + 40587;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** Readable UTC date with the month named, e.g. "5 Oct 2026" (or "Oct 2026" with monthOnly). Accepts MJD, Date or ISO text. */
+// Dates without a timezone (FITS DATE-OBS/DATE-AVG, archive listings) are UTC by definition, not local time.
+const toUTCDate = (x) => (typeof x === 'number' ? mjdToDate(x) : x instanceof Date ? x : new Date(/T\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(String(x)) ? `${x}Z` : x));
+export function niceDate(x, monthOnly = false) {
+  const d = toUTCDate(x);
+  if (Number.isNaN(d.getTime())) return '–';
+  return monthOnly ? `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` : `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/** Readable UTC date and time, e.g. "5 Oct 2026 00:01 UTC". */
+export function niceDateTime(x) {
+  const d = toUTCDate(x);
+  return Number.isNaN(d.getTime()) ? '–' : `${niceDate(d)} ${d.toISOString().slice(11, 16)} UTC`;
+}
+
 export function mjdToISO(mjd, withTime = true) {
   const s = mjdToDate(mjd).toISOString();
   return withTime ? s.slice(0, 16).replace('T', ' ') + ' UTC' : s.slice(0, 10);

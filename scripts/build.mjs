@@ -2,7 +2,7 @@
 // version.json and host header files, and enforce the size budget and the
 // project's attribution rule. No bundler needed: the app is plain ES modules.
 
-import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync, copyFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, statSync, copyFileSync, existsSync, cpSync } from 'node:fs';
 import { join, relative, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
@@ -20,7 +20,10 @@ function walk(p) {
 
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
-const files = INCLUDE.flatMap((p) => walk(p)).filter((f) => !/(^|\/)\.|\.map$|README\.txt$/.test(f));
+// data/idx/ (the static image index, ~10,000 tiles built by scripts/index.mjs) is copied as is: not hashed,
+// precached or scanned; the service worker fetches its tiles on demand.
+const IDX = 'data/idx';
+const files = INCLUDE.flatMap((p) => walk(p)).filter((f) => !/(^|\/)\.|\.map$|README\.txt$/.test(f) && !f.startsWith(IDX + '/') && !f.startsWith('data/idx.tmp'));
 const hash = createHash('sha256');
 for (const f of files) {
   const dest = join(OUT, f);
@@ -28,13 +31,30 @@ for (const f of files) {
   copyFileSync(f, dest);
   hash.update(f).update(readFileSync(f));
 }
+// Backup hosts (docs/HOSTING.md): relays and mirror addresses supplied by the deploy environment (GitHub
+// repository variables RELAY_URLS and MIRROR_URLS, comma-separated) are added to the shipped config, so the
+// GitHub Pages copy fails over to the backup hosts' relays without a code change.
+{
+  const list = (v) => String(v || '').split(',').map((x) => x.trim()).filter((x) => /^https:\/\/[^\s]+$/.test(x));
+  const relays = list(process.env.RELAY_URLS), mirrors = list(process.env.MIRROR_URLS);
+  if (relays.length || mirrors.length) {
+    const cfg = JSON.parse(readFileSync('config.json', 'utf8'));
+    cfg.relays = [...new Set([...(cfg.relays || []), ...relays])];
+    if (mirrors.length) cfg.hosts = { ...cfg.hosts, mirrors, backup: mirrors.join(' · ') };
+    const txt = JSON.stringify(cfg, null, 2);
+    writeFileSync(join(OUT, 'config.json'), txt); hash.update(txt);
+    console.log(`config: ${relays.length} extra relay(s), ${mirrors.length} mirror(s)`);
+  }
+}
+if (existsSync(join(IDX, 'meta.json'))) cpSync(IDX, join(OUT, IDX), { recursive: true });
 // the service-worker template is part of the version, so a change to caching rules reaches installed copies
 hash.update(readFileSync('scripts/sw.template.js'));
 // content hash only: an unchanged build keeps its version (no needless update prompt or re-download)
 const version = hash.digest('hex').slice(0, 12);
 
 // Precache everything except lazily loaded heavy modules.
-const precache = ['./', ...files.filter((f) => !LAZY.includes(f)).map((f) => `./${f}`)];
+// data/overlays/ (built-in catalogue cones, ~0.5 MB each) load only when a target's overlay needs them
+const precache = ['./', ...files.filter((f) => !LAZY.includes(f) && !f.startsWith('data/overlays/')).map((f) => `./${f}`)];
 const sw = readFileSync('scripts/sw.template.js', 'utf8').replace('__VERSION__', version).replace('__PRECACHE__', JSON.stringify(precache, null, 0));
 writeFileSync(join(OUT, 'sw.js'), sw);
 writeFileSync(join(OUT, 'version.json'), JSON.stringify({ version, built: new Date().toISOString() }));
