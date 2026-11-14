@@ -59,7 +59,7 @@ export async function render(root, route, { go }) {
       frames.replaceChildren(...cardsEls);
       frames.dataset.keys = latest.map((k) => k.key).join(',');
       // develop the newest frames automatically, one after another (about 0.3 MB each)
-      (async () => { for (const c of cardsEls) { if (disposed || !c.isConnected) return; const b = c.querySelector('button'); if (b && b.textContent === 'Develop') { b.click(); await new Promise((r) => setTimeout(r, 400)); while (b.isConnected && b.disabled) await new Promise((r) => setTimeout(r, 300)); } } })();
+      (async () => { for (const c of cardsEls) { if (disposed || !c.isConnected) return; const b = c.querySelector('button'); if (b && b.dataset.act === 'develop') { b.click(); await new Promise((r) => setTimeout(r, 400)); while (b.isConnected && b.disabled) await new Promise((r) => setTimeout(r, 300)); } } })();
     }
     status.textContent = note;
     drawnAt = Date.parse(snap.checked) || Date.now();
@@ -98,10 +98,10 @@ export async function render(root, route, { go }) {
     const d = describeUri(k.key);
     const canvas = h('canvas', { width: 192, height: 192, class: 'live-thumb', 'aria-label': 'Quick-look picture' });
     const info = h('p', { class: 'tiny' }, `${d.obsid || ''} D${d.detector || '?'} · reached IRSA ${k.modified ? niceDate(k.modified) : '–'} · ${(k.size / 1048576).toFixed(0)} MB`);
-    const btn = h('button', { class: 'btn small primary' }, 'Develop');
+    const btn = h('button', { class: 'btn small primary', 'data-act': 'develop' }, 'Develop'); // state in data-act (labels are translated)
     const card = h('div', { class: 'card live-card' }, canvas, info, btn);
     btn.addEventListener('click', async () => {
-      btn.disabled = true; btn.textContent = 'Developing…';
+      btn.disabled = true; btn.dataset.act = 'busy'; btn.textContent = 'Developing…';
       try {
         const img = new SpherexImage(BUCKET + k.key);
         const m = await img.meta();
@@ -126,7 +126,7 @@ export async function render(root, route, { go }) {
         btn.replaceWith(h('button', { class: 'btn small', onclick: () => go(`#/view?${toParams(normalise({ target: { ra: +ra.toFixed(5), dec: +dec.toFixed(5), source: 'coords', name: `New frame ${d.obsid || ''}` } }))}`) }, 'Open this spot'));
         const pts = JSON.parse(localStorage.getItem('skyshift.livePts') || '[]').filter((p) => Math.abs(p.ra - ra) > 1e-3);
         pts.unshift({ ra, dec, date: m.header['DATE-AVG'] }); localStorage.setItem('skyshift.livePts', JSON.stringify(pts.slice(0, 30)));
-      } catch (e) { btn.disabled = false; btn.textContent = 'Retry'; toast({ title: 'Could not develop this frame', text: e.message, glyph: '⚠', timeout: 4000 }); }
+      } catch (e) { btn.disabled = false; btn.dataset.act = 'develop'; btn.textContent = 'Retry'; toast({ title: 'Could not develop this frame', text: e.message, glyph: '⚠', timeout: 4000 }); }
     });
     return card;
   }

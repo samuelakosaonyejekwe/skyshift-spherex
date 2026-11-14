@@ -6,6 +6,7 @@ import { loadConfig, onNetStatus, netStatus } from './lib/net.js';
 import { fromParams } from './state.js';
 import { getSettings, setSettings, applyTheme, DEFAULT_SETTINGS } from './settings.js';
 import { t, setLang, LANGS } from './i18n/index.js';
+import { applyUiLanguage } from './i18n/apply.js';
 
 const ROUTES = {
   home: () => import('./views/home.js'),
@@ -297,6 +298,7 @@ setLang(getSettings().lang || 'en');
   document.querySelector('#installBtn span').textContent = t('top.install');
   navBack.setAttribute('aria-label', t('top.back')); navFwd.setAttribute('aria-label', t('top.forward'));
   document.getElementById('themeBtn').title = t('top.theme'); document.getElementById('settingsBtn').title = t('top.settings');
+  applyUiLanguage(getSettings().lang || 'en'); // headings, buttons, tabs and labels on the pages
   fitNav(); // labels changed length
   document.fonts?.ready?.then(fitNav);
 }
@@ -307,14 +309,14 @@ document.getElementById('themeBtn').addEventListener('click', () => { const cur 
 matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => { if (!getSettings().theme) applyTheme(); });
 document.getElementById('settingsBtn').addEventListener('click', () => {
   const s0 = getSettings();
-  const sel = (key, opts) => h('select', { onchange: (e) => setSettings({ [key]: isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value) }) }, opts.map(([v, l]) => h('option', { value: v, selected: String(s0[key]) === String(v) }, l)));
+  const sel = (key, opts) => h('select', { onchange: (e) => { setSettings({ [key]: isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value) }); if (key === 'lang') location.reload(); /* the address keeps the view */ } }, opts.map(([v, l]) => h('option', { value: v, selected: String(s0[key]) === String(v) }, l)));
   const chk = (key, label) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!s0[key], onchange: (e) => setSettings({ [key]: e.target.checked }) }), label);
   const close = sheet(h('div', { class: 'grid' },
     h('h2', {}, 'Settings'),
     h('label', { class: 'field' }, 'Default field of view for new targets', sel('fov', [[4, '4′ (small, fastest)'], [6, '6′ (default)'], [10, '10′'], [15, '15′'], [30, '30′ (large, more data)']])),
     h('label', { class: 'field' }, 'Images per target (spread across all epochs and detectors)', sel('maxImages', [[60, '60'], [120, '120 (default)'], [240, '240'], [480, '480'], [0, 'All']])),
     h('label', { class: 'field' }, 'Download mode', sel('readMode', [['auto', 'Auto: first images fastest, then data saver (switches to saver on slow or Save-Data connections)'], ['saver', 'Data saver: only the pixels needed (≈0.1 MB per image)'], ['fast', 'Fast: whole image rows (≈0.6 MB per image)']])),
-    h('label', { class: 'field' }, 'Interface language (menus and messages; page content is in English)', sel('lang', Object.entries(LANGS).map(([k, v]) => [k, v.name]))),
+    h('label', { class: 'field' }, 'Interface language (menus, buttons, tabs and headings; longer explanations stay in English)', sel('lang', Object.entries(LANGS).map(([k, v]) => [k, v.name]))),
     chk('mask', 'Remove bad pixels from measurements using SPHEREx quality flags'),
     chk('reduceMotion', 'Reduce motion (no automatic playback)'),
     chk('noShortcuts', 'Turn off single-key keyboard shortcuts (for screen-reader and switch users)'),
