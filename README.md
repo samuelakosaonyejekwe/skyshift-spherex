@@ -94,4 +94,4 @@ Copyright 2026 Samuel Akosa Onyejekwe. Licensed under the [Apache License 2.0](L
 for submissions; keep the [NOTICE](NOTICE) file when redistributing. Third-party data and software keep their own licences
 ([NOTICE](NOTICE), [docs/LEGAL.md](docs/LEGAL.md)).
 
-SI use: SI coding tools assisted with the code and documentation under the author's direction; the idea, design and testing are the author's own. No SI-generated images, video or audio are used.
+SI use: Designed, directed and tested by the author, with help from SI coding tools on the code and documentation. No SI-generated images, video or audio.
