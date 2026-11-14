@@ -11,19 +11,8 @@ import { robustStats } from '../lib/engine.js';
 import { cache } from '../lib/store.js';
 
 export const title = 'Live';
-const BUCKET = 'https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/';
+import { BUCKET, snapshot } from '../lib/livelist.js';
 
-async function list(prefix, { delimiter = '/', startAfter = '', max = 1000 } = {}) {
-  const u = `${BUCKET}?list-type=2&prefix=${encodeURIComponent(prefix)}${delimiter ? `&delimiter=${delimiter}` : ''}${startAfter ? `&start-after=${encodeURIComponent(startAfter)}` : ''}&max-keys=${max}`;
-  const r = await fetch(u, { cache: 'no-store' });
-  if (!r.ok) throw new Error(`Archive listing HTTP ${r.status}`);
-  const x = await r.text();
-  return {
-    prefixes: [...x.matchAll(/<Prefix>([^<]+)<\/Prefix>/g)].map((m) => m[1]).filter((p) => p !== prefix),
-    keys: [...x.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)].map((m) => ({ key: (m[1].match(/<Key>([^<]+)/) || [])[1], modified: (m[1].match(/<LastModified>([^<]+)/) || [])[1], size: Number((m[1].match(/<Size>(\d+)/) || [])[1] || 0) })),
-    truncated: /<IsTruncated>true/.test(x),
-  };
-}
 
 const ago = (d) => { const s = (Date.now() - new Date(d).getTime()) / 1000; return s < 3600 ? `${Math.round(s / 60)} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} days ago`; };
 const weekLabel = (p) => { const m = p.match(/(\d{4})W(\d\d)/); return m ? `week ${Number(m[2])} of ${m[1]}` : p; };
@@ -41,62 +30,67 @@ export async function render(root, route, { go }) {
     h('h2', {}, 'Latest frames'), h('p', { class: 'tiny' }, 'Detector 3 (1.63–2.41 µm) frames from the newest planning period. Each picture is the central 15′ of a 3.5° × 3.5° frame, shown as recorded (north is not necessarily up); the position given is its centre.'), frames);
 
   let last = 0, disposed = false;
+  // Draw a snapshot (live, this device's last one, or the server's 6-hourly one) into the page.
+  let drawnAt = 0;
+  function draw(snap, note) {
+    // show whole rows only: as many items as fill the grid's columns at this width (no half-empty last row)
+    const colsFor = (el, minW) => Math.max(1, Math.floor(((el.clientWidth || root.clientWidth || 1000) + 12) / (minW + 12)));
+    const narrow = (root.clientWidth || 1000) < 560;
+    const pCols = colsFor(periods, 260); let fCols = colsFor(frames, narrow ? 150 : 210);
+    periods.style.gridTemplateColumns = `repeat(${pCols}, minmax(0, 1fr))`;
+    const newest = snap.periods.slice(0, pCols * Math.max(1, Math.ceil(4 / pCols)));
+    const keys = snap.keys || [];
+    const newestFile = keys.reduce((m, k) => (k.modified > m ? k.modified : m), '');
+    stats.replaceChildren(
+      stat(snap.top.period, `newest SPHEREx planning period in the IRSA archive (${snap.top.rel.toUpperCase()})`),
+      stat(newestFile ? niceDate(newestFile) : '–', `newest SPHEREx files reached the IRSA archive${newestFile ? ` (${ago(newestFile)})` : ''}`),
+      newestCard(),
+      stat(String(snap.total), 'SPHEREx planning periods served by IRSA now (DR1 + QR3)'));
+    periods.className = 'period-grid';
+    periods.replaceChildren(...newest.map((p, i) => h('div', { class: 'card row' }, h('span', { class: `chip ${p.rel === 'qr3' ? 'good' : 'info'}` }, p.rel.toUpperCase()), h('b', {}, `Planning period ${p.period}`), h('span', { class: 'tiny' }, `${weekLabel(p.period)}${i === 0 ? ' · newest' : ''}`))));
+    // whole rows of the frames that exist (a period may hold fewer frames than two full rows)
+    let nShow = Math.min(keys.length, fCols * Math.max(1, Math.ceil(8 / fCols)));
+    if (nShow < fCols) fCols = Math.max(1, nShow); else nShow = Math.floor(nShow / fCols) * fCols;
+    frames.style.gridTemplateColumns = `repeat(${fCols}, minmax(0, 1fr))`;
+    const latest = keys.slice(-nShow).reverse();
+    const same = frames.dataset.keys === latest.map((k) => k.key).join(',');
+    if (!same) {
+      const cardsEls = latest.map((k) => frameCard(k));
+      frames.replaceChildren(...cardsEls);
+      frames.dataset.keys = latest.map((k) => k.key).join(',');
+      // develop the newest frames automatically, one after another (about 0.3 MB each)
+      (async () => { for (const c of cardsEls) { if (disposed || !c.isConnected) return; const b = c.querySelector('button'); if (b && b.textContent === 'Develop') { b.click(); await new Promise((r) => setTimeout(r, 400)); while (b.isConnected && b.disabled) await new Promise((r) => setTimeout(r, 300)); } } })();
+    }
+    status.textContent = note;
+    drawnAt = Date.parse(snap.checked) || Date.now();
+  }
+  // newest exposure: from the image index or the last value seen at once; the live query only updates this card
+  let newestObs = Number(localStorage.getItem('skyshift.newestMjd') || 0);
+  const newestCard = () => stat(newestObs ? niceDate(newestObs) : '–', 'date the newest SPHEREx image searchable at IRSA was taken');
+  import('../lib/tap.js').then(async (t) => {
+    if (!newestObs) { newestObs = (await t.indexMeta())?.newestMjd || 0; if (newestObs && stats.children[2]) stats.children[2].replaceWith(newestCard()); }
+    t.latestSpherex().then((r) => { if (r.data && !disposed) { newestObs = r.data; stats.children[2]?.replaceWith(newestCard()); } }).catch(() => {});
+  });
+
   async function run(force) {
     if (!force && Date.now() - last < 5 * 60 * 1000) return;
     last = Date.now();
-    status.textContent = 'Reading the IRSA archive…';
+    // 1) at once: the newest stored snapshot (this device's last listing or the server's 6-hourly one)
+    if (!drawnAt) {
+      const [mine, server] = await Promise.all([cache.get('live:snap'), fetch('./data/live.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)]);
+      const best = [mine, server].filter((x) => x?.periods?.length).sort((a, b) => Date.parse(b.checked) - Date.parse(a.checked))[0];
+      if (best && !disposed) draw(best, `Showing the archive as of ${niceDateTime(best.checked)}; checking for newer files now…`);
+    }
+    if (!drawnAt) status.textContent = 'Reading the IRSA archive…';
+    // 2) live listing straight from the bucket (each request time-limited); the page above stays usable meanwhile
     try {
-      const releases = ['qr3', 'dr1'];
-      const all = [];
-      for (const rel of releases) {
-        const l = await list(`${rel}/level2/`);
-        for (const p of l.prefixes) all.push({ rel, prefix: p, period: p.split('/')[2] });
-      }
-      all.sort((a, b) => (a.period < b.period ? 1 : -1));
-      // show whole rows only: as many items as fill the grid's columns at this width (no half-empty last row)
-      const colsFor = (el, minW) => Math.max(1, Math.floor(((el.clientWidth || root.clientWidth || 1000) + 12) / (minW + 12)));
-      const narrow = (root.clientWidth || 1000) < 560;
-      const pCols = colsFor(periods, 260); let fCols = colsFor(frames, narrow ? 150 : 210);
-      periods.style.gridTemplateColumns = `repeat(${pCols}, minmax(0, 1fr))`;
-      frames.style.gridTemplateColumns = `repeat(${fCols}, minmax(0, 1fr))`;
-      const newest = all.slice(0, pCols * Math.max(1, Math.ceil(4 / pCols)));
-      // newest period: its newest version folder, then detector-3 files
-      const top = newest[0];
-      const versions = (await list(top.prefix)).prefixes.sort();
-      const ver = versions[versions.length - 1];
-      let keys = [], startAfter = '';
-      for (let page = 0; page < 3; page++) {
-        const l = await list(`${ver}3/`, { delimiter: '', startAfter });
-        keys = keys.concat(l.keys.filter((k) => k.key.endsWith('.fits')));
-        if (!l.truncated) break;
-        startAfter = l.keys[l.keys.length - 1].key;
-      }
-      keys.sort((a, b) => (a.key < b.key ? -1 : 1));
-      const newestFile = keys.reduce((m, k) => (k.modified > m ? k.modified : m), '');
-      let newestObs = Number(localStorage.getItem('skyshift.newestMjd') || 0);
-      try { const { latestSpherex } = await import('../lib/tap.js'); const r = await latestSpherex(); if (r.data) newestObs = r.data; } catch { /* keep */ }
-      stats.replaceChildren(
-        stat(top.period, `newest SPHEREx planning period in the IRSA archive (${top.rel.toUpperCase()})`),
-        stat(newestFile ? niceDate(newestFile) : '–', `newest SPHEREx files reached the IRSA archive${newestFile ? ` (${ago(newestFile)})` : ''}`),
-        stat(newestObs ? niceDate(newestObs) : '–', 'date of the newest SPHEREx exposure searchable at IRSA'),
-        stat(String(all.length), 'SPHEREx planning periods served by IRSA now (DR1 + QR3)'));
-      periods.className = 'period-grid';
-      periods.replaceChildren(...newest.map((p, i) => h('div', { class: 'card row' }, h('span', { class: `chip ${p.rel === 'qr3' ? 'good' : 'info'}` }, p.rel.toUpperCase()), h('b', {}, `Planning period ${p.period}`), h('span', { class: 'tiny' }, `${weekLabel(p.period)}${i === 0 ? ' · newest' : ''}`))));
-      // whole rows of the frames that exist (a period may hold fewer frames than two full rows)
-      let nShow = Math.min(keys.length, fCols * Math.max(1, Math.ceil(8 / fCols)));
-      if (nShow < fCols) fCols = Math.max(1, nShow); else nShow = Math.floor(nShow / fCols) * fCols;
-      frames.style.gridTemplateColumns = `repeat(${fCols}, minmax(0, 1fr))`;
-      const latest = keys.slice(-nShow).reverse();
-      const cardsEls = latest.map((k) => frameCard(k));
-      frames.replaceChildren(...cardsEls);
-      // develop the newest frames automatically, one after another (about 0.3 MB each)
-      (async () => { for (const c of cardsEls) { if (disposed || !c.isConnected) return; const b = c.querySelector('button'); if (b && b.textContent === 'Develop') { b.click(); await new Promise((r) => setTimeout(r, 400)); while (b.isConnected && b.disabled) await new Promise((r) => setTimeout(r, 300)); } } })();
-      status.textContent = `${keys.length} detector-3 frames listed in ${top.period}. Archive checked just now (${new Date().toLocaleTimeString()}).`;
-      await cache.set('live:last', { at: Date.now(), top, keys: latest });
+      const snap = await snapshot();
+      if (disposed) return;
+      draw(snap, `${snap.keys.length} detector-3 frames listed in ${snap.top.period}. Archive checked just now (${new Date().toLocaleTimeString()}).`);
+      await cache.set('live:snap', snap);
     } catch (e) {
-      const prev = await cache.get('live:last');
-      status.textContent = `The archive could not be read now (${e.message}).${prev ? ` Showing the list from ${new Date(prev.at).toLocaleString()}.` : ''}`;
-      if (prev) frames.replaceChildren(...prev.keys.map((k) => frameCard(k)));
+      if (disposed) return;
+      status.textContent = drawnAt ? `The archive did not answer just now (${e.message}); showing the list from ${niceDateTime(new Date(drawnAt).toISOString())}.` : `The archive could not be read now (${e.message}). Try Refresh in a moment.`;
     }
   }
   function stat(v, l) { return h('div', { class: 'stat card' }, h('b', {}, v), h('span', { class: 'tiny' }, l)); }

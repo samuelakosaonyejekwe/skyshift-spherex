@@ -24,7 +24,12 @@ export async function render(root, route, { go }) {
         h('button', { class: 'btn small primary', onclick: () => open(t.target || presetToTarget(t), false) }, icon('play'), 'Watch it move'),
         h('button', { class: 'btn small', onclick: () => open(t.target || presetToTarget(t), true) }, 'Follow it')));
   };
-  const idIn = h('input', { type: 'text', placeholder: 'Gaia DR3 source ID, e.g. 4472832130942575872', 'aria-label': 'Gaia DR3 source ID' });
+  // Suggestions: the fastest-moving stars in Gaia DR3 (data/fastmovers.json, from IRSA). Choosing one fills the box;
+  // Look up then opens it from the stored Gaia values, so these work even without an archive relay.
+  const fast = await fetch('./data/fastmovers.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const known = Object.fromEntries((await presets()).filter((t) => t.gaia).map((t) => [String(t.gaia?.source_id || t.gaia), t.name]));
+  const fastList = h('datalist', { id: 'fastmovers' }, (fast?.stars || []).map((s) => h('option', { value: s.id, label: `${known[s.id] ? known[s.id] + ' · ' : ''}${(s.pm / 1000).toFixed(2)}″ per year · ${s.parallax > 0 ? (1000 / s.parallax).toFixed(1) + ' pc away' : ''} · G ${s.g?.toFixed(1)}` })));
+  const idIn = h('input', { type: 'text', list: 'fastmovers', inputmode: 'numeric', placeholder: 'Gaia DR3 source ID, or pick one of the fastest-moving stars', 'aria-label': 'Gaia DR3 source ID' });
   const idOut = h('div');
   const posIn = h('input', { type: 'text', placeholder: 'Position, e.g. 269.45 4.69 (or leave empty for your last field)', 'aria-label': 'Search position' });
   const radSel = h('select', { 'aria-label': 'Search radius', style: { width: 'auto' } }, [[0.5, '0.5°'], [1, '1°'], [2, '2°']].map(([v, l]) => h('option', { value: v, selected: v === 1 }, l)));
@@ -42,11 +47,14 @@ export async function render(root, route, { go }) {
       e.preventDefault();
       idOut.replaceChildren(h('p', { class: 'tiny' }, 'Looking up Gaia DR3…'));
       try {
-        const r = await resolveTarget(`Gaia DR3 ${idIn.value.replace(/\D/g, '')}`);
+        const id = idIn.value.replace(/\D/g, '');
+        const f = fast?.stars?.find((s) => s.id === id);
+        const r = f ? { kind: 'gaia', target: { ra: f.ra, dec: f.dec, pmra: f.pmra, pmdec: f.pmdec, plx: f.parallax > 0 ? f.parallax : 0, refEpoch: 2016.0, name: known[id] || `Gaia DR3 ${id}`, id, source: 'gaia' }, note: `Gaia DR3 star, G=${f.g?.toFixed(2)}; one of the fastest-moving stars in the catalogue (built-in list from IRSA)` }
+          : await resolveTarget(`Gaia DR3 ${id}`);
         if (r.error) { idOut.replaceChildren(h('p', { class: 'notice warn' }, `${r.error}. ${r.hint}`)); return; }
-        idOut.replaceChildren(card({ name: r.target.name, kind: r.note, pmra: r.target.pmra, pmdec: r.target.pmdec, target: r.target }));
+        idOut.replaceChildren(card({ name: r.target.name, kind: r.note, pmra: r.target.pmra, pmdec: r.target.pmdec, parallax: r.target.plx, target: r.target }));
       } catch (err) { idOut.replaceChildren(h('p', { class: 'notice bad' }, `Gaia lookup unavailable right now (${err.message}).`)); }
-    } }, idIn, h('button', { class: 'btn primary', type: 'submit' }, 'Look up')),
+    } }, idIn, fastList, h('button', { class: 'btn primary', type: 'submit' }, 'Look up')),
     idOut,
     h('h2', {}, 'Find fast movers near a position'),
     h('form', { class: 'row', onsubmit: async (e) => {

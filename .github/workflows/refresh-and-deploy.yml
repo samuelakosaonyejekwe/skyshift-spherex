@@ -36,6 +36,7 @@ jobs:
           node scripts/mission.mjs || true
           ALLSKY_W=1000 node scripts/allsky.mjs || true
           ALLSKY_W=1600 node scripts/allsky.mjs || true
+          node scripts/live.mjs || true
           GITHUB_TOKEN=${{ github.token }} NODE_EXTRA_CA_CERTS=relay/certs/entrust-ov-tls-issuing-rsa-ca-2.pem node scripts/sources.mjs || true
       - name: Build the image index (scheduled and manual runs, or when none is cached)
         run: |

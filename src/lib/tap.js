@@ -173,6 +173,10 @@ function normalise(x) {
 /** Newest SPHEREx exposure date ingested at IRSA (signals new data); from the image index on static hosts. */
 export async function latestSpherex() {
   return fresh('latest:spherex', async () => {
+    // the index (rebuilt every 6 hours) already holds the newest exposure: use it while recent, sparing IRSA a
+    // whole-table scan (about 30 s) on every visit; the live query is used when there is no recent index
+    const m0 = await indexMeta();
+    if (m0?.newestMjd && Date.now() - Date.parse(m0.built) < 7 * 3600e3) return m0.newestMjd;
     if (relayCount() > 0) {
       try { const r = await tap(IRSA_TAP, 'SELECT MAX(time_bounds_lower) AS newest FROM spherex.plane', { timeout: 60000 }); return r[0]?.newest ?? null; }
       catch (e) { if (!(await indexMeta())) throw e; }
