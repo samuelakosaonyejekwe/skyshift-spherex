@@ -104,7 +104,7 @@ Watch online (slides with the playable demo video): https://samuelakosaonyejekwe
 
 Slide deck as PDF (7 slides): [docs/presentation/SkyShift-slides.pdf](docs/presentation/SkyShift-slides.pdf)
 
-Files in `docs/presentation/`: 28-second demo video (`skyshift-demo-barnard.webm`), 7-slide deck (`slides.html` for the browser,
+Files in `docs/presentation/`: 28-second demo video (`skyshift-demo-barnard.mp4`, plays everywhere including GitHub; `skyshift-demo-barnard.webm` as a smaller alternative), 7-slide deck (`slides.html` for the browser,
 `SkyShift-slides.pdf` for submission) and the slide images.
 
 ## Copyright
