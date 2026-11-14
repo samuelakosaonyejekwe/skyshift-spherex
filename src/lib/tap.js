@@ -49,9 +49,18 @@ export function parseCSV(text) {
 
 const num = (x, d = 7) => Number(x).toFixed(d);
 
+// When an archive's TAP service fails with a server error (e.g. IRSA's gateway answering 502), it is not called
+// again for 10 minutes: callers go straight to their fallbacks instead of retrying a service that is down.
+const tapDownUntil = new Map();
+export const tapIsDown = (service) => (tapDownUntil.get(service) || 0) > Date.now();
+
 export async function tap(service, adql, { timeout = 60000, signal } = {}) {
+  if (tapIsDown(service)) throw new Error('TAP service unavailable (recent server error); using fallbacks');
   const url = `${service}?LANG=ADQL&FORMAT=csv&QUERY=${encodeURIComponent(adql)}`;
-  const res = await smartFetch(url, { timeout, signal });
+  let res;
+  try { res = await smartFetch(url, { timeout, signal }); } catch (e) { if (e?.name === 'TimeoutError') tapDownUntil.set(service, Date.now() + 10 * 60e3); throw e; }
+  const upstream = Number(res.headers.get('x-relay-upstream-status') || res.status);
+  if (upstream >= 500 || upstream === 0) tapDownUntil.set(service, Date.now() + 10 * 60e3);
   const text = await res.text();
   if (!res.ok || /<VOTABLE|QUERY_STATUS.*ERROR/i.test(text.slice(0, 600))) {
     const msg = (text.match(/<INFO[^>]*>([^<]+)/) || [])[1] || `HTTP ${res.status}`;
@@ -128,10 +137,14 @@ WHERE 1 = CONTAINS(POINT('ICRS', ${num(ra)}, ${num(dec)}), p.poly)
 ORDER BY p.time_bounds_lower`;
   let via = 'tap';
   const r = await fresh(key, async () => {
-    // Live TAP search through a relay when this host has one; otherwise (static hosts) the pre-built index.
+    // The pre-built index is the primary source wherever it exists (rebuilt every 6 hours; IRSA adds images
+    // weekly): instant, and independent of IRSA's search service being up. Live TAP is used where there is no
+    // recent index (e.g. local development), through the relay.
     let rows;
-    if (relayCount() > 0) {
-      try { rows = await tap(IRSA_TAP, adql, opts); } catch (e) { if (!(await indexMeta())) throw e; }
+    const meta = await indexMeta();
+    if (meta && Date.now() - Date.parse(meta.built) < 24 * 3600e3) { rows = await searchIndex(ra, dec); via = 'index'; }
+    else if (relayCount() > 0) {
+      try { rows = await tap(IRSA_TAP, adql, opts); } catch (e) { if (!meta) throw e; }
     }
     if (!rows) { rows = await searchIndex(ra, dec); via = 'index'; }
     // Superseded releases are listed in config.json ("excludeReleases"), so a new release needs no code change.
