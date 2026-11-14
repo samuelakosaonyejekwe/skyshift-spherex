@@ -183,7 +183,8 @@ export function masonry(container, cards, minWidth = 320) {
     cards.forEach((c, i) => { c.dataset.order = String(i); });
     const sized = cards.map((c) => ({ c, hgt: c.offsetHeight || 200 }));
     const buckets = Array.from({ length: cols }, () => []);
-    for (const it of [...sized].sort((a, b) => b.hgt - a.hgt)) { let k = 0; for (let j = 1; j < cols; j++) if (heights[j] < heights[k]) k = j; buckets[k].push(it.c); heights[k] += it.hgt + 14; }
+    // reading order: each card goes to the currently shortest column (first row reads left to right)
+    for (const it of sized) { let k = 0; for (let j = 1; j < cols; j++) if (heights[j] < heights[k] - 4) k = j; buckets[k].push(it.c); heights[k] += it.hgt + 14; }
     buckets.forEach((b, k) => b.sort((x, y) => x.dataset.order - y.dataset.order).forEach((c) => colEls[k].appendChild(c)));
     container.classList.add('masonry');
     container.replaceChildren(...colEls);

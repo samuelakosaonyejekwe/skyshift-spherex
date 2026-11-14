@@ -51,10 +51,10 @@ export async function render(root, route, ctx) {
         })),
       h('section', { class: 'card', style: { marginBottom: '14px' } },
         h('h2', {}, '102 colours of infrared, in 6 detector arrays'),
-        bars(m.perBand.map((x) => x[1]), {
+        bars(m.perBand.filter((x) => /D[1-6]$/.test(x[0])).map((x) => x[1]), {
           color: (i) => `var(--d${i + 1})`, height: 120,
-          label: (i) => `D${i + 1} ${DETECTORS[i]?.range.join('–')} µm · R=${DETECTORS[i]?.R}`,
-          tip: (i) => `${m.perBand[i][0]}: ${m.perBand[i][1].toLocaleString()} images`,
+          label: (i) => `D${i + 1} · ${DETECTORS[i]?.range.join('–')} µm`,
+          tip: (i) => `D${i + 1} (${DETECTORS[i]?.range.join('–')} µm, R=${DETECTORS[i]?.R}): ${m.perBand.filter((x) => /D[1-6]$/.test(x[0]))[i][1].toLocaleString()} images`,
         })),
       h('p', { class: 'tiny' }, `Statistics built ${new Date(m.built).toLocaleString()} from ${m.source}. They refresh on a schedule; the newest-image date on Live and on the Explore page is always read live.`))
       : h('p', { class: 'notice' }, 'Mission statistics have not been built yet on this copy of SkyShift (run scripts/mission.mjs). Live data still works everywhere else.'),

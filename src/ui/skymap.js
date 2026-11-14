@@ -116,13 +116,21 @@ export function skyMap({ targets = [], onPick, onTarget, count, coverage = null,
   if (coverage) {
     const dec16 = (b64) => { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < u.length; i++) u[i] = bin.charCodeAt(i); return new Uint16Array(u.buffer); };
     covGrid = { w: coverage.w, h: coverage.h, counts: dec16(coverage.counts), last: dec16(coverage.lastDay), mjd0: coverage.mjd0 };
+    // smooth the scan-pattern stripes for display (separable [1,3,4,3,1] blur, RA wraps; zero cells ignored)
+    const blur = (src) => {
+      const W = covGrid.w, Hh = covGrid.h, k = [1, 3, 4, 3, 1], tmp = new Float32Array(W * Hh), out = new Uint16Array(W * Hh);
+      for (let j = 0; j < Hh; j++) for (let i = 0; i < W; i++) { let s = 0, w = 0; for (let d = -2; d <= 2; d++) { const v = src[j * W + (((i + d) % W) + W) % W]; if (v) { s += v * k[d + 2]; w += k[d + 2]; } } tmp[j * W + i] = w ? s / w : 0; }
+      for (let j = 0; j < Hh; j++) for (let i = 0; i < W; i++) { let s = 0, w = 0; for (let d = -2; d <= 2; d++) { const jj = j + d; if (jj < 0 || jj >= Hh) continue; const v = tmp[jj * W + i]; if (v) { s += v * k[d + 2]; w += k[d + 2]; } } out[j * W + i] = w ? Math.round(s / w) : 0; }
+      return out;
+    };
+    covGrid.countsSmooth = blur(blur(covGrid.counts));
   }
   const RAMP = [[10, 20, 70], [30, 60, 160], [40, 130, 200], [60, 190, 190], [150, 220, 120], [240, 210, 80], [255, 160, 60], [255, 250, 230]];
   function drawCoverage() {
     if (!covGrid) return;
     const ctx = cov.getContext('2d'), cw = cov.width, ch = cov.height, im = ctx.createImageData(cw, ch);
     const vals = [];
-    const src = covMode === 'counts' ? covGrid.counts : covGrid.last;
+    const src = covMode === 'counts' ? covGrid.countsSmooth : covGrid.last;
     for (let k = 0; k < src.length; k += 7) if (src[k]) vals.push(src[k]);
     vals.sort((a, b) => a - b);
     const lo = vals[Math.floor(vals.length * 0.03)] || 1, hi = vals[Math.floor(vals.length * 0.97)] || 2;
@@ -136,7 +144,7 @@ export function skyMap({ targets = [], onPick, onTarget, count, coverage = null,
       const x = t * (RAMP.length - 1), a = Math.floor(Math.min(RAMP.length - 2, x)), f = x - a;
       const o = (j * cw + i) * 4;
       for (let c = 0; c < 3; c++) im.data[o + c] = RAMP[a][c] + (RAMP[a + 1][c] - RAMP[a][c]) * f;
-      im.data[o + 3] = 40 + 120 * t;
+      im.data[o + 3] = 14 + 96 * t;
     }
     ctx.putImageData(im, 0, 0);
     legend.replaceChildren(h('span', { class: 'tiny' }, covMode === 'counts' ? 'fewer' : `${new Date((covGrid.mjd0 + lo - 40587) * 864e5).toISOString().slice(0, 10)}`), h('i', { class: 'ramp' }), h('span', { class: 'tiny' }, covMode === 'counts' ? 'more images' : `${new Date((covGrid.mjd0 + hi - 40587) * 864e5).toISOString().slice(0, 10)}`));

@@ -68,7 +68,7 @@ try {
   const perBand = await tap('SELECT energy_bandpassname AS band, COUNT(*) AS n FROM spherex.obscore GROUP BY band ORDER BY band');
   const mission = {
     built: new Date().toISOString(), images: total, firstMjd: span[0].t0, lastMjd: span[0].t1, skyFraction: covered / area,
-    days: perDay.length, perDay: perDay.map((r) => [r.d, r.n]), perBand: perBand.map((r) => [r.band, r.n]),
+    days: perDay.length, perDay: perDay.map((r) => [r.d, r.n]), perBand: perBand.filter((r) => /^SPHEREx-D[1-6]$/.test(r.band)).map((r) => [r.band, r.n]), // cube products ('SPHEREx-All') excluded
     source: 'IRSA TAP spherex.obscore (all releases currently served)',
   };
   writeFileSync('data/mission.json', JSON.stringify(mission));
