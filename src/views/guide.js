@@ -1,4 +1,4 @@
-// Guide: plain-language help, the 102 bands, how to find movers, URL/embed reference,
+// Learn: plain-language help, the 102 bands, how to find movers, URL/embed reference,
 // keyboard shortcuts and classroom activities built on the five challenge targets.
 
 import { h, cardify } from '../ui/dom.js';
@@ -9,7 +9,7 @@ export const title = 'Learn';
 export async function render(root) {
   const det = (d) => h('tr', {}, h('td', {}, h('span', { class: 'legend-dot', style: { '--c': `var(--d${d.id})` } }), `D${d.id}`), h('td', {}, `${d.range[0]}–${d.range[1]} µm`), h('td', {}, `R = ${d.R}`), h('td', {}, d.id <= 3 ? 'Short-wave array (SWIR)' : 'Mid-wave array (MWIR)'));
   root.append(cardify(h('article', { class: 'prose' },
-    h('h1', {}, 'Guide'),
+    h('h1', {}, 'Learn'),
     h('p', { class: 'muted' }, 'Everything you need to use SkyShift, in plain words.'),
     h('nav', { class: 'card', 'aria-label': 'On this page' }, h('div', { class: 'row' },
       [['start', 'Getting started'], ['bands', 'The 102 bands'], ['movers', 'Finding movers'], ['modes', 'Modes'], ['flags', 'Flags'], ['url', 'Links & embedding'], ['keys', 'Keyboard'], ['class', 'Classroom'], ['limits', 'Limitations']]

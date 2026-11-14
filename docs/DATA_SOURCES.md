@@ -14,11 +14,11 @@ for `Access-Control-Allow-Origin` in the response.
 | 1 | https://irsa.ipac.caltech.edu/Missions/spherex.html | Image search, spectral images, bands, flags, releases, DOIs, all-sky HiPS, Gaia DR3 / WISE catalogues at IRSA | IRSA TAP `https://irsa.ipac.caltech.edu/TAP/sync`; S3 `https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/`; HiPS `https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube` | CSV (TAP), FITS (S3 byte ranges), PNG (HiPS) | TAP: **no** (relay). S3: **yes**, incl. `Range`. HiPS: **yes** | QR3 weekly; TAP sees new data on ingestion, SIA ~1 day later |
 | 2 | https://caltech-ipac.github.io/irsa-tutorials/spherex/ | Access patterns (TAP query, cutout syntax, WCS-WAVE lookup, flag bits, ePSF, cube indexing) | GitHub API for freshness (`api.github.com/repos/Caltech-IPAC/irsa-tutorials/commits`) | HTML / JSON | Pages via relay; GitHub API **yes** | As the repository changes |
 | 3 | http://byw.tools/wiseview | Blink-comparator conventions, WiseView-style URL parameters, "Open in WiseView" link | Link-out only (page probed via relay for status) | HTML | **no** (relay for status) | n/a |
-| 4 | https://archive.stsci.edu/missions-and-data/gaia | Gaia DR3 positions, proper motions, parallaxes | MAST API `https://mast.stsci.edu/api/v0/invoke` (`Mast.Catalogs.GaiaDR3.Cone`), fallback for IRSA `gaia_dr3_source` | JSON | **no** (relay) | Static release (DR3) |
+| 4 | https://archive.stsci.edu/missions-and-data/gaia | Gaia DR3 positions, proper motions, parallaxes | MAST API `https://mast.stsci.edu/api/v0/invoke` (`Mast.Catalogs.GaiaDR3.Cone`), first choice; IRSA `gaia_dr3_source` as fallback | JSON | **no** (relay) | Static release (DR3) |
 | 5 | https://www.asc-csa.gc.ca/eng/satellites/neossat/ | NEOSSat mission context | Page probed via relay | HTML | **no** | Page dated 2026-03-20 |
 | 6 | https://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/en/ | NEOSSat observations per field; newest NEOSSat observation | CADC TAP `https://ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/argus/sync` (`ivoa.ObsCore`, `obs_collection='NEOSSAT'`) | CSV | **no** (relay) | As NEOSSat data arrive |
 | 7 | https://github.com/asc-csa/NEOSSAT_Tutorial | How NEOSSat FITS data are organised (open-data folders by year/day-of-year); caveats | GitHub API for freshness | JSON | GitHub API **yes** | As the repository changes |
-| 8 | https://data.asc-csa.gc.ca/dataset/neossat | NEOSSat open-data catalogue | Probed via relay | HTML | **no**; **TLS chain incomplete** (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`) from servers and browsers' fetch here | n/a |
+| 8 | https://data.asc-csa.gc.ca/dataset/neossat | NEOSSat open-data catalogue (title, resources, licence) | CKAN API `…/api/3/action/package_show?id=neossat` via relay | JSON | **no**; server sends a wrong intermediate certificate, so the relay adds the correct public intermediate (`relay/certs/`) for this host only | catalogue record updated 2026-06-11 |
 
 Rate limits: none are published on the pages read. SkyShift limits itself (6 parallel image reads per user,
 cached results, back-off retries) and the relay applies a per-client limit of 240 requests/minute.
@@ -85,7 +85,7 @@ this environment (HTTPS refused), so SkyShift does **not** call WiseView's backe
 borrows conventions only (flipbook/blink, inverted greyscale, speed, size, Gaia toggle, difference, proper-motion shift),
 accepts WiseView-style URL parameters, and links each field to WiseView for a WISE/NEOWISE comparison. The WISE overlay
 uses the CatWISE2020 / AllWISE catalogues served by IRSA (seed 1 domain; IRSA tutorials index also lists WISE tutorials).
-WiseView `pmra/pmdec` units are not documented on pages read; SkyShift reads them as mas/yr and says so in the Guide.
+WiseView `pmra/pmdec` units are not documented on pages read; SkyShift reads them as mas/yr and says so on the Learn page.
 
 ## Seed 4: Gaia at MAST
 
@@ -93,7 +93,7 @@ https://archive.stsci.edu/missions-and-data/gaia (seed) links to Gaia DR1/DR2/ED
 https://archives.esac.esa.int/doi/html/data/astronomy/gaia/DR3.html (JavaScript page; text not readable here, linked from the
 About page for the citation) and to CasJobs and MAST services. The MAST API answered `Mast.Catalogs.GaiaDR3.Cone` live
 (`status: COMPLETE`; columns `source_id`, `ra`, `dec`, `pmra`, `pmdec`, `parallax`, `phot_g_mean_mag`, `ref_epoch`, …).
-IRSA also hosts `gaia_dr3_source` (verified in its TAP schema); SkyShift queries IRSA first and falls back to MAST.
+IRSA also hosts `gaia_dr3_source` (verified in its TAP schema); SkyShift queries MAST first (resource 4) and falls back to IRSA.
 
 Test-target astrometry (Gaia DR3, `ref_epoch` 2016.0), fetched 2026-11-14 and propagated linearly to each date:
 
@@ -119,8 +119,10 @@ example link (133.786245, −7.244372), which SkyShift uses as the field centre.
 - https://github.com/asc-csa/NEOSSAT_Tutorial: notebooks read open-data folders `/users/OpenData_DonneesOuvertes/pub/NEOSSAT/ASTRO/{year}/{doy}/`
   with files like `NEOS_SCI_2021002000257.fits`; modified MIT licence. SkyShift lists NEOSSat data from CADC and does not mix NEOSSat
   images with SPHEREx frames.
-- https://data.asc-csa.gc.ca/dataset/neossat: not reachable securely (incomplete TLS certificate chain); shown as such on the Live
-  sources page. NEOSSat listings use CADC instead.
+- https://data.asc-csa.gc.ca/dataset/neossat: the server sends a wrong intermediate certificate ("Entrust Certification Authority - L1K"
+  instead of "Entrust OV TLS Issuing RSA CA 2"). The relay adds the correct public intermediate, fetched from the certificate's own
+  AIA URL (`relay/certs/README.txt`), for this host only, with verification still on. Its CKAN API answers live: "NEOSSAT -
+  Astronomy Data", 8 resources, Open Government Licence - Canada (checked 2026-11-14).
 
 ## Relay (why it exists)
 
@@ -128,7 +130,8 @@ IRSA TAP/SIA, MAST API, CADC TAP and the mission web pages do not send CORS head
 directly. `relay/core.mjs` is a stateless allow-list relay (hosts and path prefixes of the eight seeds only, GET/POST,
 40 MB cap, 55 s timeout, no cookies, no logging, per-client rate limit). It runs as the local server's `/api/relay`, and is
 packaged for Cloudflare Pages Functions, Cloudflare Workers, Netlify Edge, Vercel Edge and Deno Deploy, so two or more
-independent relays can be listed in `config.json`. Image pixels never pass through the relay: they stream from the public
+independent relays can be listed in `config.json`. GitHub Pages cannot run it: there the app skips the same-origin relay
+(`config.json` → `staticHosts`) and uses any external relay listed, otherwise saved and built-in data. Image pixels never pass through the relay: they stream from the public
 S3 bucket straight to the user's browser.
 
 ## Features left out because no approved source provides the data
@@ -139,3 +142,11 @@ S3 bucket straight to the user's browser.
 - **Water, CO₂ and CO ice band markers**: the approved pages read (mission page, User Guide, Explanatory Supplement, SPLICES pages
   and release notes, tutorials) do not state their wavelengths. Lines that are stated are marked.
 - **unWISE image overlay**: WiseView's image backend could not be read; WiseView is linked instead.
+
+## Pre-built indexes (refreshed by scripts, on a schedule once hosting is enabled)
+
+| File | Built by | Source | Checked |
+|---|---|---|---|
+| `data/targets.json` | `scripts/prebake.mjs` | IRSA TAP (Gaia DR3, spherex.artifact/plane) | 2026-11-14 |
+| `data/coverage.json`, `data/mission.json` | `scripts/mission.mjs` | IRSA TAP `spherex.obscore` aggregates in 20-day windows (1,628,230 images, 100% of sky, 530 days) | 2026-11-14 |
+| `assets/allsky-1000.jpg`, `assets/allsky-1600.jpg` | `scripts/allsky.mjs` | IRSA HiPS `spherex_allsky_cube`, order-3 Allsky previews of cube channels 8, 42, 95 | 2026-11-14 |

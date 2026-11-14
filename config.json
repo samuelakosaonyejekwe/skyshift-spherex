@@ -31,5 +31,8 @@
     "backup": "Cloudflare Pages mirror (not set up yet)",
     "code": "https://github.com/samuelakosaonyejekwe/skyshift-spherex"
   },
-  "deployed": true
+  "deployed": true,
+  "staticHosts": [
+    "github.io"
+  ]
 }

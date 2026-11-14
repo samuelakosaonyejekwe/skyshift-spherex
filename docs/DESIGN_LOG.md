@@ -20,3 +20,9 @@ review; when he accepts, changes or rejects one, the entry is updated with his d
 | 13 | 2026-11-14 | Licence: All rights reserved (proprietary) instead of MIT | **Decided by Samuel** | Intellectual-property protection. |
 | 14 | 2026-11-14 | Owner's name shown on the About page (and LICENSE/README/CITATION.cff) only; footer and dossiers show "© 2026 SkyShift" | **Decided by Samuel** | Space Apps does not require the name in the footer. |
 | 15 | 2026-11-14 | Home map in the style of the earlier SkyShift build (equatorial Mollweide, hour grid, ecliptic, target markers, hover readout) but drawn from real SPHEREx DR1 data only | **Requested by Samuel** | Confine to the eight challenge resources. |
+| 16 | 2026-11-14 | Publish as a public GitHub repository with Pages | **Decided by Samuel** | Judges can open the app and code; licence stays "All rights reserved". |
+| 17 | 2026-11-14 | Gaia overlays query MAST first (resource 4), IRSA as fallback | Proposed | Uses the Gaia seed link as the primary source. |
+| 18 | 2026-11-14 | Predicted positions include annual parallax; the motion fit removes each epoch's parallax shift | Proposed | Brief 4.8 (parallax) and correct motion validation for nearby stars. |
+| 19 | 2026-11-14 | Default colour map tints each frame by the wavelengths it shows | Proposed | Owner found grey images unclear; grey remains selectable. |
+| 20 | 2026-11-14 | On static hosts (GitHub Pages) the same-origin relay is skipped | Proposed | Avoids failing requests; external relays still used when configured. |
+| 21 | 2026-11-14 | Demo video re-shot with Barnard's Star | **Decided by Samuel** | Its motion is clearly visible; WISE 0855 is too faint. |

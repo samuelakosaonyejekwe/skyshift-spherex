@@ -1,4 +1,4 @@
-// Live sources: checks each of the eight challenge resources from the user's browser
+// Data freshness (shown inside Mission): checks each of the eight challenge resources from the user's browser
 // (directly where CORS allows, otherwise through the allow-listed relay) and shows
 // what SkyShift takes from each, how fresh it is, and whether it answered.
 
@@ -30,7 +30,7 @@ export const SOURCES = [
     uses: 'The citizen-science blink design; WiseView-style URL parameters are accepted, and every field has an “Open in WiseView” link for a then-and-now look with WISE/NEOWISE.',
     probe: async () => pageInfo('http://byw.tools/wiseview', /<title>([^<]+)/g) },
   { id: 'gaia', n: 4, name: 'Gaia at MAST', url: 'https://archive.stsci.edu/missions-and-data/gaia',
-    uses: 'Gaia DR3 positions, proper motions and parallaxes (MAST API Mast.Catalogs.GaiaDR3.Cone, with the IRSA-hosted gaia_dr3_source as first choice) for overlays, target motion and blend warnings.',
+    uses: 'Gaia DR3 positions, proper motions and parallaxes (MAST API Mast.Catalogs.GaiaDR3.Cone first, with IRSA’s gaia_dr3_source as the fallback) for overlays, target motion and blend warnings.',
     probe: async () => {
       const page = await pageInfo('https://archive.stsci.edu/missions-and-data/gaia', /Gaia (?:DR\d|EDR\d)[^\n<]{0,80}/g).catch((e) => ({ ok: false, error: e.message }));
       const res = await smartFetch('https://mast.stsci.edu/api/v0/invoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'request=' + encodeURIComponent(JSON.stringify({ service: 'Mast.Catalogs.GaiaDR3.Cone', params: { ra: 269.4485, dec: 4.7394, radius: 0.005 }, format: 'json', pagesize: 1, page: 1 })) });

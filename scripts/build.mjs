@@ -55,7 +55,6 @@ for (const f of ['relay/core.mjs', 'functions/api/relay.js']) {
 }
 
 // ---- every JavaScript module must parse (catches a broken page before it ships)
-import('node:child_process').then(() => {});
 const { execFileSync } = await import('node:child_process');
 for (const f of files.filter((x) => /\.m?js$/.test(x) && !LAZY.includes(x))) {
   try { execFileSync(process.execPath, ['--check', f], { stdio: 'pipe' }); }

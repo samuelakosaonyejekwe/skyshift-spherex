@@ -13,7 +13,7 @@ and the test or evidence that proves it. Status: ✅ done and tested · 🟡 don
 | Easy for anyone to quickly see how they change over time | Instant start from saved lists, autoplay, plain-language Explain panel, tour | Browser tests | ✅ |
 | Asteroids and comets orbit the Sun | Ecliptic on the map; Discover movers; solar-system tracks not available from approved sources (documented) | DATA_SOURCES "left out" | 🟡 |
 | Nearby stars march across the sky | Gaia proper motions, track overlay, Chase page, follow mode | VALIDATION.md (Barnard μδ within 2%) | ✅ |
-| Earth's orbit changes apparent positions (distances) | Gaia parallax and distance in Object panel and Chase cards; parallax not fitted from SPHEREx (COULD) | Object panel | 🟡 |
+| Earth's orbit changes apparent positions (distances) | Annual parallax in predicted tracks and overlays; parallax removed in the motion fit; Gaia distance in Object panel and Chase | VALIDATION.md (parallax removed, up to 0.54″ for Barnard) | ✅ |
 | Pluto discovered by comparing two images | Blink mode (first vs last epoch) | Guide, viewer | ✅ |
 | Volunteers discover objects this way (Backyard Worlds) | WiseView link and URL parameters; candidates, queue, random field | Saved page, upload queue E2E | ✅ |
 | Sensitive to hydrogen, water, CO₂, CO and other molecules | Spectrum with hydrogen Pa α, Br α, PAH, He lines; wavelength windows; ice wavelengths not in approved sources (documented) | Spectrum tab | 🟡 |
@@ -49,7 +49,9 @@ and the test or evidence that proves it. Status: ✅ done and tested · 🟡 don
 | Uploads (common formats), safe | Worker parser with limits | `test/upload.test.mjs` | ✅ |
 | Safe expression engine | `src/lib/expr.js` (no eval) | Equation E2E | ✅ |
 | Dossier HTML/PDF/ZIP, unique ID | `src/lib/dossier.js` | Dossier E2E (19 files) | ✅ |
-| Install, offline, update pop-up, Back/Forward | PWA shell, SW, toasts, history arrows, swipe | Browser tests | 🟡 (install on real devices pending) |
+| Install, offline, update pop-up, Back/Forward | PWA shell, SW, toasts, history arrows, swipe | E2E: offline shell, update flow (new cache active after click), arrows via menu links | 🟡 (install on real devices pending) |
 | Validation against catalogues and Astropy | VALIDATION.md, astropy test | Docs/tests | ✅ |
-| Scheduled refresh and two hosts | Scripts ready; workflows and hosting await go-ahead | — | ⏳ |
+| Scheduled refresh and two hosts | GitHub Pages live (deploy workflow passing, refresh every 6 h); Cloudflare backup and external relay need the owner's Cloudflare account | GitHub Actions runs | 🟡 |
 | Space Apps terms checked | Site unreadable from build environment | LEGAL.md open item | ⏳ |
+| Presentation deliverables (video ≤30 s, ≤7 slides) | `docs/presentation/skyshift-demo-barnard.webm` (28.5 s), `slides.html` (7 slides) | Files | ✅ |
+| Interface text in one file; translations possible | `src/i18n/en.js`, `src/i18n/el.js` (Greek menus and messages) | Settings → language | ✅ |

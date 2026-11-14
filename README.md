@@ -77,6 +77,11 @@ node scripts/validate.mjs   # five-target validation report
 
 No runtime dependencies. Aladin Lite (CDS, LGPL-3.0-or-later) is vendored in `vendor/`.
 
+## Presentation
+
+`docs/presentation/`: 28.5-second demo video (`skyshift-demo-barnard.webm`), 7-slide deck (`slides.html`, opens in any browser;
+print to PDF for a handout) and the slide images.
+
 ## Copyright
 
 Copyright (c) 2026 Samuel Akosa Onyejekwe. All rights reserved. See [LICENSE](LICENSE). Third-party data and software keep

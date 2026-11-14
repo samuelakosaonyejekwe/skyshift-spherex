@@ -484,7 +484,7 @@ export async function render(root, route, { go }) {
     // Gaia DR3 (propagated to the frame epoch)
     if (req.ov.includes('gaia') && S.cats.gaia) {
       // only the brightest stars in view (more as you zoom in), drawn thin so the SPHEREx image stays visible
-      const limit = Math.round(120 * S.view.s);
+      const limit = Math.round(60 * S.view.s);
       const visible = [];
       for (const s of S.cats.gaia.rows) {
         const p = apparent(s.ra, s.dec, s.pmra || 0, s.pmdec || 0, s.parallax > 0 ? s.parallax : 0, s.ref_epoch || 2016, mjd || 61000);
@@ -495,7 +495,7 @@ export async function render(root, route, { go }) {
       visible.sort((a, b) => (b.important - a.important) || ((a.s.phot_g_mean_mag ?? 99) - (b.s.phot_g_mean_mag ?? 99)));
       ctx.lineWidth = 1 * dpr;
       for (const { s, p, x, y, important } of visible.slice(0, limit)) {
-        ctx.strokeStyle = important ? '#5ec8ff' : '#5ec8ff8c'; ctx.fillStyle = '#9fe0ff';
+        ctx.strokeStyle = important ? '#5ec8ff' : '#5ec8ff66'; ctx.fillStyle = '#9fe0ff';
         const r = Math.max(2.5, 8 - (s.phot_g_mean_mag || 18) * 0.32) * dpr * Math.sqrt(S.view.s);
         ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
         const pm = Math.hypot(s.pmra || 0, s.pmdec || 0);
@@ -720,8 +720,18 @@ export async function render(root, route, { go }) {
       const d = separation(ra, dec, p.ra, p.dec) * 3600;
       if (d < 2.2 * S.grid.scale && (!best || d < best.d)) best = { d, s, cat, ra: p.ra, dec: p.dec };
     };
-    if (req.ov.includes('gaia')) S.cats.gaia?.rows.forEach((s) => consider(s, 'gaia'));
-    if (req.ov.includes('wise')) S.cats.wise?.rows.forEach((s) => consider(s, 'wise'));
+    // known fast movers and labelled objects near the click win over faint neighbours
+    const yr2 = mjdToYear(frameMjd() || 61000);
+    let notable = null;
+    for (const s of S.cats.gaia?.rows || []) {
+      if (!(s.label || Math.hypot(s.pmra || 0, s.pmdec || 0) > 300)) continue;
+      const p = apparent(s.ra, s.dec, s.pmra || 0, s.pmdec || 0, s.parallax > 0 ? s.parallax : 0, s.ref_epoch || 2016, frameMjd() || 61000);
+      const d = separation(ra, dec, p.ra, p.dec) * 3600;
+      if (d < 3.5 * S.grid.scale && (!notable || d < notable.d)) notable = { d, s, cat: 'gaia', ra: p.ra, dec: p.dec };
+    }
+    if (notable) best = notable;
+    if (!best && req.ov.includes('gaia')) S.cats.gaia?.rows.forEach((s) => consider(s, 'gaia'));
+    if (!best && req.ov.includes('wise')) S.cats.wise?.rows.forEach((s) => consider(s, 'wise'));
     S.selected = best ? { ra: best.ra, dec: best.dec, obj: best.s, cat: best.cat } : { ra, dec };
     drawOverlay();
     S.tab = 'object'; renderTabs(); renderSide();
@@ -1263,7 +1273,7 @@ export async function render(root, route, { go }) {
     sheet(h('div', { class: 'grid' }, h('h2', {}, 'Share or embed this view'),
       h('p', { class: 'muted' }, 'The link holds the whole view (position, field, detectors, mode, stretch, overlays and frame), so others see exactly what you see.'),
       box('Link', link), box('Embed code (iframe)', iframe),
-      h('p', { class: 'tiny' }, 'URL parameters: ra, dec (degrees or sexagesimal), fov (arcmin), det (e.g. 456), wl (e.g. 3-4), group (exposure|day|survey), mode (movie|blink|diff|stack|color), stretch, lo, hi, invert, cmap, speed (ms), track, ov, t, embed. WiseView-style size, speed, invert, diff, linear, gaia, window, pmra, pmdec are accepted too. Full list in the Guide.'),
+      h('p', { class: 'tiny' }, 'URL parameters: ra, dec (degrees or sexagesimal), fov (arcmin), det (e.g. 456), wl (e.g. 3-4), group (exposure|day|survey), mode (movie|blink|diff|stack|color), stretch, lo, hi, invert, cmap, speed (ms), track, ov, t, embed. WiseView-style size, speed, invert, diff, linear, gaia, window, pmra, pmdec are accepted too. Full list on the Learn page.'),
       navigator.share ? h('button', { class: 'btn primary', onclick: () => navigator.share({ title: `SkyShift: ${name}`, url: link }).catch(() => {}) }, 'Share…') : null), { label: 'Share or embed' });
   }
   function tour() {

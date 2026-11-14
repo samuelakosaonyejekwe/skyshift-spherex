@@ -29,6 +29,13 @@ export async function loadConfig() {
     if (Array.isArray(extra) && extra.length) config.relays = [...new Set([...extra, ...config.relays])];
   } catch { /* ignore */ }
   preferred = (typeof localStorage !== 'undefined' && localStorage.getItem('skyshift.relay')) || null;
+  // Static hosts (e.g. GitHub Pages) cannot run the same-origin relay: drop it there so the app does not
+  // make doomed requests; external relays listed in config.json are still used.
+  const staticHosts = config.staticHosts || ['github.io'];
+  if (typeof location !== 'undefined' && staticHosts.some((h) => location.hostname.endsWith(h))) {
+    config.relays = config.relays.filter((r) => /^https?:/i.test(r));
+    if (preferred && !/^https?:/i.test(preferred)) preferred = null;
+  }
   return config;
 }
 export const getConfig = () => config;
@@ -58,7 +65,8 @@ export async function smartFetch(url, opts = {}) {
     try { return await fetch(url, { ...init, signal: t.signal }); } finally { t.done(); }
   }
   const relays = [...new Set([preferred, ...config.relays].filter(Boolean))];
-  let lastErr = new Error('No relay configured');
+  let lastErr = new Error('no archive relay is available on this host');
+  if (!relays.length) { netStatus.relay = null; netStatus.lastError = lastErr.message; emit(); throw lastErr; }
   for (const relay of relays) {
     const t = withTimeout(timeout, signal);
     try {
