@@ -39,12 +39,16 @@
   .nav { display: flex; gap: 12px; }
   .nav button { width: 46px; height: 46px; border-radius: 50%; border: 1px solid #ffffff44; background: #1d2263; color: #fff; font-size: 22px; cursor: pointer; }
   .nav button:hover { background: #2b3290; }
+  .print-only { display: none; }
   @media print {
+    .no-print { display: none !important; }
+    .grad { background: none !important; -webkit-background-clip: border-box !important; background-clip: border-box !important; color: #9fd8ff !important; } img.print-only { display: block; } span.print-only { display: inline; }
     html, body { overflow: visible; background: #070919; }
     .viewport { position: static; display: block; }
     .deck { transform: none !important; width: 1600px; height: auto; }
-    section { position: relative; display: flex !important; height: 900px; page-break-after: always; break-after: page; }
-    .foot .nav { display: none; }
+    section { position: relative; display: flex !important; flex-direction: column; justify-content: center; height: 900px; page-break-after: always; break-after: page; }
+    .foot { display: none !important; }
+    section:last-of-type { page-break-after: auto; break-after: auto; }
     @page { size: 1600px 900px; margin: 0; }
   }
 </style>
@@ -58,7 +62,7 @@
       <p class="kicker">2026 NASA Space Apps Challenge · Planet X and SPHEREx</p>
       <h1>SkyShift: <span class="grad">a time machine</span> for the SPHEREx sky</h1>
       <p>Type a star or coordinates, press Play, and watch NASA SPHEREx infrared images of that patch of sky play like a film.</p>
-      <p class="muted" style="margin-top:22px">Team SkyShift Cyprus</p>
+      <p class="muted" style="margin-top:22px">Team SkyShift Cyprus · Try it: <b style="color:#9fe0ff">samuelakosaonyejekwe.github.io/skyshift-spherex</b></p>
     </div>
     <div><img class="badge" src="img/team-badge.png" alt="SkyShift Cyprus team badge"></div>
   </div>
@@ -97,7 +101,7 @@
 <section aria-label="Live demo">
   <h2>Live demo: Barnard’s Star and RW Aurigae</h2>
   <div class="two even">
-    <figure><video class="shot" src="skyshift-demo-barnard.webm" controls muted loop playsinline preload="metadata" poster="img/blink.png" aria-label="28-second demo: Barnard's Star moving between SPHEREx surveys"></video><figcaption>28-second demo: type a name, press Play, Blink and Difference show Barnard’s Star moving north; click it for Gaia’s 10.4″/yr and 1.8 pc.</figcaption></figure>
+    <figure><img class="shot print-only" src="img/blink.png" alt="Still from the demo video"><video class="shot no-print" src="skyshift-demo-barnard.webm" controls muted loop playsinline preload="metadata" poster="img/blink.png" aria-label="28-second demo: Barnard's Star moving between SPHEREx surveys"></video><figcaption>28-second demo: type a name, press Play, Blink and Difference show Barnard’s Star moving north; click it for Gaia’s 10.4″/yr and 1.8 pc.<span class="print-only"> Watch: samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/</span></figcaption></figure>
     <figure><img class="shot" src="img/spectrum.png" alt="Spectrum of RW Aurigae"><figcaption>A spectrum built on the fly from every exposure; each SPHEREx image samples a different wavelength.</figcaption></figure>
   </div>
 </section>
@@ -149,6 +153,7 @@
       </ul>
     </div>
   </div>
+  <p class="muted" style="margin-top:34px">Live app: <b style="color:#9fe0ff">samuelakosaonyejekwe.github.io/skyshift-spherex</b> · Code: <b style="color:#9fe0ff">github.com/samuelakosaonyejekwe/skyshift-spherex</b></p>
 </section>
 
   <div class="foot"><span>SkyShift Cyprus · SPHEREx data: NASA/IPAC Infrared Science Archive (IRSA)</span><div class="nav"><button id="prev" aria-label="Previous slide">‹</button><button id="next" aria-label="Next slide">›</button></div><span id="count"></span></div>

@@ -83,8 +83,10 @@ No runtime dependencies. Aladin Lite (CDS, LGPL-3.0-or-later) is vendored in `ve
 
 Watch online (slides with the playable demo video): https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/
 
-Files in `docs/presentation/`: 28-second demo video (`skyshift-demo-barnard.webm`), 7-slide deck (`slides.html`, opens in any
-browser; print to PDF for a handout) and the slide images.
+Slide deck as PDF (7 slides): [docs/presentation/SkyShift-slides.pdf](docs/presentation/SkyShift-slides.pdf)
+
+Files in `docs/presentation/`: 28-second demo video (`skyshift-demo-barnard.webm`), 7-slide deck (`slides.html` for the browser,
+`SkyShift-slides.pdf` for submission) and the slide images.
 
 ## Copyright
 
