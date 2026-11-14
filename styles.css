@@ -89,14 +89,15 @@ kbd { font: 12px var(--mono); padding: 1px 6px; border: 1px solid var(--line-2);
 @keyframes glow { 50% { box-shadow: 0 6px 30px rgba(255, 120, 160, .7); } }
 .menu-btn { display: none; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--text); cursor: pointer; }
 .menu-btn svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
-@media (max-width: 900px) {
-  :root { --top: 60px; }
-  .menu-btn { display: grid; place-items: center; }
-  .mainnav { position: fixed; top: var(--top); right: 8px; flex-direction: column; height: auto; flex-basis: auto; border-top: 0; margin: 0; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--radius);
+/* compact menu (single definition): html.nav-compact is set before first paint on narrow screens by
+   src/nav-fit.js, and by app.js whenever the menu bar does not fit on one line (long labels in some languages) */
+
+html.nav-compact { --top: 60px; }
+html.nav-compact .menu-btn { display: grid; place-items: center; }
+  html.nav-compact .mainnav { position: fixed; top: var(--top); right: 8px; flex-direction: column; height: auto; flex-basis: auto; border-top: 0; margin: 0; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--radius);
     padding: 8px; box-shadow: var(--shadow); min-width: 200px; transform-origin: top right; transform: scale(.95); opacity: 0; pointer-events: none; transition: .16s; }
-  .mainnav.open { opacity: 1; transform: none; pointer-events: auto; }
-  .mainnav a { padding: 11px 14px; }
-}
+  html.nav-compact .mainnav.open { opacity: 1; transform: none; pointer-events: auto; }
+  html.nav-compact .mainnav a { padding: 11px 14px; }
 @media (max-width: 560px) {
   .brand-name { display: none; }
   .install-btn span { display: none; }

@@ -145,6 +145,19 @@ menuBtn.addEventListener('click', () => {
   nav.classList.toggle('open', open); menuBtn.setAttribute('aria-expanded', String(open));
 });
 document.addEventListener('click', (e) => { if (!nav.contains(e.target) && !menuBtn.contains(e.target)) closeMenu(); });
+// compact menu when the screen is narrow or the menu bar does not fit on one line (measured in the full layout)
+function fitNav() {
+  const root = document.documentElement;
+  if (window.innerWidth <= 900) { root.classList.add('nav-compact'); return; }
+  root.classList.remove('nav-compact');
+  // the bar is centred, so overflow spills past both edges: compare the first and last links with the bar's box
+  const box = nav.getBoundingClientRect(), links = nav.querySelectorAll('a');
+  const first = links[0]?.getBoundingClientRect(), last = links[links.length - 1]?.getBoundingClientRect();
+  if (first && last && (first.left < box.left - 1 || last.right > box.right + 1 || last.right > window.innerWidth)) root.classList.add('nav-compact');
+  else closeMenu();
+}
+let fitT = 0;
+window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(fitNav, 100); });
 
 // ---------------- connection pill ----------------
 const pill = document.getElementById('netpill');
@@ -284,6 +297,8 @@ setLang(getSettings().lang || 'en');
   document.querySelector('#installBtn span').textContent = t('top.install');
   navBack.setAttribute('aria-label', t('top.back')); navFwd.setAttribute('aria-label', t('top.forward'));
   document.getElementById('themeBtn').title = t('top.theme'); document.getElementById('settingsBtn').title = t('top.settings');
+  fitNav(); // labels changed length
+  document.fonts?.ready?.then(fitNav);
 }
 
 // ---------------- theme + settings ----------------
