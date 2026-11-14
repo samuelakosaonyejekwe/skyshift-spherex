@@ -61,8 +61,12 @@ self.addEventListener('fetch', (event) => {
   }
   if (url.origin !== self.location.origin) return; // S3 range reads and API calls are handled by the app
   if (url.pathname.endsWith('/api/relay')) return;
+  // The presentation (slides, PDF, video) is a separate static page: always served straight from the network
+  if (url.pathname.includes('/presentation/')) return;
 
-  if (req.mode === 'navigate') {
+  // only the app's own page is served from the shell; other pages on the site (e.g. test/embed) load normally
+  const scopePath = new URL(self.registration.scope).pathname;
+  if (req.mode === 'navigate' && (url.pathname === scopePath || url.pathname === scopePath + 'index.html')) {
     // the page HTML comes from this version's cache, so HTML, CSP, scripts and styles always match;
     // a new version arrives through the service-worker update (and its pop-up)
     event.respondWith((async () => {

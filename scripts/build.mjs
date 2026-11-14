@@ -28,6 +28,8 @@ for (const f of files) {
   copyFileSync(f, dest);
   hash.update(f).update(readFileSync(f));
 }
+// the service-worker template is part of the version, so a change to caching rules reaches installed copies
+hash.update(readFileSync('scripts/sw.template.js'));
 // content hash only: an unchanged build keeps its version (no needless update prompt or re-download)
 const version = hash.digest('hex').slice(0, 12);
 
