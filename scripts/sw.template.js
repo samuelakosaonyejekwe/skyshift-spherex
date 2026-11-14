@@ -11,10 +11,23 @@ const NETWORK_FIRST = /\/(version\.json|data\/idx\/.+)$/;
 // served at once from the last copy and refreshed in the background (fast start; updates arrive on the next visit)
 const STALE_REVALIDATE = /\/(config\.json|data\/targets\.json)$/;
 
+// Some hosts redirect (e.g. Cloudflare Pages sends /index.html to / with 308). Browsers refuse a response marked
+// "redirected" for a page load, so every stored response is first copied into a plain, unredirected one.
+async function clean(res) {
+  if (!res || !res.redirected) return res;
+  return new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers });
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(SHELL);
-    await cache.addAll(PRECACHE.map((u) => new Request(u, { cache: 'reload' })));
+    await Promise.all(PRECACHE.map(async (u) => {
+      const res = await fetch(new Request(u, { cache: 'reload' }));
+      if (!res.ok) throw new Error(`precache ${u}: ${res.status}`);
+      await cache.put(u, await clean(res));
+    }));
+    // no app page open (e.g. a visitor stuck on an error page): take over at once instead of waiting for the pop-up
+    if (!(await self.clients.matchAll({ type: 'window' })).length) await self.skipWaiting();
   })());
 });
 
@@ -73,9 +86,10 @@ self.addEventListener('fetch', (event) => {
     // a new version arrives through the service-worker update (and its pop-up)
     event.respondWith((async () => {
       const c = await caches.open(SHELL);
-      const hit = (await c.match('./index.html')) || (await c.match('./'));
-      if (hit) return hit;
-      try { return (await event.preloadResponse) || (await fetch(req)); } catch { return Response.error(); }
+      const hit = (await c.match('./')) || (await c.match('./index.html'));
+      if (hit && !hit.redirected) return hit;
+      // no usable stored page: the network (never an error page while the host answers)
+      try { return await clean((await event.preloadResponse) || (await fetch(req))); } catch { return hit ? clean(hit) : Response.error(); }
     })());
     return;
   }

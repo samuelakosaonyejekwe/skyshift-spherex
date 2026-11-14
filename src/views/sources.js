@@ -12,6 +12,10 @@ import { cache } from '../lib/store.js';
 
 export const title = 'Data freshness';
 
+// requests of the current page visit; aborted when the page is left, so no check outlives its page
+let visit = new AbortController();
+const sig = () => visit.signal;
+
 export const SOURCES = [
   { id: 'irsa', n: 1, name: 'SPHEREx at NASA/IPAC IRSA', url: 'https://irsa.ipac.caltech.edu/Missions/spherex.html',
     uses: 'Image search (TAP: spherex.plane + spherex.artifact), spectral images (public S3 bucket, byte ranges), cutouts, band definitions, flags, releases, DOIs, the SPHEREx all-sky HiPS, Gaia DR3 and WISE catalogues hosted at IRSA.',
@@ -22,7 +26,7 @@ export const SOURCES = [
   { id: 'tutorials', n: 2, name: 'IRSA SPHEREx tutorials', url: 'https://caltech-ipac.github.io/irsa-tutorials/spherex/',
     uses: 'Access patterns SkyShift follows: TAP query of spherex.artifact/plane, cutout syntax, WCS-WAVE wavelength lookup, FLAGS bits, ePSF, all-sky cube indexing, photometry flags.',
     probe: async () => {
-      const r = await fetch('https://api.github.com/repos/Caltech-IPAC/irsa-tutorials/commits?per_page=1', { cache: 'no-store' });
+      const r = await fetch('https://api.github.com/repos/Caltech-IPAC/irsa-tutorials/commits?per_page=1', { cache: 'no-store', signal: sig() });
       if (!r.ok) throw new Error(`GitHub API ${r.status}`);
       const [c] = await r.json();
       const page = await pageInfo('https://caltech-ipac.github.io/irsa-tutorials/spherex/', /SPHEREx[^\n<]{3,80}/g).catch(() => ({}));
@@ -35,7 +39,7 @@ export const SOURCES = [
     uses: 'Gaia DR3 positions, proper motions and parallaxes (MAST API Mast.Catalogs.GaiaDR3.Cone first, with IRSA’s gaia_dr3_source as the fallback) for overlays, target motion and blend warnings.',
     probe: async () => {
       const page = await pageInfo('https://archive.stsci.edu/missions-and-data/gaia', /Gaia (?:DR\d|EDR\d)[^\n<]{0,80}/g).catch((e) => ({ ok: false, error: e.message }));
-      const res = await smartFetch('https://mast.stsci.edu/api/v0/invoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'request=' + encodeURIComponent(JSON.stringify({ service: 'Mast.Catalogs.GaiaDR3.Cone', params: { ra: 269.4485, dec: 4.7394, radius: 0.005 }, format: 'json', pagesize: 1, page: 1 })) });
+      const res = await smartFetch('https://mast.stsci.edu/api/v0/invoke', { method: 'POST', signal: sig(), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'request=' + encodeURIComponent(JSON.stringify({ service: 'Mast.Catalogs.GaiaDR3.Cone', params: { ra: 269.4485, dec: 4.7394, radius: 0.005 }, format: 'json', pagesize: 1, page: 1 })) });
       const j = JSON.parse((await res.text().catch(() => '{}')).replace(/"(source_id|solution_id|random_index)"\s*:\s*(-?\d{16,})/g, '"$1":"$2"') || '{}');
       return { ...page, ok: page.ok !== false || j.status === 'COMPLETE', extra: j.status === 'COMPLETE' ? `MAST Gaia DR3 cone search answered live (${j.data?.length ?? 0} row test).` : `MAST API status: ${j.status || res.status}` };
     } },
@@ -51,7 +55,7 @@ export const SOURCES = [
   { id: 'neotut', n: 7, name: 'NEOSSat tutorial (GitHub)', url: 'https://github.com/asc-csa/NEOSSAT_Tutorial',
     uses: 'How NEOSSat FITS images are organised and read (open-data folders by year/day, FITS headers); informs the NEOSSat listing and its caveats.',
     probe: async () => {
-      const r = await fetch('https://api.github.com/repos/asc-csa/NEOSSAT_Tutorial/commits?per_page=1', { cache: 'no-store' });
+      const r = await fetch('https://api.github.com/repos/asc-csa/NEOSSAT_Tutorial/commits?per_page=1', { cache: 'no-store', signal: sig() });
       if (!r.ok) throw new Error(`GitHub API ${r.status}`);
       const [c] = await r.json();
       return { ok: true, status: 200, extra: c ? `Latest change: ${niceDate(c.commit.committer.date)} — “${c.commit.message.split('\n')[0].slice(0, 90)}”` : null };
@@ -59,7 +63,7 @@ export const SOURCES = [
   { id: 'neodata', n: 8, name: 'NEOSSat open data (CSA)', url: 'https://data.asc-csa.gc.ca/dataset/neossat',
     uses: 'The open-data catalogue of NEOSSat images. Checked live; when its server cannot be reached securely, SkyShift lists NEOSSat data through CADC instead.',
     probe: async () => {
-      const res = await smartFetch('https://data.asc-csa.gc.ca/api/3/action/package_show?id=neossat', { timeout: 30000 });
+      const res = await smartFetch('https://data.asc-csa.gc.ca/api/3/action/package_show?id=neossat', { timeout: 30000, signal: sig() });
       const j = await res.json();
       if (!j.success) throw new Error('Open-data API did not answer');
       const r = j.result;
@@ -70,7 +74,7 @@ export const SOURCES = [
 ];
 
 async function pageInfo(url, re) {
-  const res = await smartFetch(url, { timeout: 30000 });
+  const res = await smartFetch(url, { timeout: 30000, signal: sig() });
   const upstream = Number(res.headers.get('x-relay-upstream-status') || res.status);
   const text = await res.text();
   if (!res.ok || upstream >= 400) {
@@ -157,5 +161,5 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
   }
   run();
   timer = setInterval(run, 10 * 60 * 1000);
-  return () => { clearInterval(timer); relayout.disconnect?.(); };
+  return () => { clearInterval(timer); relayout.disconnect?.(); visit.abort(); visit = new AbortController(); };
 }
