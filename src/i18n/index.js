@@ -10,5 +10,7 @@ export const LANGS = {
   fr: { name: 'Français (French, interface menus)', strings: fr },
 };
 let current = en;
-export function setLang(code) { current = LANGS[code]?.strings || en; document.documentElement.lang = LANGS[code] ? code : 'en'; }
+// The page stays marked as English (most of its text is), so browsers offer a correct full-page translation from
+// English; SkyShift's own translated labels are marked with their language where they appear (src/i18n/apply.js).
+export function setLang(code) { current = LANGS[code]?.strings || en; document.documentElement.lang = 'en'; document.documentElement.dataset.uiLang = LANGS[code] ? code : 'en'; }
 export const t = (key) => current[key] ?? en[key] ?? key;

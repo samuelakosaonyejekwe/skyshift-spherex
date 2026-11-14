@@ -3,7 +3,7 @@
 // textareas and elements marked data-no-tr is left alone; anything not in the list stays in English.
 import { UI } from './ui.js';
 
-let phrases = null, patterns = [], observer = null;
+let phrases = null, patterns = [], observer = null, lang = 'en';
 
 function tr(text) {
   const k = text.trim();
@@ -15,12 +15,15 @@ function tr(text) {
 
 const skip = (el) => !el || el.closest('script, style, textarea, code, pre, [data-no-tr]');
 
+// a translated label carries its language, so browser translators leave it alone and screen readers pronounce it right
+const mark = (el) => { if (el && el.lang !== lang) el.lang = lang; };
+
 function translateNode(n) {
-  if (n.nodeType === 3) { if (!skip(n.parentElement)) { const v = tr(n.nodeValue); if (v != null) n.nodeValue = v; } return; }
+  if (n.nodeType === 3) { if (!skip(n.parentElement)) { const v = tr(n.nodeValue); if (v != null) { n.nodeValue = v; mark(n.parentElement); } } return; }
   if (n.nodeType !== 1 || skip(n)) return;
   const w = document.createTreeWalker(n, NodeFilter.SHOW_TEXT);
   const texts = []; while (w.nextNode()) texts.push(w.currentNode);
-  for (const t of texts) if (!skip(t.parentElement)) { const v = tr(t.nodeValue); if (v != null) t.nodeValue = v; }
+  for (const t of texts) if (!skip(t.parentElement)) { const v = tr(t.nodeValue); if (v != null) { t.nodeValue = v; mark(t.parentElement); } }
   for (const el of [n, ...n.querySelectorAll('[placeholder]')]) if (el.placeholder) { const v = tr(el.placeholder); if (v != null) el.placeholder = v; }
 }
 
@@ -29,7 +32,9 @@ export function applyUiLanguage(code) {
   observer?.disconnect(); observer = null;
   const set = UI[code];
   if (!set) { phrases = null; return; }
-  phrases = set.phrases; patterns = set.patterns || [];
+  phrases = set.phrases; patterns = set.patterns || []; lang = code;
+  // labels translated through src/i18n/<lang>.js (menu bar, status pill, install button)
+  document.querySelectorAll('#mainnav, #netpill, #installBtn, .footer').forEach(mark);
   translateNode(document.body);
   observer = new MutationObserver((muts) => {
     for (const m of muts) {
