@@ -30,7 +30,7 @@ export const SOURCES = [
       if (!r.ok) throw new Error(`GitHub API ${r.status}`);
       const [c] = await r.json();
       const page = await pageInfo('https://caltech-ipac.github.io/irsa-tutorials/spherex/', /SPHEREx[^\n<]{3,80}/g).catch(() => ({}));
-      return { ok: true, status: 200, lines: page.lines?.slice(0, 6), extra: c ? `Latest tutorial repository change: ${niceDate(c.commit.committer.date)} — “${c.commit.message.split('\n')[0].slice(0, 90)}”` : null };
+      return { ok: true, status: 200, lines: page.lines?.slice(0, 6), extra: c ? `Latest change to IRSA’s tutorial repository: ${niceDate(c.commit.committer.date)} — “${c.commit.message.split('\n')[0].slice(0, 90)}”` : null };
     } },
   { id: 'wiseview', n: 3, name: 'WiseView (Backyard Worlds)', url: 'http://byw.tools/wiseview',
     uses: 'The citizen-science blink design; WiseView-style URL parameters are accepted, and every field has an “Open in WiseView” link for a then-and-now look with WISE/NEOWISE.',
@@ -58,7 +58,7 @@ export const SOURCES = [
       const r = await fetch('https://api.github.com/repos/asc-csa/NEOSSAT_Tutorial/commits?per_page=1', { cache: 'no-store', signal: sig() });
       if (!r.ok) throw new Error(`GitHub API ${r.status}`);
       const [c] = await r.json();
-      return { ok: true, status: 200, extra: c ? `Latest change: ${niceDate(c.commit.committer.date)} — “${c.commit.message.split('\n')[0].slice(0, 90)}”` : null };
+      return { ok: true, status: 200, extra: c ? `Latest change to the CSA’s NEOSSat tutorial repository: ${niceDate(c.commit.committer.date)} — “${c.commit.message.split('\n')[0].slice(0, 90)}”` : null };
     } },
   { id: 'neodata', n: 8, name: 'NEOSSat open data (CSA)', url: 'https://data.asc-csa.gc.ca/dataset/neossat',
     uses: 'The open-data catalogue of NEOSSat images. Checked live; when its server cannot be reached securely, SkyShift lists NEOSSat data through CADC instead.',
@@ -132,7 +132,7 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
         c.status.textContent = r.ok === false ? 'Not reachable' : `Live · ${ms} ms`;
         c.body.replaceChildren(
           r.extra ? h('p', {}, r.extra) : null,
-          r.lastModified ? h('p', {}, `Page last modified: ${r.lastModified}`) : null,
+          r.lastModified ? h('p', {}, `That page was last modified: ${r.lastModified}`) : null,
           r.lines?.length ? h('ul', { lang: 'en', title: 'Quoted from the live page' }, r.lines.slice(0, 6).map((l) => h('li', {}, l))) : null,
           r.error ? h('p', { class: 'notice warn' }, r.error) : null);
         await cache.set(`src:${s.id}`, { at: Date.now(), extra: r.extra || null, lines: r.lines || [] });
@@ -147,7 +147,7 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
           c.body.replaceChildren(
             h('p', { class: 'tiny muted' }, `Checked from SkyShift’s build server on ${niceDateTime(scheduled.checked)} (${sched.ms} ms)${sched.stale ? '; latest attempt failed, showing the last good check' : ''}.${e.useScheduled ? '' : ' This host has no archive relay for a live check.'}`),
             sched.extra ? h('p', {}, sched.extra) : null,
-            sched.lastModified ? h('p', {}, `Page last modified: ${sched.lastModified}`) : null,
+            sched.lastModified ? h('p', {}, `That page was last modified: ${sched.lastModified}`) : null,
             sched.lines?.length ? h('ul', { lang: 'en', title: 'Quoted from the live page' }, sched.lines.slice(0, 6).map((l) => h('li', {}, l))) : null);
         } else {
           c.status.className = 'src-status bad';

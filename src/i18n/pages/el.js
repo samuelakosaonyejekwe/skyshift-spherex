@@ -103,14 +103,12 @@ export default {
 "New SPHEREx images reach the IRSA archive every week. This page reads the archive directly from your device, so it always shows what is there right now. Press Develop on any new frame for a quick look, then open that spot.": "Νέες εικόνες SPHEREx φτάνουν στο αρχείο της IRSA κάθε εβδομάδα. Αυτή η σελίδα διαβάζει το αρχείο απευθείας από τη συσκευή σας, άρα δείχνει πάντα τι υπάρχει τώρα. Πατήστε Εμφάνιση σε μια νέα λήψη για γρήγορη ματιά και μετά ανοίξτε εκείνο το σημείο.",
 "newest SPHEREx planning period in the IRSA archive (QR3)": "νεότερη περίοδος σχεδιασμού SPHEREx στο αρχείο της IRSA (QR3)",
 "newest SPHEREx planning period in the IRSA archive (DR1)": "νεότερη περίοδος σχεδιασμού SPHEREx στο αρχείο της IRSA (DR1)",
-"date the newest SPHEREx image searchable at IRSA was taken": "ημερομηνία λήψης της νεότερης εικόνας SPHEREx με δυνατότητα αναζήτησης στην IRSA",
 "SPHEREx planning periods served by IRSA now (DR1 + QR3)": "περίοδοι σχεδιασμού SPHEREx που διαθέτει τώρα η IRSA (DR1 + QR3)",
 "Detector 3 (1.63–2.41 µm) frames from the newest planning period. Each picture is the central 15′ of a 3.5° × 3.5° frame, shown as recorded (north is not necessarily up); the position given is its centre.": "Λήψεις του ανιχνευτή 3 (1,63–2,41 µm) από τη νεότερη περίοδο σχεδιασμού. Κάθε εικόνα είναι τα κεντρικά 15′ μιας λήψης 3,5° × 3,5°, όπως καταγράφηκε (ο βορράς δεν είναι απαραίτητα πάνω)· η θέση που δίνεται είναι το κέντρο της.",
 "SPHEREx maps the entire sky every six months in 102 infrared colours from 0.75 to 5 µm. These numbers come from IRSA’s archive of SPHEREx spectral images (all releases currently served).": "Το SPHEREx χαρτογραφεί όλο τον ουρανό κάθε έξι μήνες σε 102 υπέρυθρα χρώματα από 0,75 έως 5 µm. Οι αριθμοί προέρχονται από το αρχείο φασματικών εικόνων SPHEREx της IRSA (όλες οι διαθέσιμες εκδόσεις).",
 "spectral images in the archive (one per detector per exposure)": "φασματικές εικόνες στο αρχείο (μία ανά ανιχνευτή ανά λήψη)",
 "of the sky imaged": "του ουρανού φωτογραφημένο",
 "days with observations": "ημέρες με παρατηρήσεις",
-"first SPHEREx survey image taken": "λήψη της πρώτης εικόνας επισκόπησης SPHEREx",
 "infrared colours (0.75–5 µm, 6 detector arrays × 17 channels)": "υπέρυθρα χρώματα (0,75–5 µm, 6 ανιχνευτές × 17 κανάλια)",
 "102 colours of infrared, in 6 detector arrays": "102 υπέρυθρα χρώματα, σε 6 ανιχνευτές",
 "SkyShift uses only the eight resources listed by the challenge, and pages and services reached from them. Every check below runs now, from your device, against the live sites. Archives that do not allow direct browser access are reached through a small relay that only forwards to these sites.": "Το SkyShift χρησιμοποιεί μόνο τις οκτώ πηγές του διαγωνισμού και σελίδες και υπηρεσίες που προκύπτουν από αυτές. Κάθε έλεγχος παρακάτω εκτελείται τώρα, από τη συσκευή σας, στους ζωντανούς ιστότοπους. Τα αρχεία που δεν επιτρέπουν άμεση πρόσβαση από τον φυλλομετρητή προσεγγίζονται μέσω ενός μικρού αναμεταδότη που προωθεί μόνο προς αυτούς τους ιστότοπους.",
@@ -468,5 +466,7 @@ export default {
 "Galactic centre": "Γαλαξιακό κέντρο",
 "Developing…": "Εμφάνιση…",
 "Press Enter to search. Names: the five challenge targets, or \"Gaia DR3 <id>\".": "Πατήστε Enter για αναζήτηση. Ονόματα: οι πέντε στόχοι του διαγωνισμού ή «Gaia DR3 <id>».",
-"Date": "Ημερομηνία"
+"Date": "Ημερομηνία",
+"date NASA’s SPHEREx telescope took the newest image searchable at IRSA": "ημερομηνία που το τηλεσκόπιο SPHEREx της NASA τράβηξε τη νεότερη εικόνα που αναζητείται στην IRSA",
+"date NASA’s SPHEREx telescope took its first survey image": "ημερομηνία που το τηλεσκόπιο SPHEREx της NASA τράβηξε την πρώτη εικόνα επισκόπησης"
 };

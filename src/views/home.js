@@ -203,7 +203,7 @@ export async function render(root, route, { go }) {
         h('div', { class: 'stat' }, h('b', {}, niceNum(mission.images)), h('span', { class: 'tiny' }, 'SPHEREx images in the archive')),
         h('div', { class: 'stat' }, h('b', {}, `${(mission.skyFraction * 100).toFixed(0)}%`), h('span', { class: 'tiny' }, 'of the sky covered')),
         h('div', { class: 'stat' }, h('b', {}, niceDate(mission.built)), h('span', { class: 'tiny' }, 'map refreshed from NASA’s archive')),
-        h('div', { class: 'stat' }, h('b', {}, niceDate(mission.lastMjd)), h('span', { class: 'tiny' }, 'newest SPHEREx image taken (NASA publishes images weeks later)'))) : null,
+        h('div', { class: 'stat' }, h('b', {}, niceDate(mission.lastMjd)), h('span', { class: 'tiny' }, 'date NASA’s SPHEREx telescope took its newest image (NASA publishes images weeks later)'))) : null,
       h('p', { class: 'tiny', style: { margin: '4px 0 8px' } }, 'Hover to read coordinates and how many SPHEREx images cover that spot. Click anywhere to play it, or a ✦ star for a challenge target. Ctrl + scroll or pinch to zoom.'),
       map,
       h('p', { class: 'tiny map-cap' }, 'Real SPHEREx Data Release 1 all-sky map (IRSA), false colour from three of its 102 bands: blue 0.9 µm, green 2.0 µm, red 4.6 µm. Equatorial grid, RA 12h at the centre; dotted line: the ecliptic, where asteroids and comets travel. ', h('a', { href: '#/sky' }, 'Zoom in with the Sky atlas →'))),

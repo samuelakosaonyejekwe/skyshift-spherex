@@ -43,7 +43,7 @@ export async function render(root, route, { go }) {
     const newestFile = keys.reduce((m, k) => (k.modified > m ? k.modified : m), '');
     stats.replaceChildren(
       stat(snap.top.period, `newest SPHEREx planning period in the IRSA archive (${snap.top.rel.toUpperCase()})`),
-      stat(newestFile ? niceDate(newestFile) : '–', `newest SPHEREx files reached the IRSA archive${newestFile ? ` (${ago(newestFile)})` : ''}`),
+      stat(newestFile ? niceDate(newestFile) : '–', `date NASA’s newest SPHEREx files reached the IRSA archive${newestFile ? ` (${ago(newestFile)})` : ''}`),
       newestCard(),
       stat(String(snap.total), 'SPHEREx planning periods served by IRSA now (DR1 + QR3)'));
     periods.className = 'period-grid';
@@ -66,7 +66,7 @@ export async function render(root, route, { go }) {
   }
   // newest exposure: from the image index or the last value seen at once; the live query only updates this card
   let newestObs = Number(localStorage.getItem('skyshift.newestMjd') || 0);
-  const newestCard = () => stat(newestObs ? niceDate(newestObs) : '–', 'date the newest SPHEREx image searchable at IRSA was taken');
+  const newestCard = () => stat(newestObs ? niceDate(newestObs) : '–', 'date NASA’s SPHEREx telescope took the newest image searchable at IRSA');
   import('../lib/tap.js').then(async (t) => {
     if (!newestObs) { newestObs = (await t.indexMeta().catch(() => null))?.newestMjd || 0; if (newestObs && !disposed && stats.children[2]) stats.children[2].replaceWith(newestCard()); }
     t.latestSpherex().then((r) => { if (r.data && !disposed) { newestObs = r.data; stats.children[2]?.replaceWith(newestCard()); } }).catch(() => {});

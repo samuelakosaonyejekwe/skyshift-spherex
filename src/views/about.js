@@ -1,6 +1,7 @@
 // About: project, copyright and licence, hosting addresses, data credits and terms.
 
 import { h, cardify } from '../ui/dom.js';
+import { niceDateTime } from '../lib/coords.js';
 import { getConfig } from '../lib/net.js';
 
 export const title = 'About';
@@ -9,8 +10,8 @@ export const SPHEREX_ACK = 'This publication makes use of data products from the
 
 export async function render(root) {
   const cfg = getConfig();
-  let version = '';
-  try { version = (await (await fetch('./version.json', { cache: 'no-cache' })).json()).version; } catch { /* offline */ }
+  let version = '', built = '';
+  try { ({ version, built } = await (await fetch('./version.json', { cache: 'no-cache' })).json()); } catch { /* offline */ }
   const article = cardify(h('article', { class: 'prose' },
     h('h1', {}, 'SkyShift: A Time Machine for the SPHEREx Sky'),
     h('p', { class: 'muted' }, 'A public web tool for the 2026 NASA Space Apps Challenge “Planet X and SPHEREx”, by team SkyShift Cyprus.'),
@@ -28,7 +29,7 @@ export async function render(root) {
       })()),
       h('li', {}, 'Source code: ', h('a', { href: cfg.hosts?.code || 'https://github.com/samuelakosaonyejekwe/skyshift-spherex' }, cfg.hosts?.code || 'https://github.com/samuelakosaonyejekwe/skyshift-spherex'))),
     h('p', {}, 'Both hosts serve the same build. Installed copies keep working offline even if a host is unreachable, and data requests go from your device straight to the archives.'),
-    version ? h('p', { class: 'tiny' }, `App version ${version}`) : null,
+    version ? h('p', { class: 'tiny' }, `App version ${version}${built ? `, built ${niceDateTime(built)}` : ''}. Dates elsewhere in the app are when NASA’s SPHEREx telescope took or published its images.`) : null,
 
     h('h2', {}, 'Data credits and terms'),
     h('h3', {}, 'SPHEREx (NASA/JPL/Caltech) via NASA/IPAC Infrared Science Archive (IRSA)'),

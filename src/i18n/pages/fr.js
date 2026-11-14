@@ -103,14 +103,12 @@ export default {
 "New SPHEREx images reach the IRSA archive every week. This page reads the archive directly from your device, so it always shows what is there right now. Press Develop on any new frame for a quick look, then open that spot.": "De nouvelles images SPHEREx arrivent chaque semaine dans l’archive de l’IRSA. Cette page lit l’archive directement depuis votre appareil : elle montre toujours ce qui s’y trouve maintenant. Appuyez sur Développer sur une nouvelle image pour un aperçu, puis ouvrez ce point.",
 "newest SPHEREx planning period in the IRSA archive (QR3)": "période de planification SPHEREx la plus récente dans l’archive de l’IRSA (QR3)",
 "newest SPHEREx planning period in the IRSA archive (DR1)": "période de planification SPHEREx la plus récente dans l’archive de l’IRSA (DR1)",
-"date the newest SPHEREx image searchable at IRSA was taken": "date de prise de la plus récente image SPHEREx consultable à l’IRSA",
 "SPHEREx planning periods served by IRSA now (DR1 + QR3)": "périodes de planification SPHEREx servies actuellement par l’IRSA (DR1 + QR3)",
 "Detector 3 (1.63–2.41 µm) frames from the newest planning period. Each picture is the central 15′ of a 3.5° × 3.5° frame, shown as recorded (north is not necessarily up); the position given is its centre.": "Images du détecteur 3 (1,63–2,41 µm) de la période de planification la plus récente. Chaque vignette montre les 15′ centrales d’une image de 3,5° × 3,5°, telle qu’enregistrée (le nord n’est pas forcément en haut) ; la position indiquée est son centre.",
 "SPHEREx maps the entire sky every six months in 102 infrared colours from 0.75 to 5 µm. These numbers come from IRSA’s archive of SPHEREx spectral images (all releases currently served).": "SPHEREx cartographie tout le ciel tous les six mois en 102 couleurs infrarouges de 0,75 à 5 µm. Ces chiffres viennent de l’archive d’images spectrales SPHEREx de l’IRSA (toutes les versions actuellement servies).",
 "spectral images in the archive (one per detector per exposure)": "images spectrales dans l’archive (une par détecteur et par pose)",
 "of the sky imaged": "du ciel photographié",
 "days with observations": "jours d’observation",
-"first SPHEREx survey image taken": "prise de la première image de relevé SPHEREx",
 "infrared colours (0.75–5 µm, 6 detector arrays × 17 channels)": "couleurs infrarouges (0,75–5 µm, 6 détecteurs × 17 canaux)",
 "102 colours of infrared, in 6 detector arrays": "102 couleurs infrarouges, sur 6 détecteurs",
 "SkyShift uses only the eight resources listed by the challenge, and pages and services reached from them. Every check below runs now, from your device, against the live sites. Archives that do not allow direct browser access are reached through a small relay that only forwards to these sites.": "SkyShift n’utilise que les huit ressources indiquées par le défi, et les pages et services qui en découlent. Chaque vérification ci-dessous s’exécute maintenant, depuis votre appareil, sur les sites en direct. Les archives qui n’autorisent pas l’accès direct depuis le navigateur sont jointes par un petit relais qui ne transmet qu’à ces sites.",
@@ -468,5 +466,7 @@ export default {
 "Galactic centre": "Centre galactique",
 "Developing…": "Développement…",
 "Press Enter to search. Names: the five challenge targets, or \"Gaia DR3 <id>\".": "Appuyez sur Entrée pour chercher. Noms : les cinq cibles du défi, ou « Gaia DR3 <id> ».",
-"Date": "Date"
+"Date": "Date",
+"date NASA’s SPHEREx telescope took the newest image searchable at IRSA": "date à laquelle le télescope SPHEREx de la NASA a pris la plus récente image consultable à l’IRSA",
+"date NASA’s SPHEREx telescope took its first survey image": "date à laquelle le télescope SPHEREx de la NASA a pris sa première image de relevé"
 };
