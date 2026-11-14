@@ -152,4 +152,8 @@ S3 bucket straight to the user's browser.
 | `data/targets.json` | `scripts/prebake.mjs` | IRSA TAP (Gaia DR3, spherex.artifact/plane) | 2026-11-14 |
 | `data/coverage.json`, `data/mission.json` | `scripts/mission.mjs` | IRSA TAP `spherex.obscore` aggregates in 20-day windows (1,628,230 images, 100% of sky, 530 days) | 2026-11-14 |
 | `data/idx/` (not committed) | `scripts/index.mjs` | IRSA TAP `spherex.artifact` JOIN `spherex.plane`, level-2b images: path, start time, detector, footprint; 5-day windows; one file per ~2° sky tile (1,628,230 images, 10,312 tiles, 190 MB on 2026-11-14). Checked against IRSA `CONTAINS` at 10 positions (targets, RA 0/360 wrap, both poles, both deep fields): identical except 3 of 29,398 images at the north deep field, positions within 0.36″ of a footprint edge (corners stored to 0.0001°) | every scheduled run |
+| `data/live.json` | `scripts/live.mjs` (`src/lib/livelist.js`) | IRSA public S3 bucket listing: newest planning periods and detector-3 files, shown at once on the Live page | every scheduled run |
+| `data/sources.json` | `scripts/sources.mjs` | the Mission page's checks of the eight resources, run from the build server | every scheduled run |
+| `data/overlays/<target>.json` | `scripts/overlays.mjs` | IRSA TAP `gaia_dr3_source` and `catwise_2020` cones (0.6°) around the five targets | once (fixed catalogue releases) |
+| `data/fastmovers.json` | `scripts/fastmovers.mjs` | IRSA TAP `gaia_dr3_source`, the 15 stars with pm > 3″/yr (asynchronous TAP job) | once (fixed catalogue release) |
 | `assets/allsky-1000.jpg`, `assets/allsky-1600.jpg` | `scripts/allsky.mjs` | IRSA HiPS `spherex_allsky_cube`, order-3 Allsky previews of cube channels 8, 42, 95 | 2026-11-14 |

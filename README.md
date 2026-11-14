@@ -78,7 +78,11 @@ npm run build      # build only (syntax check, size budget, attribution check)
 node scripts/prebake.mjs    # refresh target image lists (data/targets.json)
 node scripts/allsky.mjs     # rebuild the all-sky map from IRSA's HiPS
 node scripts/mission.mjs    # rebuild coverage map and mission statistics
-node scripts/index.mjs      # build the static image index (data/idx/, ~40 min, not committed)
+node scripts/index.mjs      # build the static image index (data/idx/, ~15 min, not committed)
+node scripts/live.mjs       # Live page snapshot (data/live.json)
+node scripts/sources.mjs    # server-side checks of the eight resources (data/sources.json)
+node scripts/overlays.mjs   # built-in Gaia/CatWISE overlays for the five targets
+node scripts/fastmovers.mjs # fastest-moving Gaia DR3 stars for the Chase page
 node scripts/validate.mjs   # five-target validation report
 ```
 
