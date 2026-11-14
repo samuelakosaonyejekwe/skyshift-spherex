@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SkyShift: A Time Machine for the SPHEREx Sky</title>
+  <meta name="description" content="Play NASA SPHEREx infrared images of any patch of sky like a little video. Spot moving brown dwarfs, asteroids and variable stars, and see their spectra across 102 bands.">
+  <meta name="theme-color" content="#0b0e24">
+  <meta name="color-scheme" content="dark">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://irsa.ipac.caltech.edu; connect-src 'self' data: blob: https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com https://irsa.ipac.caltech.edu https://api.github.com https://*.workers.dev https://*.pages.dev https://*.netlify.app https://*.vercel.app https://*.deno.dev; worker-src 'self' blob:; manifest-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SkyShift">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="modulepreload" href="src/app.js">
+  <link rel="modulepreload" href="src/state.js">
+  <link rel="modulepreload" href="src/lib/coords.js">
+  <script type="module" src="src/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="starfield" aria-hidden="true"></div>
+  <header class="topbar" id="topbar">
+    <nav class="histnav" aria-label="Page history">
+      <button class="arrow" id="navBack" type="button" aria-label="Back" title="Back (Alt+←)" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <button class="arrow" id="navFwd" type="button" aria-label="Forward" title="Forward (Alt+→)" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </nav>
+    <a class="brand" href="#/" aria-label="SkyShift home">
+      <img src="icons/icon-32.png" width="28" height="28" alt="">
+      <span class="brand-name">Sky<b>Shift</b></span>
+    </a>
+    <nav class="mainnav" id="mainnav" aria-label="Main">
+      <a href="#/" data-route="home">Home</a>
+      <a href="#/view" data-route="view">Explore</a>
+      <a href="#/sky" data-route="sky">Sky atlas</a>
+      <a href="#/saved" data-route="saved">Saved</a>
+      <a href="#/sources" data-route="sources">Live sources</a>
+      <a href="#/guide" data-route="guide">Guide</a>
+      <a href="#/about" data-route="about">About</a>
+    </nav>
+    <div class="topbar-right">
+      <span class="netpill" id="netpill" role="status" aria-live="polite" title="Connection status">Online</span>
+      <button class="install-btn" id="installBtn" type="button" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14"/></svg>
+        <span>Install SkyShift</span>
+      </button>
+      <button class="menu-btn" id="menuBtn" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mainnav">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </header>
+  <main id="main" tabindex="-1">
+    <div class="boot" id="boot">
+      <div class="boot-orbit"><span></span></div>
+      <p>Loading SkyShift…</p>
+      <noscript><p>SkyShift needs JavaScript to fetch and display SPHEREx images.</p></noscript>
+    </div>
+  </main>
+  <footer class="footer" id="footer">
+    <p>Copyright (c) 2026 Samuel Akosa Onyejekwe. Released under the MIT licence.
+      SPHEREx data: NASA/IPAC Infrared Science Archive (IRSA). <a href="#/about">Credits &amp; data use</a></p>
+  </footer>
+  <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+  <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+</body>
+</html>

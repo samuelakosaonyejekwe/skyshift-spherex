@@ -1,0 +1,27 @@
+{
+  "id": "./",
+  "name": "SkyShift: A Time Machine for the SPHEREx Sky",
+  "short_name": "SkyShift",
+  "description": "Play NASA SPHEREx infrared images of any patch of sky like a little video, and see spectra across 102 bands.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#070919",
+  "theme_color": "#0b0e24",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["education", "science", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "WISE 0855 (moving brown dwarf)", "short_name": "WISE 0855", "url": "./#/view?target=wise0855&det=456&mode=blink", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Sky atlas", "url": "./#/sky", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Saved fields", "url": "./#/saved", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -1,0 +1,1155 @@
+// Explore: the time-series viewer. Movie, Blink, Difference, Stack and false-colour
+// modes over SPHEREx exposures aligned on the sky; spectra and light curves on the fly;
+// Gaia / WISE / NEOSSat context; metadata and contamination flags.
+
+import { h, icon, toast, sheet, copyText, download, fmtBytes, fmtDur, downlinkMbps } from '../ui/dom.js';
+import { normalise, fromParams, toParams, MODES, GROUPS, FOV_STEPS, DEFAULTS } from '../state.js';
+import { searchSpherex, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossatCone } from '../lib/tap.js';
+import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE } from '../lib/engine.js';
+import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd } from '../lib/render.js';
+import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
+import { formatRA, formatDec, propagate, mjdToYear, mjdToISO, separation, toGalactic } from '../lib/coords.js';
+import { presetById, suggestFor, describePosition } from '../targets.js';
+import { scatterChart, svgString } from '../ui/charts.js';
+import { pushRecent } from './home.js';
+import { saveCandidate, isWatched, toggleWatch } from './saved.js';
+import { findMovers, findVariables, epochBrightness, questionable } from '../lib/discover.js';
+
+export const title = 'Explore';
+
+// Spectral lines with wavelengths stated in the approved sources (IRSA SPHEREx docs,
+// Explanatory Supplement and tutorials). See docs/DATA_SOURCES.md.
+export const LINES = [
+  { x: 1.083, label: 'He 1.083', color: '#ff9db0', title: 'Helium 1.083 µm: atmospheric airglow line that contaminates detectors D1–D2 (Explanatory Supplement)' },
+  { x: 1.88, label: 'Pa α', color: '#9fd8ff', title: 'Hydrogen Paschen α, 1.88 µm (IRSA SPHEREx all-sky cube tutorial)' },
+  { x: 3.3, label: 'PAH 3.3', color: '#ffd27a', title: 'Polycyclic aromatic hydrocarbon (carbon-rich molecules) feature, 3.3 µm (IRSA SPHEREx mosaic tutorial)' },
+  { x: 4.052, label: 'Br α', color: '#9fd8ff', title: 'Hydrogen Brackett α, 4.052 µm (Explanatory Supplement)' },
+];
+const EPOCH_COLORS = ['#56b4e9', '#e69f00', '#009e73', '#f0e442', '#cc79a7', '#d55e00', '#0072b2', '#ffffff'];
+const WISEVIEW = 'http://byw.tools/wiseview';
+
+let worker = null;
+function getWorker() {
+  if (!worker) worker = new Worker(new URL('../worker.js', import.meta.url), { type: 'module' });
+  return worker;
+}
+
+// Session memory so Back/Forward never loses loaded frames.
+const session = new Map(); // key -> { exposures: Map(uri -> frame), search }
+
+export async function render(root, route, { go }) {
+  let req = normalise(fromParams(route.params));
+  if (route.params.get('target') || fromParams(route.params).preset) {
+    const t = await presetById(route.params.get('target') || fromParams(route.params).preset);
+    if (t) req = normalise({ ...req, target: { ra: t.ra, dec: t.dec, name: t.name, id: t.id, pmra: t.pmra || 0, pmdec: t.pmdec || 0, refEpoch: 2026.0, source: 'preset' } });
+  }
+  if (!req.target) return renderEmpty(root, go);
+  const preset = req.target.id ? await presetById(req.target.id) : null;
+  pushRecent(req.target);
+
+  // ------------------------------------------------------------------ state
+  const S = {
+    search: null, exposures: [], frames: new Map(), grid: null, display: null, frame: Math.min(req.t, 999),
+    playing: false, timer: 0, blinkPhase: 0, loadId: 0, jobId: 0, bytes: 0, t0: 0, skipped: 0,
+    view: { s: 1, tx: 0, ty: 0 }, hover: null, tool: null, ruler: null, selected: null,
+    cats: { gaia: null, wise: null, neossat: null }, movers: null, variables: null, clickSpec: null,
+  };
+  const n = () => S.grid.n;
+
+  // ------------------------------------------------------------------ DOM
+  const name = req.target.name || `${formatRA(req.target.ra)} ${formatDec(req.target.dec)}`;
+  const imgCanvas = h('canvas', { class: 'pix', 'aria-hidden': 'true' });
+  const ovCanvas = h('canvas', { 'aria-hidden': 'true' });
+  const hud = h('div', { class: 'hud' });
+  const readout = h('div', { class: 'readout', hidden: true });
+  const loading = h('div', { class: 'loading' }, h('div', {}, h('div', { class: 'boot-orbit', style: { margin: '0 auto 12px' } }, h('span')), h('p', { id: 'loadmsg' }, 'Finding every SPHEREx image of this patch…'), h('div', { class: 'progress', style: { width: '240px', margin: '0 auto' } }, h('i', { id: 'loadbar' }))));
+  const stage = h('div', { class: 'stage', tabindex: '0', role: 'img', 'aria-label': `SPHEREx images around ${name}` }, imgCanvas, ovCanvas, hud, readout, loading);
+  const playBtn = h('button', { class: 'btn primary play', type: 'button', 'aria-label': 'Play', title: 'Play / pause (Space)' }, icon('play'));
+  const slider = h('input', { type: 'range', min: 0, max: 0, value: 0, 'aria-label': 'Frame' });
+  const ticks = h('div', { class: 'ticks', 'aria-hidden': 'true' });
+  const frameLabel = h('div', { class: 'framelabel', 'aria-live': 'polite' });
+  const speedSel = h('select', { 'aria-label': 'Playback speed', title: 'Time per frame' }, [[1200, 'Slow'], [600, 'Normal'], [300, 'Fast'], [120, 'Very fast']].map(([v, l]) => h('option', { value: v, selected: Math.abs(req.speed - v) < 50 }, l)));
+  const progressBar = h('i');
+  const statusLine = h('div', { class: 'tiny', 'aria-live': 'polite' });
+  const modeSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Display mode' });
+  const suggestionBox = h('div');
+  const explainBox = h('div', { class: 'notice', hidden: true });
+  const tabsBar = h('div', { class: 'tabs', role: 'tablist' });
+  const tabBody = h('div');
+  const vside = h('aside', { class: 'vside' }, h('div', { class: 'card' }, tabsBar, tabBody));
+
+  const shareBtn = h('button', { class: 'btn small', type: 'button', onclick: () => shareDialog() }, icon('share'), 'Share / embed');
+  const watchBtn = h('button', { class: 'btn small hide-embed', type: 'button', onclick: () => { const on = toggleWatch(req); watchBtn.lastChild.textContent = on ? 'Saved' : 'Save'; toast({ title: on ? 'Field saved' : 'Removed from saved fields', text: on ? 'It works offline, and you will be told when new SPHEREx data covers it.' : '', glyph: '🔖', timeout: 3500 }); } }, icon('bookmark'), isWatched(req) ? 'Saved' : 'Save');
+  const wiseLink = h('a', { class: 'btn small', target: '_blank', rel: 'noopener noreferrer', title: 'Compare with WISE/NEOWISE in WiseView (opens byw.tools)',
+    href: `${WISEVIEW}#ra=${req.target.ra.toFixed(6)}&dec=${req.target.dec.toFixed(6)}&size=${Math.round(Math.min(req.fov, 30) * 60 / 2.75)}&band=2&speed=${req.speed}&minbright=-50.0000&maxbright=500.0000&window=0.5&diff_window=1&linear=1&color=&zoom=9&border=0&gaia=0&invert=1` }, icon('video'), 'WiseView');
+  const skyLink = h('a', { class: 'btn small hide-embed', href: `#/sky?${toParams(req)}` }, icon('sky'), 'Sky atlas');
+  const explainBtn = h('button', { class: 'btn small', type: 'button', 'aria-expanded': 'false', onclick: () => { explainBox.hidden = !explainBox.hidden; explainBtn.setAttribute('aria-expanded', String(!explainBox.hidden)); explain(); } }, icon('help'), 'Explain this view');
+  const tourBtn = h('button', { class: 'btn small ghost hide-embed', type: 'button', onclick: () => tour() }, 'Tour');
+  const openFull = req.embed ? h('a', { class: 'btn small primary', href: location.href.replace(/([?&])embed=1&?/, '$1'), target: '_blank', rel: 'noopener' }, 'Open in SkyShift') : null;
+
+  const g = toGalactic(req.target.ra, req.target.dec);
+  root.append(h('div', { class: 'viewer' },
+    h('section', { 'aria-label': 'Image viewer' },
+      h('div', { class: 'vhead' },
+        h('div', {},
+          h('h1', {}, name),
+          h('div', { class: 'tiny' }, `RA ${formatRA(req.target.ra)}  Dec ${formatDec(req.target.dec)}  ·  ${req.target.ra.toFixed(5)}°, ${req.target.dec.toFixed(5)}°  ·  l=${g.l.toFixed(2)}° b=${g.b.toFixed(2)}°  ·  ICRS`,
+            req.target.refEpoch ? `, epoch ${req.target.refEpoch}` : '')),
+        h('div', { class: 'spacer' }),
+        h('div', { class: 'row' }, explainBtn, shareBtn, watchBtn, skyLink, wiseLink, tourBtn, openFull)),
+      suggestionBox, explainBox,
+      h('div', { class: 'stage-wrap' }, stage),
+      h('div', { class: 'progress', 'aria-hidden': 'true' }, progressBar),
+      h('div', { class: 'transport' },
+        h('button', { class: 'btn icon', type: 'button', 'aria-label': 'Previous frame', title: 'Previous frame (←)', onclick: () => step(-1) }, icon('prev')),
+        playBtn,
+        h('button', { class: 'btn icon', type: 'button', 'aria-label': 'Next frame', title: 'Next frame (→)', onclick: () => step(1) }, icon('next')),
+        h('div', { class: 'timeline' }, slider, ticks), speedSel),
+      frameLabel,
+      h('div', { class: 'row', style: { marginTop: '8px' } }, modeSeg, h('div', { class: 'spacer' }),
+        h('button', { class: 'btn small', type: 'button', title: 'Zoom in (+)', 'aria-label': 'Zoom in', onclick: () => zoom(1.4) }, '+'),
+        h('button', { class: 'btn small', type: 'button', title: 'Zoom out (−)', 'aria-label': 'Zoom out', onclick: () => zoom(1 / 1.4) }, '−'),
+        h('button', { class: 'btn small', type: 'button', title: 'Reset view (R)', onclick: () => { S.view = { s: 1, tx: 0, ty: 0 }; draw(); } }, 'Reset'),
+        h('button', { class: 'btn small', type: 'button', 'aria-pressed': 'false', title: 'Ruler: drag to measure angular distance', onclick: (e) => { S.tool = S.tool === 'ruler' ? null : 'ruler'; e.currentTarget.setAttribute('aria-pressed', String(S.tool === 'ruler')); stage.style.cursor = S.tool ? 'crosshair' : ''; } }, icon('ruler'), 'Ruler'),
+        h('button', { class: 'btn small', type: 'button', title: 'Download this frame as PNG', onclick: () => exportPNG() }, icon('download'), 'PNG'),
+        h('button', { class: 'btn small', type: 'button', title: 'Record the animation as a video file', onclick: () => exportVideo() }, icon('video'), 'Video')),
+      statusLine),
+    vside));
+
+  // ------------------------------------------------------------------ URL sync
+  function commit(patch, { reload = false, push = false } = {}) {
+    const prevKey = loadKey();
+    const nextReq = normalise({ ...req, ...patch });
+    const hash = `#/view?${toParams(nextReq)}`;
+    if (push) { go(hash); return; }
+    req = nextReq;
+    history.replaceState(history.state, '', hash);
+    if (reload || loadKey() !== prevKey) load();
+    else { rebuild(); renderSide(); }
+  }
+  const loadKey = () => `${req.target.ra.toFixed(6)},${req.target.dec.toFixed(6)},${req.fov},${req.track ? 1 : 0},${req.ov.includes('flags') ? 'F' : ''}`;
+
+  // ------------------------------------------------------------------ mode buttons
+  const MODE_INFO = {
+    movie: ['Movie', 'Play every frame in time order, like a little film'],
+    blink: ['Blink', 'Flip between two epochs, the way Pluto was discovered'],
+    diff: ['Difference', 'Subtract a reference epoch: movers show as black/white pairs, changing objects as spots'],
+    stack: ['Stack', 'Add epochs together to reveal faint objects'],
+    color: ['Colour', 'False colour: blue = 0.75–1.6 µm (D1–D2), green = 1.6–3.8 µm (D3–D4), red = 3.8–5 µm (D5–D6)'],
+  };
+  function renderModes() {
+    modeSeg.replaceChildren(...MODES.map((m, i) => h('button', { type: 'button', 'aria-pressed': String(req.mode === m), title: `${MODE_INFO[m][1]} (key ${i + 1})`, onclick: () => commit({ mode: m }) }, MODE_INFO[m][0])));
+  }
+
+  // ------------------------------------------------------------------ loading
+  async function load() {
+    const id = ++S.loadId;
+    stopPlay();
+    S.grid = makeGrid(req.target.ra, req.target.dec, req.fov);
+    const key = loadKey();
+    if (!session.has(key)) session.set(key, { frames: new Map() });
+    S.frames = session.get(key).frames;
+    S.bytes = 0; S.t0 = performance.now(); S.skipped = 0;
+    loading.hidden = false;
+    loading.querySelector('.boot-orbit').hidden = false;
+    setLoad('Finding every SPHEREx image of this patch (IRSA archive)…', 0.03);
+    // 1) instant start from the saved or built-in image list (no network wait)
+    const quick = await quickSpherex(req.target.ra, req.target.dec);
+    if (id !== S.loadId) return;
+    if (quick?.data?.length) { S.search = quick; S.exposures = quick.data; renderSuggestion(); stream(id); }
+    // 2) live search (always): adds anything newer than the quick list
+    let live;
+    try {
+      live = await searchSpherex(req.target.ra, req.target.dec);
+    } catch (e) {
+      if (id !== S.loadId) return;
+      if (quick?.data?.length) {
+        toast({ title: 'Showing the saved image list', text: `The live archive search did not answer (${e.message}). ${quick.ts ? 'List saved ' + new Date(quick.ts).toLocaleString() + '.' : 'Built-in list.'}`, glyph: '📦', timeout: 7000 });
+        return;
+      }
+      setLoad(`The SPHEREx archive could not be reached (${e.message}). ${navigator.onLine ? 'Try again in a minute.' : 'You are offline and this field is not saved on this device yet.'}`, 0);
+      loading.querySelector('.boot-orbit').hidden = true;
+      loading.firstChild.append(h('button', { class: 'btn primary', style: { marginTop: '10px' }, onclick: () => load() }, 'Retry'));
+      return;
+    }
+    if (id !== S.loadId) return;
+    if (live.source !== 'live' && !quick?.data?.length) toast({ title: live.source === 'cache' ? 'Showing the saved image list' : 'Showing the built-in image list', text: `The live archive search did not answer (${live.error?.message || 'offline'}).`, glyph: '📦', timeout: 7000 });
+    const known = new Set((S.exposures || []).map((e) => e.uri));
+    const added = live.data.filter((e) => !known.has(e.uri));
+    S.search = live; S.exposures = live.data;
+    renderSuggestion();
+    if (!S.exposures.length) {
+      setLoad('SPHEREx has no images covering this position yet. New data arrive every week: save the field to be told when they do.', 0);
+      loading.querySelector('.boot-orbit').hidden = true;
+      return;
+    }
+    if (!quick?.data?.length || added.length) {
+      if (quick?.data?.length && added.length) toast({ title: `${added.length} newer SPHEREx exposure${added.length > 1 ? 's' : ''} found`, text: 'Adding them to the film now.', glyph: '🛰', timeout: 4000 });
+      stream(id);
+    } else updateStatus(S.frames.size, S.exposures.filter((e) => req.dets.includes(e.det)).length, null, true);
+  }
+
+  /** Stream every wanted exposure that is not loaded yet (restarts the worker job). */
+  function stream(id) {
+    const wanted = orderForLoading(S.exposures.filter((e) => req.dets.includes(e.det)));
+    const todo = wanted.filter((e) => !S.frames.has(e.uri));
+    updateStatus(wanted.length - todo.length, wanted.length);
+    rebuild();
+    if (!todo.length) { loading.hidden = true; renderSide(); return; }
+    if (!S.frames.size) setLoad(`Streaming ${todo.length} exposures straight from the IRSA cloud archive…`, 0.05);
+    const pm = req.target.pmra || req.target.pmdec ? { pmra: req.target.pmra || 0, pmdec: req.target.pmdec || 0, refYear: req.target.refEpoch || 2016 } : null;
+    const w = getWorker();
+    let lastBuild = 0;
+    const done0 = wanted.length - todo.length;
+    const job = ++S.jobId;
+    w.onmessage = (ev) => {
+      const m = ev.data;
+      if (m.id !== job || id !== S.loadId) return;
+      if (m.type === 'frame') {
+        S.frames.set(todo[m.index].uri, { data: m.data, flags: m.flags, meta: m.meta, phot: m.phot, rec: todo[m.index] });
+        loading.hidden = true;
+        const now = performance.now();
+        if (now - lastBuild > 700) { lastBuild = now; rebuild(); if (['spectrum', 'lightcurve'].includes(S.tab) && !S.clickSpec) renderSide(); }
+      } else if (m.type === 'skip') {
+        S.skipped++;
+        if (m.reason !== 'outside') console.warn('Exposure skipped:', todo[m.index]?.uri, m.reason);
+      } else if (m.type === 'progress') {
+        S.bytes = m.bytes;
+        progressBar.style.width = `${((done0 + m.done) / wanted.length) * 100}%`;
+        updateStatus(done0 + m.done, wanted.length, m);
+        if (!loading.hidden) setLoad(`Streaming exposures from the IRSA cloud archive… ${m.done}/${m.total}`, m.done / m.total);
+      } else if (m.type === 'done') {
+        progressBar.style.width = '100%';
+        rebuild(); renderSide();
+        updateStatus(wanted.length, wanted.length, m, true);
+        if (!S.frames.size) { loading.hidden = false; loading.querySelector('.boot-orbit').hidden = true; setLoad('None of the images could be read. The archive may be busy; please retry.', 0); }
+      }
+    };
+    w.postMessage({ type: 'frames', id: job, items: todo, grid: S.grid, opts: { withFlags: flagMode(), track: req.track ? pm : null, photTrack: pm, concurrency: 6 } });
+    renderSide();
+  }
+  const flagMode = () => (req.ov.includes('flags') ? 'field' : 'target');
+
+  /** Round-robin across survey epochs so a playable movie appears as early as possible. */
+  function orderForLoading(list) {
+    const groups = [];
+    let cur = [];
+    for (const e of [...list].sort((a, b) => a.mjd - b.mjd)) {
+      if (cur.length && e.mjd - cur[cur.length - 1].mjd > 30) { groups.push(cur); cur = []; }
+      cur.push(e);
+    }
+    if (cur.length) groups.push(cur);
+    // inside each epoch, alternate detectors so colour/co-adds fill evenly
+    const queues = groups.map((gr) => { const by = {}; gr.forEach((e) => (by[e.det] ||= []).push(e)); const out = []; let any = true; while (any) { any = false; for (const d of Object.keys(by)) if (by[d].length) { out.push(by[d].shift()); any = true; } } return out; });
+    const out = [];
+    let any = true;
+    while (any) { any = false; for (const q of queues) if (q.length) { out.push(q.shift()); any = true; } }
+    return out;
+  }
+
+  function setLoad(text, f) {
+    const m = loading.querySelector('#loadmsg'); if (m) m.textContent = text;
+    const b = loading.querySelector('#loadbar'); if (b) b.style.width = `${Math.round(f * 100)}%`;
+  }
+  function updateStatus(done, total, m, final) {
+    const per = estimateBytesPerExposure(req.fov, flagMode());
+    const ms = m?.ms || performance.now() - S.t0;
+    const rate = S.bytes && ms ? S.bytes / (ms / 1000) : null;
+    const remaining = Math.max(0, total - done);
+    const eta = rate ? (remaining * per) / rate * 1000 : null;
+    statusLine.textContent = `${done}/${total} exposures loaded${S.skipped ? ` (${S.skipped} skipped: outside field or unreadable)` : ''} · ${fmtBytes(S.bytes)} transferred${rate ? ` at ${fmtBytes(rate)}/s` : ''}${!final && eta ? ` · about ${fmtDur(eta)} left` : ''} · source: ${S.search?.source === 'live' ? 'IRSA live' : S.search?.source || '…'}${S.search?.source === 'live' ? '' : ' (not live)'}`;
+  }
+
+  // ------------------------------------------------------------------ display building
+  function selectedFrames() {
+    const list = [];
+    for (const f of S.frames.values()) {
+      if (!req.dets.includes(f.meta.detector)) continue;
+      if (req.wl && f.meta.wavelength != null && (f.meta.wavelength < req.wl[0] || f.meta.wavelength > req.wl[1])) continue;
+      list.push(f);
+    }
+    return list;
+  }
+
+  function rebuild() {
+    if (!S.grid) return;
+    const N = n();
+    const exps = selectedFrames();
+    const groups = groupExposures(exps, req.group);
+    const frames = [];
+    if (!groups.length) { S.display = { frames: [], groups: [], lims: [0, 1] }; draw(); updateTimeline(); return; }
+    const dmaps = groups.map((gr) => perDetector(gr, N));
+    if (req.mode === 'color') {
+      for (let i = 0; i < groups.length; i++) {
+        frames.push({ rgb: [detectorBalanced(dmaps[i], N, [5, 6]), detectorBalanced(dmaps[i], N, [3, 4]), detectorBalanced(dmaps[i], N, [1, 2])], group: groups[i] });
+      }
+      const lims = [0, 1, 2].map((c) => limits(frames.map((f) => f.rgb[c]), req.lo, req.hi));
+      S.display = { frames, groups, lims, kind: 'rgb' };
+    } else if (req.mode === 'diff') {
+      for (let i = 0; i < groups.length; i++) {
+        let ref, label;
+        if (req.diff === 'first') { ref = dmaps[0]; label = 'minus first epoch'; }
+        else if (req.diff === 'prev') { ref = dmaps[Math.max(0, i - 1)]; label = 'minus previous epoch'; }
+        else { const others = dmaps.filter((_, k) => k !== i); ref = others.length ? (groups.length > 40 ? meanOfMaps(dmaps, N) : meanOfMaps(others, N)) : dmaps[i]; label = 'minus mean of the other epochs'; }
+        const d = matchedDifference(dmaps[i], ref, N);
+        frames.push({ data: d.data, group: groups[i], note: `${label} (wavelength-matched over ${d.dets.map((x) => 'D' + x).join(', ') || 'no common detectors'})` });
+      }
+      S.display = { frames, groups, lims: limits(frames.map((f) => f.data), req.lo, req.hi, true), kind: 'diff' };
+    } else if (req.mode === 'stack') {
+      const acc = [];
+      for (let i = 0; i < groups.length; i++) {
+        acc.push(...groups[i]);
+        const img = detectorBalanced(perDetector(acc, N), N);
+        frames.push({ data: img, group: groups[i], note: `stack of epochs 1–${i + 1} (${acc.length} exposures)`, stackCount: acc.length });
+      }
+      S.display = { frames, groups, lims: limits([frames[frames.length - 1].data], req.lo, req.hi), kind: 'mono' };
+    } else {
+      for (let i = 0; i < groups.length; i++) frames.push({ data: detectorBalanced(dmaps[i], N), group: groups[i] });
+      S.display = { frames, groups, lims: limits(frames.map((f) => f.data), req.lo, req.hi), kind: 'mono' };
+    }
+    S.display.dmaps = dmaps;
+    if (S.frame >= frames.length) S.frame = frames.length - 1;
+    if (req.mode === 'blink') {
+      const [a, b] = req.blink && req.blink[0] < frames.length && req.blink[1] < frames.length ? req.blink : [0, frames.length - 1];
+      S.display.blink = [a, b];
+    }
+    updateTimeline();
+    draw();
+  }
+
+  // ------------------------------------------------------------------ drawing
+  const off = document.createElement('canvas');
+  function currentIndex() {
+    const D = S.display;
+    if (!D?.frames.length) return -1;
+    if (req.mode === 'blink' && D.blink) return D.blink[S.blinkPhase % 2];
+    return Math.max(0, Math.min(D.frames.length - 1, S.frame));
+  }
+  function sizeCanvases() {
+    const r = stage.getBoundingClientRect();
+    const dpr = Math.min(3, devicePixelRatio || 1);
+    const W = Math.max(50, Math.round(r.width * dpr));
+    for (const c of [imgCanvas, ovCanvas]) if (c.width !== W) { c.width = W; c.height = W; }
+    return W;
+  }
+  function draw() {
+    const W = sizeCanvases();
+    const ctx = imgCanvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#05061a'; ctx.fillRect(0, 0, W, W);
+    const D = S.display, i = currentIndex();
+    if (!D || i < 0) { drawOverlay(); updateHud(); return; }
+    const N = n();
+    if (off.width !== N) { off.width = N; off.height = N; }
+    const octx = off.getContext('2d');
+    const im = octx.createImageData(N, N);
+    const fr = D.frames[i];
+    if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch });
+    else if (D.kind === 'diff') paintDiff(fr.data, im.data, D.lims, { invert: req.invert });
+    else paint(fr.data, im.data, D.lims, { stretch: req.stretch, cmap: req.cmap, invert: req.invert });
+    if (req.ov.includes('flags')) tintFlags(fr.group, im.data, N);
+    octx.putImageData(im, 0, 0);
+    const k = W / N;
+    ctx.imageSmoothingEnabled = false;
+    ctx.setTransform(k * S.view.s, 0, 0, k * S.view.s, S.view.tx * W, S.view.ty * W);
+    ctx.drawImage(off, 0, 0);
+    drawOverlay();
+    updateHud();
+    updateLabel();
+  }
+  function tintFlags(group, px, N) {
+    const or = new Int32Array(N * N);
+    for (const e of group) if (e.flags) for (let k = 0; k < or.length; k++) or[k] |= e.flags[k];
+    for (let k = 0; k < or.length; k++) {
+      if (or[k] & BAD_MASK) { px[k * 4] = Math.min(255, px[k * 4] * 0.5 + 140); px[k * 4 + 1] *= 0.5; px[k * 4 + 2] *= 0.5; }
+    }
+  }
+  // grid coords -> canvas pixels
+  const toCanvas = (gi, gj, W) => { const k = W / n(); return [(gi + 0.5) * k * S.view.s + S.view.tx * W, (gj + 0.5) * k * S.view.s + S.view.ty * W]; };
+  const toGrid = (cx, cy, W) => { const k = W / n(); return [(cx - S.view.tx * W) / (k * S.view.s) - 0.5, (cy - S.view.ty * W) / (k * S.view.s) - 0.5]; };
+  function frameMjd(i = currentIndex()) {
+    const fr = S.display?.frames[i];
+    if (!fr) return null;
+    const ms = fr.group.map((e) => e.meta.mjd);
+    return ms.reduce((a, b) => a + b, 0) / ms.length;
+  }
+  function frameCenter(i = currentIndex()) {
+    if (!req.track || !(req.target.pmra || req.target.pmdec)) return [req.target.ra, req.target.dec];
+    const p = propagate(req.target.ra, req.target.dec, req.target.pmra, req.target.pmdec, req.target.refEpoch || 2016, mjdToYear(frameMjd(i)));
+    return [p.ra, p.dec];
+  }
+  function drawOverlay() {
+    const W = ovCanvas.width;
+    const ctx = ovCanvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, W);
+    if (!S.grid) return;
+    const dpr = Math.min(3, devicePixelRatio || 1);
+    const [cra, cdec] = frameCenter();
+    const G = (ra, dec) => { const [gi, gj] = worldToGrid(S.grid, ra, dec, cra, cdec); return toCanvas(gi, gj, W); };
+    const mjd = frameMjd();
+    const yr = mjd ? mjdToYear(mjd) : 2026;
+    ctx.lineWidth = 1.5 * dpr;
+    // Gaia DR3 (propagated to the frame epoch)
+    if (req.ov.includes('gaia') && S.cats.gaia) {
+      ctx.strokeStyle = '#5ec8ffcc'; ctx.fillStyle = '#5ec8ff';
+      for (const s of S.cats.gaia.rows) {
+        const p = propagate(s.ra, s.dec, s.pmra || 0, s.pmdec || 0, s.ref_epoch || 2016, yr);
+        const [x, y] = G(p.ra, p.dec);
+        if (x < -20 || y < -20 || x > W + 20 || y > W + 20) continue;
+        const r = Math.max(3, 11 - (s.phot_g_mean_mag || 18) * 0.45) * dpr * Math.sqrt(S.view.s);
+        ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
+        const pm = Math.hypot(s.pmra || 0, s.pmdec || 0);
+        if (pm > 100) { // draw the motion over 5 years as an arrow
+          const q = propagate(p.ra, p.dec, s.pmra, s.pmdec, yr, yr + 5);
+          const [x2, y2] = G(q.ra, q.dec);
+          arrow(ctx, x, y, x2, y2, '#5ec8ff', dpr);
+        }
+        if (s.label) { ctx.font = `${11 * dpr}px system-ui`; ctx.fillText(s.label, x + r + 3 * dpr, y - r); }
+      }
+    }
+    if (req.ov.includes('wise') && S.cats.wise) {
+      ctx.strokeStyle = '#ffb547cc';
+      for (const s of S.cats.wise.rows) {
+        const ep = s.meanobsmjd ? mjdToYear(s.meanobsmjd) : 2010.5;
+        const p = propagate(s.ra, s.dec, (s.pmra || 0) * (s.meanobsmjd ? 1000 : 1), (s.pmdec || 0) * (s.meanobsmjd ? 1000 : 1), ep, yr);
+        const [x, y] = G(p.ra, p.dec);
+        if (x < -10 || y < -10 || x > W + 10 || y > W + 10) continue;
+        const r = 4.5 * dpr * Math.sqrt(S.view.s);
+        ctx.strokeRect(x - r, y - r, 2 * r, 2 * r);
+      }
+    }
+    // predicted target track from its proper motion
+    if (req.ov.includes('track') && (req.target.pmra || req.target.pmdec) && S.display?.frames.length) {
+      const ms = S.display.frames.map((_, i) => frameMjd(i)).filter(Boolean);
+      const t0 = Math.min(...ms), t1 = Math.max(...ms);
+      const P = (m) => propagate(req.target.ra, req.target.dec, req.target.pmra, req.target.pmdec, req.target.refEpoch || 2016, mjdToYear(m));
+      ctx.strokeStyle = '#ffcf7a'; ctx.setLineDash([5 * dpr, 4 * dpr]);
+      ctx.beginPath();
+      for (let k = 0; k <= 20; k++) { const p = P(t0 + ((t1 - t0) * k) / 20); const [x, y] = G(p.ra, p.dec); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.stroke(); ctx.setLineDash([]);
+      for (const m of ms) { const p = P(m); const [x, y] = G(p.ra, p.dec); ctx.fillStyle = '#ffcf7a66'; ctx.beginPath(); ctx.arc(x, y, 2.2 * dpr, 0, 7); ctx.fill(); }
+      const p = P(mjd); const [x, y] = G(p.ra, p.dec);
+      crosshair(ctx, x, y, 9 * dpr * Math.sqrt(S.view.s), '#ffcf7a', dpr);
+    } else {
+      const [x, y] = G(req.target.ra, req.target.dec);
+      crosshair(ctx, x, y, 9 * dpr * Math.sqrt(S.view.s), '#ffcf7a', dpr);
+    }
+    // mover candidates
+    if (S.movers?.length) {
+      for (const m of S.movers) {
+        const [x1, y1] = toCanvas(m.a[0], m.a[1], W), [x2, y2] = toCanvas(m.b[0], m.b[1], W);
+        arrow(ctx, x1, y1, x2, y2, '#ff6fb1', dpr);
+      }
+    }
+    if (S.variables?.length) {
+      ctx.strokeStyle = '#3ddc97';
+      for (const v of S.variables) { const [x, y] = toCanvas(v.at[0], v.at[1], W); ctx.beginPath(); ctx.arc(x, y, 12 * dpr, 0, 7); ctx.stroke(); }
+    }
+    if (S.selected) {
+      const [x, y] = G(S.selected.ra, S.selected.dec);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(x, y, 14 * dpr, 0, 7); ctx.stroke();
+    }
+    // ruler
+    if (S.ruler) {
+      const { a, b } = S.ruler;
+      const [x1, y1] = toCanvas(a[0], a[1], W), [x2, y2] = toCanvas(b[0], b[1], W);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      const wa = gridToWorld(S.grid, a[0], a[1], cra, cdec), wb = gridToWorld(S.grid, b[0], b[1], cra, cdec);
+      const d = separation(wa[0], wa[1], wb[0], wb[1]) * 3600;
+      ctx.font = `600 ${13 * dpr}px system-ui`; ctx.fillStyle = '#fff';
+      ctx.fillText(d >= 120 ? `${(d / 60).toFixed(2)}′` : `${d.toFixed(1)}″`, (x1 + x2) / 2 + 6 * dpr, (y1 + y2) / 2 - 6 * dpr);
+    }
+    // compass + scale bar
+    if (req.ov.includes('compass')) {
+      const x0 = W - 52 * dpr, y0 = W - 52 * dpr, L = 30 * dpr;
+      ctx.strokeStyle = '#fff'; ctx.fillStyle = '#fff'; ctx.lineWidth = 2 * dpr;
+      arrow(ctx, x0, y0, x0, y0 - L, '#ffffff', dpr); arrow(ctx, x0, y0, x0 - L, y0, '#ffffff', dpr);
+      ctx.font = `600 ${12 * dpr}px system-ui`; ctx.fillText('N', x0 - 4 * dpr, y0 - L - 6 * dpr); ctx.fillText('E', x0 - L - 14 * dpr, y0 + 4 * dpr);
+      const arcsecPerPx = S.grid.scale / ((W / n()) * S.view.s);
+      const targetArcsec = [10, 30, 60, 120, 300, 600, 1200].find((a) => a / arcsecPerPx > 50 * dpr) || 1200;
+      const len = targetArcsec / arcsecPerPx;
+      ctx.fillRect(16 * dpr, W - 22 * dpr, len, 3 * dpr);
+      ctx.fillText(targetArcsec >= 60 ? `${targetArcsec / 60}′` : `${targetArcsec}″`, 16 * dpr, W - 28 * dpr);
+    }
+  }
+  function crosshair(ctx, x, y, r, c, dpr) {
+    ctx.strokeStyle = c; ctx.lineWidth = 2 * dpr;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.beginPath(); ctx.moveTo(x + dx * r * 0.6, y + dy * r * 0.6); ctx.lineTo(x + dx * r * 1.6, y + dy * r * 1.6); ctx.stroke(); }
+  }
+  function arrow(ctx, x1, y1, x2, y2, c, dpr) {
+    ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = 1.8 * dpr;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    const a = Math.atan2(y2 - y1, x2 - x1), s = 6 * dpr;
+    ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - s * Math.cos(a - 0.45), y2 - s * Math.sin(a - 0.45)); ctx.lineTo(x2 - s * Math.cos(a + 0.45), y2 - s * Math.sin(a + 0.45)); ctx.fill();
+  }
+
+  function updateHud() {
+    const D = S.display, i = currentIndex();
+    hud.replaceChildren();
+    if (!D || i < 0) return;
+    const fr = D.frames[i];
+    const dets = [...new Set(fr.group.map((e) => e.meta.detector))].sort();
+    const wls = fr.group.map((e) => e.meta.wavelength).filter(Number.isFinite);
+    hud.append(
+      h('span', { class: 'chip' }, req.mode === 'blink' ? (S.blinkPhase % 2 ? 'B · later' : 'A · earlier') : `Frame ${i + 1}/${D.frames.length}`),
+      h('span', { class: 'chip' }, mjdToISO(frameMjd(i), req.group === 'exposure')),
+      h('span', { class: 'chip' }, dets.map((d) => 'D' + d).join(' ')),
+      wls.length ? h('span', { class: 'chip' }, wls.length === 1 ? `λ ${wls[0].toFixed(3)} µm` : `λ ${Math.min(...wls).toFixed(2)}–${Math.max(...wls).toFixed(2)} µm`) : null,
+      h('span', { class: 'chip' }, `${fr.group.length} exp.`),
+      fr.group.some((e) => e.meta.saturated) ? h('span', { class: 'chip warn', title: 'The target core is saturated (no valid pixels): shown in dark purple' }, 'saturated core') : null,
+      fr.group.some((e) => e.meta.header?.L2DQAFLG && e.meta.header.L2DQAFLG !== 'Pass') ? h('span', { class: 'chip bad' }, 'quality check failed') : null,
+    );
+  }
+  function updateLabel() {
+    const D = S.display, i = currentIndex();
+    if (!D || i < 0) { frameLabel.textContent = ''; return; }
+    const fr = D.frames[i];
+    const ms = fr.group.map((e) => e.meta.mjd);
+    const rel = [...new Set(fr.group.map((e) => e.meta.release.toUpperCase()))].join(', ');
+    frameLabel.textContent = `${MODE_INFO[req.mode][0]} · ${req.group === 'survey' ? 'six-month survey co-add' : req.group === 'day' ? 'one-day co-add' : 'single exposure'} · ${mjdToISO(Math.min(...ms), false)}${ms.length > 1 ? ` to ${mjdToISO(Math.max(...ms), false)}` : ''} (MJD ${Math.min(...ms).toFixed(2)}) · ${rel}${fr.note ? ' · ' + fr.note : ''}`;
+  }
+  function updateTimeline() {
+    const D = S.display;
+    const N = D?.frames.length || 0;
+    slider.max = Math.max(0, N - 1);
+    slider.value = S.frame;
+    slider.disabled = N < 2 || req.mode === 'blink';
+    ticks.replaceChildren();
+    if (!N) return;
+    const ms = D.frames.map((_, i) => frameMjd(i));
+    const t0 = Math.min(...ms), t1 = Math.max(...ms);
+    ms.forEach((m, i) => ticks.append(h('i', { class: i === S.frame ? 'cur' : '', style: { left: `${t1 > t0 ? ((m - t0) / (t1 - t0)) * 100 : 50}%` }, title: mjdToISO(m, false) })));
+  }
+
+  // ------------------------------------------------------------------ playback
+  function step(d) {
+    const N = S.display?.frames.length || 0;
+    if (!N) return;
+    if (req.mode === 'blink') S.blinkPhase++;
+    else S.frame = (S.frame + d + N) % N;
+    slider.value = S.frame;
+    [...ticks.children].forEach((t, i) => t.classList.toggle('cur', i === S.frame));
+    draw();
+    if (S.tab === 'frame') renderSide();
+  }
+  function play() {
+    if (S.playing) return;
+    S.playing = true; playBtn.replaceChildren(icon('pause')); playBtn.setAttribute('aria-label', 'Pause');
+    const tick = () => { step(1); S.timer = setTimeout(tick, req.speed); };
+    S.timer = setTimeout(tick, req.speed);
+  }
+  function stopPlay() { S.playing = false; clearTimeout(S.timer); playBtn.replaceChildren(icon('play')); playBtn.setAttribute('aria-label', 'Play'); }
+  playBtn.addEventListener('click', () => (S.playing ? stopPlay() : play()));
+  slider.addEventListener('input', () => { S.frame = Number(slider.value); draw(); [...ticks.children].forEach((t, i) => t.classList.toggle('cur', i === S.frame)); });
+  slider.addEventListener('change', () => { history.replaceState(history.state, '', `#/view?${toParams(normalise({ ...req, t: S.frame }))}`); if (S.tab === 'frame') renderSide(); });
+  speedSel.addEventListener('change', () => commit({ speed: Number(speedSel.value) }));
+
+  // ------------------------------------------------------------------ pointer: hover, click, pan, zoom, ruler
+  const pointers = new Map();
+  let drag = null, pinch = null;
+  function zoom(f, cx = 0.5, cy = 0.5) {
+    const s0 = S.view.s, s1 = Math.min(12, Math.max(1, s0 * f));
+    S.view.tx = cx - ((cx - S.view.tx) * s1) / s0; S.view.ty = cy - ((cy - S.view.ty) * s1) / s0; S.view.s = s1;
+    if (s1 === 1) { S.view.tx = 0; S.view.ty = 0; }
+    draw();
+  }
+  stage.addEventListener('wheel', (e) => { e.preventDefault(); const r = stage.getBoundingClientRect(); zoom(e.deltaY < 0 ? 1.18 : 1 / 1.18, (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); }, { passive: false });
+  stage.addEventListener('pointerdown', (e) => {
+    stage.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    const r = stage.getBoundingClientRect();
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), s: S.view.s }; drag = null; return; }
+    const W = ovCanvas.width, k = W / r.width;
+    const gpt = toGrid((e.clientX - r.left) * k, (e.clientY - r.top) * k, W);
+    if (S.tool === 'ruler') { S.ruler = { a: gpt, b: gpt }; drag = { ruler: true }; return; }
+    drag = { x: e.clientX, y: e.clientY, tx: S.view.tx, ty: S.view.ty, moved: false, gpt };
+  });
+  stage.addEventListener('pointermove', (e) => {
+    const r = stage.getBoundingClientRect();
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pinch && pointers.size === 2) { const [a, b] = [...pointers.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); zoom((pinch.s * d) / pinch.d / S.view.s); return; }
+    const W = ovCanvas.width, k = W / r.width;
+    const gpt = toGrid((e.clientX - r.left) * k, (e.clientY - r.top) * k, W);
+    if (drag?.ruler) { S.ruler.b = gpt; drawOverlay(); return; }
+    if (drag) {
+      const dx = (e.clientX - drag.x) / r.width, dy = (e.clientY - drag.y) / r.height;
+      if (Math.abs(dx) + Math.abs(dy) > 0.01) drag.moved = true;
+      if (drag.moved && S.view.s > 1) { S.view.tx = drag.tx + dx; S.view.ty = drag.ty + dy; draw(); }
+    }
+    showReadout(gpt);
+  });
+  const endPtr = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    if (drag && !drag.moved && !drag.ruler && e.type === 'pointerup') onClick(drag.gpt);
+    drag = null;
+  };
+  stage.addEventListener('pointerup', endPtr);
+  stage.addEventListener('pointercancel', endPtr);
+  stage.addEventListener('pointerleave', () => { readout.hidden = true; });
+  stage.addEventListener('dblclick', () => { S.view = { s: 1, tx: 0, ty: 0 }; draw(); });
+
+  function showReadout([gi, gj]) {
+    if (!S.grid || !S.display?.frames.length) return;
+    const N = n(), i = currentIndex();
+    const [cra, cdec] = frameCenter();
+    const [ra, dec] = gridToWorld(S.grid, gi, gj, cra, cdec);
+    const ii = Math.round(gi), jj = Math.round(gj);
+    let val = '', fl = '';
+    if (ii >= 0 && jj >= 0 && ii < N && jj < N) {
+      const fr = S.display.frames[i];
+      const v = fr.data ? fr.data[jj * N + ii] : null;
+      if (v != null) val = Number.isFinite(v) ? `${v.toFixed(3)} MJy/sr` : 'no valid data (saturated or masked)';
+      if (fr.rgb) val = fr.rgb.map((c, k) => `${'RGB'[k]} ${Number.isFinite(c[jj * N + ii]) ? c[jj * N + ii].toFixed(2) : '–'}`).join('  ');
+      let or = 0; for (const e of fr.group) if (e.flags) or |= e.flags[jj * N + ii];
+      fl = or ? `  flags: ${decodeFlags(or).join(', ')}` : '';
+    }
+    readout.hidden = false;
+    readout.textContent = `${formatRA(ra)} ${formatDec(dec)}  ${val}${fl}`;
+  }
+
+  function onClick([gi, gj]) {
+    if (!S.grid) return;
+    const [cra, cdec] = frameCenter();
+    const [ra, dec] = gridToWorld(S.grid, gi, gj, cra, cdec);
+    // nearest catalogue object within 2 grid px
+    let best = null;
+    const yr = mjdToYear(frameMjd() || 61000);
+    const consider = (s, cat) => {
+      const p = cat === 'gaia' ? propagate(s.ra, s.dec, s.pmra || 0, s.pmdec || 0, s.ref_epoch || 2016, yr) : { ra: s.ra, dec: s.dec };
+      const d = separation(ra, dec, p.ra, p.dec) * 3600;
+      if (d < 2.2 * S.grid.scale && (!best || d < best.d)) best = { d, s, cat, ra: p.ra, dec: p.dec };
+    };
+    if (req.ov.includes('gaia')) S.cats.gaia?.rows.forEach((s) => consider(s, 'gaia'));
+    if (req.ov.includes('wise')) S.cats.wise?.rows.forEach((s) => consider(s, 'wise'));
+    S.selected = best ? { ra: best.ra, dec: best.dec, obj: best.s, cat: best.cat } : { ra, dec };
+    drawOverlay();
+    S.tab = 'object'; renderTabs(); renderSide();
+  }
+
+  // ------------------------------------------------------------------ keyboard
+  const onKey = (e) => {
+    if (e.target.matches('input, textarea, select') || e.altKey || e.ctrlKey || e.metaKey) return;
+    const k = e.key;
+    if (k === ' ') { e.preventDefault(); S.playing ? stopPlay() : play(); }
+    else if (k === 'ArrowRight') { e.preventDefault(); step(1); }
+    else if (k === 'ArrowLeft') { e.preventDefault(); step(-1); }
+    else if (/^[1-5]$/.test(k)) commit({ mode: MODES[Number(k) - 1] });
+    else if (k === 'f') toggleOv('flags');
+    else if (k === 'g') toggleOv('gaia');
+    else if (k === 'w') toggleOv('wise');
+    else if (k === 'i') commit({ invert: !req.invert });
+    else if (k === '+' || k === '=') zoom(1.4);
+    else if (k === '-') zoom(1 / 1.4);
+    else if (k === 'r') { S.view = { s: 1, tx: 0, ty: 0 }; draw(); }
+    else if (k === '?') explainBtn.click();
+  };
+  document.addEventListener('keydown', onKey);
+  function toggleOv(o) {
+    const on = !req.ov.includes(o);
+    commit({ ov: on ? [...req.ov, o] : req.ov.filter((x) => x !== o) });
+    if (on) ensureCats();
+  }
+
+  // ------------------------------------------------------------------ catalogues
+  async function ensureCats() {
+    const rad = (req.fov / 60) * 0.75;
+    if (!S.cats.gaia) {
+      gaiaCone(req.target.ra, req.target.dec, Math.min(rad, 0.6)).then((r) => {
+        const labels = preset?.labels || {};
+        r.data.rows.forEach((s) => { if (labels[String(s.source_id)]) s.label = labels[String(s.source_id)]; });
+        S.cats.gaia = { ...r.data, source: r.source, ts: r.ts };
+        drawOverlay(); if (['object', 'context'].includes(S.tab)) renderSide();
+      }).catch((e) => { S.cats.gaia = { rows: [], error: e.message }; if (S.tab === 'context') renderSide(); });
+    }
+    if (req.ov.includes('wise') && !S.cats.wise) {
+      catwiseCone(req.target.ra, req.target.dec, Math.min(rad, 0.6)).catch(() => allwiseCone(req.target.ra, req.target.dec, Math.min(rad, 0.6))).then((r) => {
+        S.cats.wise = { ...r.data, source: r.source, ts: r.ts }; drawOverlay(); if (S.tab === 'context') renderSide();
+      }).catch((e) => { S.cats.wise = { rows: [], error: e.message }; if (S.tab === 'context') renderSide(); });
+    }
+  }
+
+  // ------------------------------------------------------------------ side panel
+  const TABS = [['display', 'Display'], ['spectrum', 'Spectrum'], ['lightcurve', 'Light curve'], ['frame', 'Frame & flags'], ['context', 'Gaia · WISE · NEOSSat'], ['object', 'Object'], ['discover', 'Discover']];
+  S.tab = 'display';
+  function renderTabs() {
+    tabsBar.replaceChildren(...TABS.map(([id, label]) => h('button', { role: 'tab', 'aria-selected': String(S.tab === id), id: `tab-${id}`, onclick: () => { S.tab = id; renderTabs(); renderSide(); } }, label)));
+  }
+  function renderSide() {
+    tabBody.replaceChildren();
+    tabBody.setAttribute('role', 'tabpanel');
+    tabBody.setAttribute('aria-labelledby', `tab-${S.tab}`);
+    ({ display: sideDisplay, spectrum: sideSpectrum, lightcurve: sideLight, frame: sideFrame, context: sideContext, object: sideObject, discover: sideDiscover }[S.tab])();
+  }
+
+  function sideDisplay() {
+    const counts = {}; S.exposures.forEach((e) => { counts[e.det] = (counts[e.det] || 0) + 1; });
+    const perExp = estimateBytesPerExposure(req.fov, flagMode());
+    const nSel = S.exposures.filter((e) => req.dets.includes(e.det)).length;
+    const mbps = downlinkMbps();
+    const fovSel = h('select', { 'aria-label': 'Field of view', onchange: (e) => commit({ fov: Number(e.target.value) }) },
+      FOV_STEPS.map((f) => {
+        const total = estimateBytesPerExposure(f, flagMode()) * nSel;
+        return h('option', { value: f, selected: Math.abs(req.fov - f) < 0.01 }, `${f >= 60 ? '1°' : f + '′'} · ≈${fmtBytes(total)}${mbps ? ` · ~${fmtDur((total * 8) / (mbps * 1e6) * 1000)}` : ''}`);
+      }));
+    if (!FOV_STEPS.includes(req.fov)) fovSel.prepend(h('option', { value: req.fov, selected: true }, `${+req.fov.toFixed(2)}′ (custom)`));
+    tabBody.append(
+      h('div', { class: 'panel' }, h('b', {}, 'Detector arrays (102 bands in 6 groups)'),
+        h('p', { class: 'tiny' }, 'Each array covers a range of wavelengths; each exposure records one wavelength per position. Selecting several adds them together for a cleaner image.'),
+        h('div', { class: 'dets' }, DETECTORS.map((d) => h('button', {
+          class: 'det', type: 'button', style: { '--c': `var(--d${d.id})` }, 'aria-pressed': String(req.dets.includes(d.id)),
+          title: `D${d.id}: ${d.range[0]}–${d.range[1]} µm, resolving power R=${d.R}. ${counts[d.id] || 0} exposures here.`,
+          onclick: () => { const on = req.dets.includes(d.id); const nd = on ? req.dets.filter((x) => x !== d.id) : [...req.dets, d.id]; if (nd.length) commit({ dets: nd }, { reload: !on }); },
+        }, `D${d.id}`, h('small', {}, `${d.range[0]}–${d.range[1]}`), h('small', {}, `${counts[d.id] || 0}`)))),
+        h('div', { class: 'row', style: { marginTop: '6px' } },
+          h('button', { class: 'btn small', onclick: () => commit({ dets: [1, 2, 3, 4, 5, 6], wl: null }, { reload: true }) }, 'All'),
+          h('button', { class: 'btn small', title: 'Hydrogen and stellar light; atmospheric helium line at 1.083 µm', onclick: () => commit({ dets: [1, 2], wl: null }, { reload: true }) }, 'Short 0.75–1.6'),
+          h('button', { class: 'btn small', title: 'Hydrogen Pa α (1.88 µm), PAH (3.3 µm)', onclick: () => commit({ dets: [3, 4], wl: null }, { reload: true }) }, 'Middle 1.6–3.8'),
+          h('button', { class: 'btn small', title: 'Cold brown dwarfs are brightest here; hydrogen Br α (4.05 µm)', onclick: () => commit({ dets: [5, 6], wl: null }, { reload: true }) }, 'Long 3.8–5'))),
+      h('label', { class: 'field' }, 'Wavelength window (µm, optional — keeps only exposures whose target wavelength falls inside)',
+        h('div', { class: 'row' },
+          h('input', { type: 'number', step: '0.01', min: 0.7, max: 5, value: req.wl?.[0] ?? '', placeholder: 'from', 'aria-label': 'From wavelength', style: { width: '90px' }, onchange: (e) => setWl(e.target.value, null) }),
+          h('input', { type: 'number', step: '0.01', min: 0.7, max: 5, value: req.wl?.[1] ?? '', placeholder: 'to', 'aria-label': 'To wavelength', style: { width: '90px' }, onchange: (e) => setWl(null, e.target.value) }),
+          LINES.map((l) => h('button', { class: 'btn small ghost', title: `Show only exposures within ±0.05 µm of ${l.title}`, onclick: () => commit({ wl: [+(l.x - 0.05).toFixed(3), +(l.x + 0.05).toFixed(3)], dets: DETECTORS.filter((d) => d.range[1] >= l.x - 0.05 && d.range[0] <= l.x + 0.05).map((d) => d.id) }, { reload: true }) }, l.label)))),
+      h('label', { class: 'field' }, 'Frames', segment(GROUPS.map((g2) => [g2, { exposure: 'Every exposure', day: 'Per day', survey: 'Per survey (6 mo)' }[g2]]), req.group, (v) => commit({ group: v }))),
+      req.mode === 'diff' ? h('label', { class: 'field' }, 'Subtract', segment([['mean', 'Mean of others'], ['first', 'First epoch'], ['prev', 'Previous']], req.diff, (v) => commit({ diff: v }))) : null,
+      req.mode === 'blink' && S.display?.frames.length > 1 ? h('div', { class: 'row' },
+        h('label', { class: 'field' }, 'Blink A', blinkSel(0)), h('label', { class: 'field' }, 'Blink B', blinkSel(1))) : null,
+      h('label', { class: 'field' }, `Field of view — larger fields catch faster movers but transfer more data (${nSel} exposures, ≈${fmtBytes(perExp)} each)`, fovSel),
+      h('label', { class: 'field' }, 'Stretch', segment([['asinh', 'Asinh'], ['log', 'Log'], ['sqrt', 'Sqrt'], ['linear', 'Linear']], req.stretch, (v) => commit({ stretch: v }))),
+      h('div', { class: 'row' },
+        h('label', { class: 'field', style: { flex: 1 } }, `Black point ${req.lo}%`, h('input', { type: 'range', min: 0, max: 30, step: 0.5, value: req.lo, oninput: (e) => commit({ lo: Number(e.target.value) }) })),
+        h('label', { class: 'field', style: { flex: 1 } }, `White point ${req.hi}%`, h('input', { type: 'range', min: 80, max: 100, step: 0.1, value: req.hi, oninput: (e) => commit({ hi: Number(e.target.value) }) }))),
+      h('div', { class: 'row' },
+        h('label', { class: 'field' }, 'Colours', h('select', { onchange: (e) => commit({ cmap: e.target.value }) }, [['gray', 'Grey'], ['viridis', 'Viridis (colour-blind safe)'], ['heat', 'Heat'], ['ice', 'Ice']].map(([v, l]) => h('option', { value: v, selected: req.cmap === v }, l)))),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: req.invert, onchange: (e) => commit({ invert: e.target.checked }) }), 'Invert (black stars on white)')),
+      h('div', { class: 'panel' }, h('b', {}, 'Overlays'),
+        h('div', { class: 'row' }, [['gaia', 'Gaia DR3 stars', 'Positions moved to each frame’s date using Gaia proper motions'], ['wise', 'WISE (CatWISE2020)', 'Infrared sources from WISE'], ['flags', 'Contamination flags', 'Tint pixels flagged as bad'], ['track', 'Predicted track', 'Where the target should be at each date'], ['compass', 'Compass & scale', 'North/East arrows and a scale bar']]
+          .map(([o, l, t]) => h('label', { class: 'check', title: t }, h('input', { type: 'checkbox', checked: req.ov.includes(o), onchange: () => toggleOv(o) }), l)))),
+      req.target.pmra || req.target.pmdec ? h('label', { class: 'check', title: 'Shift every frame along the proper motion so the target stays centred; background stars then move instead (synthetic tracking).' },
+        h('input', { type: 'checkbox', checked: req.track, onchange: (e) => commit({ track: e.target.checked }) }),
+        `Follow the target’s motion (${(Math.hypot(req.target.pmra, req.target.pmdec) / 1000).toFixed(2)}″/yr)`) : null,
+    );
+  }
+  function setWl(a, b) {
+    const cur = req.wl || [0.75, 5.0];
+    const lo = a != null ? Number(a) : cur[0], hi = b != null ? Number(b) : cur[1];
+    if (!a && !b) return;
+    commit({ wl: Number.isFinite(lo) && Number.isFinite(hi) && lo < hi ? [lo, hi] : null });
+  }
+  function blinkSel(k) {
+    const D = S.display;
+    const cur = D.blink || [0, D.frames.length - 1];
+    return h('select', { onchange: (e) => { const b = [...cur]; b[k] = Number(e.target.value); commit({ blink: b }); } },
+      D.frames.map((_, i) => h('option', { value: i, selected: cur[k] === i }, `${i + 1}: ${mjdToISO(frameMjd(i), false)}`)));
+  }
+  function segment(opts, value, on) {
+    return h('div', { class: 'seg', role: 'group' }, opts.map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(value === v), onclick: () => on(v) }, l)));
+  }
+
+  // ----- photometry collection (target position, every loaded exposure)
+  function photPoints() {
+    const pts = [];
+    for (const f of S.frames.values()) if (f.phot && Number.isFinite(f.meta.wavelength)) pts.push({ ...f.phot, wavelength: f.meta.wavelength, bandwidth: f.meta.bandwidth, mjd: f.meta.mjd, det: f.meta.detector, uri: f.meta.uri, release: f.meta.release, saturated: f.meta.saturated });
+    return pts.sort((a, b) => a.mjd - b.mjd);
+  }
+  function epochIndex(pts) {
+    const ms = [...new Set(pts.map((p) => p.mjd))].sort((a, b) => a - b);
+    const ep = new Map(); let e = 0, last = null;
+    for (const m of ms) { if (last != null && m - last > 30) e++; ep.set(m, e); last = m; }
+    return ep;
+  }
+
+  function sideSpectrum() {
+    const usingClick = !!S.clickSpec;
+    const pts = usingClick ? S.clickSpec.points : photPoints();
+    const ep = epochIndex(pts);
+    const host = h('div', { class: 'chart-host' });
+    const nEp = new Set(ep.values()).size;
+    const blend = blendInfo();
+    tabBody.append(
+      h('p', { class: 'tiny' }, usingClick ? `Spectrum at ${formatRA(S.clickSpec.ra)} ${formatDec(S.clickSpec.dec)} (clicked position).` : `Spectrum of the target at its predicted position in every loaded exposure. Each exposure samples a different wavelength, so together they form a ${pts.length}-point spectrum.`,
+        ' Hollow points are questionable: saturated core, or more than 20% of the aperture masked by contamination flags. Aperture 2.5 px (15″) radius, background from a 6–10 px annulus.'),
+      blend ? h('div', { class: 'notice warn' }, blend) : null,
+      host,
+      h('div', { class: 'row' },
+        usingClick ? h('button', { class: 'btn small', onclick: () => { S.clickSpec = null; renderSide(); } }, 'Back to target spectrum') : null,
+        h('button', { class: 'btn small', onclick: () => enlarge(host, 'Spectrum') }, 'Enlarge'),
+        h('button', { class: 'btn small', onclick: () => download(`skyshift-spectrum-${fileStem()}.csv`, photCSV(pts), 'text/csv') }, icon('download'), 'CSV'),
+        h('button', { class: 'btn small', onclick: () => { const s = host.querySelector('svg'); if (s) download(`skyshift-spectrum-${fileStem()}.svg`, svgString(s), 'image/svg+xml'); } }, icon('download'), 'SVG')),
+      h('details', { class: 'panel' }, h('summary', {}, 'Molecule & line guide'),
+        h('div', { class: 'body tiny' },
+          h('p', {}, 'SPHEREx is built to see hydrogen, water, carbon dioxide, carbon monoxide and other molecules. Lines marked on the chart come with wavelengths stated in the IRSA SPHEREx documentation and tutorials:'),
+          h('ul', {}, LINES.map((l) => h('li', {}, h('b', {}, l.label), ' — ', l.title, ' ', h('button', { class: 'btn small ghost', onclick: () => commit({ wl: [+(l.x - 0.05).toFixed(3), +(l.x + 0.05).toFixed(3)], dets: DETECTORS.filter((d) => d.range[1] >= l.x - 0.05 && d.range[0] <= l.x + 0.05).map((d) => d.id) }, { reload: true }) }, 'Image this band')))),
+          h('p', {}, 'Exact wavelengths for water, CO₂ and CO ice bands were not found in the approved sources read for this version, so they are not marked (see docs/DATA_SOURCES.md). Cold brown dwarfs are faint at short wavelengths and brightest near 4–5 µm because molecules in their atmospheres absorb light at other wavelengths.'))),
+    );
+    scatterChart(host, {
+      title: 'Spectrum', xLabel: 'Wavelength (µm)', yLabel: 'Flux density (µJy)',
+      empty: S.frames.size ? 'No valid measurements (target saturated, outside the images or masked)' : 'Spectrum appears as exposures load…',
+      points: pts.map((p) => ({ x: p.wavelength, y: p.flux, err: p.err, color: EPOCH_COLORS[(ep.get(p.mjd) || 0) % EPOCH_COLORS.length], hollow: questionable(p),
+        tip: `λ ${p.wavelength.toFixed(3)} µm (D${p.det})\n${p.flux.toFixed(0)} ± ${p.err.toFixed(0)} µJy\n${mjdToISO(p.mjd)}\nMJD ${p.mjd.toFixed(3)} · ${String(p.release).toUpperCase()}${p.flags ? '\nflags: ' + decodeFlags(p.flags).join(', ') : ''}`, ref: p })),
+      markers: LINES,
+      bands: DETECTORS.map((d) => ({ x0: d.range[0], x1: d.range[1], color: getComputedStyle(document.documentElement).getPropertyValue(`--d${d.id}`) || '#888', label: `D${d.id}`, short: `D${d.id}` })),
+      xRange: [0.72, 5.03],
+      legend: [...new Set(ep.values())].sort().map((e) => ({ color: EPOCH_COLORS[e % EPOCH_COLORS.length], label: `Survey pass ${e + 1}` })).concat(nEp ? [{ color: '#aaa', label: 'flagged', hollow: true }] : []),
+      onPoint: (pt) => focusExposure(pt.ref.uri),
+    });
+  }
+  function blendInfo() {
+    const gaia = S.cats.gaia?.rows;
+    if (!gaia?.length) return null;
+    const yr = 2026;
+    const tp = req.target;
+    const near = gaia.filter((s) => {
+      const p = propagate(s.ra, s.dec, s.pmra || 0, s.pmdec || 0, s.ref_epoch || 2016, yr);
+      const t = propagate(tp.ra, tp.dec, tp.pmra || 0, tp.pmdec || 0, tp.refEpoch || 2016, yr);
+      const d = separation(p.ra, p.dec, t.ra, t.dec) * 3600;
+      return d > 1.5 && d < 2.5 * NATIVE_SCALE + 6;
+    });
+    if (!near.length) return null;
+    return `Possible blend: ${near.length} Gaia source${near.length > 1 ? 's' : ''} lie within the 15″ aperture (brightest G=${Math.min(...near.map((s) => s.phot_g_mean_mag || 99)).toFixed(1)}). SPHEREx pixels are 6.15″, so their light can mix with the target’s.`;
+  }
+
+  function sideLight() {
+    const pts = S.clickSpec ? S.clickSpec.points : photPoints();
+    const host = h('div', { class: 'chart-host' });
+    const rel = S.relLC !== false;
+    const eb = epochBrightness(pts);
+    const ptsR = eb.points;
+    tabBody.append(
+      h('p', { class: 'tiny' }, 'Brightness of the target against time. Because each exposure is at a different wavelength, “relative to the average spectrum” divides each point by the mean spectrum at its wavelength, so real brightening or fading stands out.'),
+      segment([['rel', 'Relative to average spectrum'], ['abs', 'Flux (µJy)']], rel ? 'rel' : 'abs', (v) => { S.relLC = v === 'rel'; renderSide(); }),
+      host,
+      eb.epochs.length > 1 ? h('table', { class: 'table' }, h('tr', {}, h('th', {}, 'Survey pass'), h('th', {}, 'Dates'), h('th', {}, 'Mean relative brightness'), h('th', {}, 'N')),
+        eb.epochs.map((e, i) => h('tr', {}, h('td', {}, i + 1), h('td', {}, `${mjdToISO(e.t0, false)} – ${mjdToISO(e.t1, false)}`), h('td', {}, `${((e.mean - 1) * 100).toFixed(1)}% ± ${(e.err * 100).toFixed(1)}%`), h('td', {}, e.n)))) : null,
+      eb.change ? h('div', { class: eb.change.sig >= 3 ? 'notice warn' : 'notice' }, eb.change.sig >= 3
+        ? `Brightness-change candidate: ${(eb.change.delta * 100).toFixed(1)}% ± ${(eb.change.err * 100).toFixed(1)}% between survey passes (${eb.change.sig.toFixed(1)}σ). Check flags and neighbours before trusting it.`
+        : `No significant change between survey passes (${(eb.change.delta * 100).toFixed(1)}% ± ${(eb.change.err * 100).toFixed(1)}%, ${eb.change.sig.toFixed(1)}σ).`) : null,
+      h('div', { class: 'row' }, h('button', { class: 'btn small', onclick: () => enlarge(host, 'Light curve') }, 'Enlarge'),
+        h('button', { class: 'btn small', onclick: () => download(`skyshift-lightcurve-${fileStem()}.csv`, photCSV(pts), 'text/csv') }, icon('download'), 'CSV')),
+    );
+    scatterChart(host, {
+      title: 'Light curve', xLabel: 'Date (year)', yLabel: rel ? 'Relative brightness' : 'Flux density (µJy)',
+      xFormat: (v) => v.toFixed(2),
+      empty: 'Light curve appears as exposures load…',
+      points: ptsR.map((p) => ({ x: mjdToYear(p.mjd), y: rel ? p.rel : p.flux, err: rel ? p.relErr : p.err, color: getComputedStyle(document.documentElement).getPropertyValue(`--d${p.det}`).trim() || '#ccc', hollow: questionable(p),
+        tip: `${mjdToISO(p.mjd)} (MJD ${p.mjd.toFixed(3)})\nD${p.det} λ ${p.wavelength.toFixed(3)} µm\n${p.flux.toFixed(0)} ± ${p.err.toFixed(0)} µJy${rel ? `\nrelative ${p.rel.toFixed(3)}` : ''}`, ref: p })),
+      legend: DETECTORS.filter((d) => ptsR.some((p) => p.det === d.id)).map((d) => ({ color: getComputedStyle(document.documentElement).getPropertyValue(`--d${d.id}`).trim(), label: `D${d.id}` })),
+      onPoint: (pt) => focusExposure(pt.ref.uri),
+    });
+  }
+
+  function enlarge(host, label) {
+    const svg = host.querySelector('svg');
+    if (!svg) return;
+    const big = h('div', { class: 'chart-host', style: { width: 'min(1100px, 94vw)' } }, svg.cloneNode(true));
+    const close = sheet(h('div', {}, h('h2', {}, label), big, h('button', { class: 'btn', onclick: () => close() }, 'Close')), { label });
+    const el = document.querySelector('.sheet'); if (el) el.style.width = 'min(1140px, 100vw)';
+  }
+
+  function focusExposure(uri) {
+    const D = S.display; if (!D) return;
+    const i = D.frames.findIndex((f) => f.group.some((e) => e.meta.uri === uri));
+    if (i >= 0) { stopPlay(); S.frame = i; slider.value = i; draw(); S.tab = 'frame'; renderTabs(); renderSide(); }
+  }
+
+  function sideFrame() {
+    const D = S.display, i = currentIndex();
+    if (!D || i < 0) { tabBody.append(h('p', { class: 'empty' }, 'Frame details appear once images load.')); return; }
+    const fr = D.frames[i];
+    const counts = {};
+    for (const e of fr.group) for (const [b, c] of Object.entries(e.meta.flagCounts || {})) counts[b] = (counts[b] || 0) + c;
+    const fieldFlags = fr.group.some((e) => e.meta.flagCounts);
+    const total = n() * n() * fr.group.length;
+    const first = fr.group[0].meta;
+    const [cra, cdec] = frameCenter(i);
+    tabBody.append(
+      h('h3', {}, `Frame ${i + 1}: ${fr.group.length} exposure${fr.group.length > 1 ? 's' : ''}`),
+      h('p', { class: 'tiny' }, 'Contamination and quality flags inside this field (share of pixels, summed over the exposures in this frame). Hover a flag for its meaning. Turn on “Contamination flags” in Display to see where they are.'),
+      !fieldFlags ? h('div', { class: 'notice' }, 'Flags are read only around the target to save data (they still clean the photometry). ',
+        h('button', { class: 'btn small', onclick: () => toggleOv('flags') }, 'Map flags across the whole field')) : null,
+      fieldFlags ? h('div', { class: 'flaglist' }, Object.keys(counts).length ? Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([b, c]) => {
+        const def = FLAG_BITS.find(([bb]) => bb === Number(b));
+        const bad = BAD_MASK & (1 << Number(b));
+        return h('span', { class: `chip ${bad ? 'bad' : 'info'}`, title: `bit ${b}: ${def?.[2] || ''}` }, `${def?.[1] || 'bit ' + b} ${((c / total) * 100).toFixed(1)}%`);
+      }) : h('span', { class: 'chip good' }, 'no flags in this field')) : null,
+      h('div', { class: 'explist', style: { marginTop: '10px' } }, h('table', {},
+        h('tr', {}, ['Date (UTC)', 'Det', 'λ µm', 'Release', 'QA', 'Files'].map((x) => h('th', {}, x))),
+        fr.group.map((e) => h('tr', {},
+          h('td', {}, mjdToISO(e.meta.mjd)), h('td', {}, `D${e.meta.detector}`), h('td', {}, e.meta.wavelength?.toFixed(3) ?? '–'),
+          h('td', {}, String(e.meta.release).toUpperCase()), h('td', {}, e.meta.header?.L2DQAFLG || '–'),
+          h('td', {}, h('a', { href: `${uriToIbe(e.meta.uri)}?center=${cra.toFixed(6)},${cdec.toFixed(6)}d&size=${(req.fov / 60).toFixed(4)}`, target: '_blank', rel: 'noopener', title: 'FITS cutout from the IRSA cutout service' }, 'cutout'), ' · ',
+            h('a', { href: uriToS3(e.meta.uri), target: '_blank', rel: 'noopener', title: 'Full spectral image (about 65 MB)' }, 'full')))))),
+      h('details', { class: 'panel' }, h('summary', {}, 'Header metadata (first exposure)'),
+        h('dl', { class: 'kv' }, Object.entries({ OBSID: first.obsid, file: first.uri.split('/').pop(), ...first.header }).map(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))]))),
+      h('p', { class: 'tiny' }, `Background ${first.bg?.toFixed(3)} MJy/sr subtracted per exposure (median of the field). Noise ≈ ${first.sigma?.toFixed(3)} MJy/sr. Images resampled onto a north-up grid of ${S.grid.scale.toFixed(2)}″ pixels using each file’s TAN-SIP WCS.`),
+    );
+  }
+
+  function sideContext() {
+    ensureCats();
+    const gaia = S.cats.gaia, wise = S.cats.wise;
+    const neo = h('div', {}, h('p', { class: 'tiny' }, 'Looking for NEOSSat observations near this position (CADC)…'));
+    tabBody.append(
+      h('h3', {}, h('span', { class: 'legend-dot', style: { '--c': '#5ec8ff' } }), 'Gaia DR3'),
+      gaia ? (gaia.error ? h('p', { class: 'notice bad' }, `Gaia unavailable: ${gaia.error}`) : h('p', { class: 'tiny' }, `${gaia.rows.length} stars within ${((req.fov / 60) * 0.75 * 60).toFixed(1)}′ via ${gaia.via}${gaia.source !== 'live' ? ' (saved copy)' : ''}. Circles are drawn at each star’s position on the frame date (Gaia proper motion); arrows show 5 years of motion for fast movers.`)) : h('p', { class: 'tiny' }, 'Loading…'),
+      gaia?.rows?.length ? h('div', { class: 'explist' }, h('table', {}, h('tr', {}, ['Gaia DR3', 'G', 'pm ″/yr', 'ϖ mas'].map((x) => h('th', {}, x))),
+        gaia.rows.slice(0, 60).map((s) => h('tr', { style: { cursor: 'pointer' }, onclick: () => { S.selected = { ra: s.ra, dec: s.dec, obj: s, cat: 'gaia' }; S.tab = 'object'; renderTabs(); renderSide(); drawOverlay(); } },
+          h('td', {}, s.label ? `${s.label}` : String(s.source_id)), h('td', {}, s.phot_g_mean_mag?.toFixed(2) ?? '–'), h('td', {}, s.pmra != null ? (Math.hypot(s.pmra, s.pmdec) / 1000).toFixed(3) : '–'), h('td', {}, s.parallax?.toFixed(1) ?? '–'))))) : null,
+      h('h3', { style: { marginTop: '12px' } }, h('span', { class: 'legend-dot', style: { '--c': '#ffb547' } }), 'WISE'),
+      req.ov.includes('wise') ? (wise ? (wise.error ? h('p', { class: 'notice bad' }, `WISE catalogue unavailable: ${wise.error}`) : h('p', { class: 'tiny' }, `${wise.rows.length} sources via ${wise.via}. Squares mark WISE positions moved to the frame date with CatWISE2020 motions.`)) : h('p', { class: 'tiny' }, 'Loading…'))
+        : h('button', { class: 'btn small', onclick: () => toggleOv('wise') }, 'Show WISE sources'),
+      h('p', { class: 'tiny' }, 'For a then-and-now comparison with WISE/NEOWISE images, ', wiseLink.cloneNode(true), ' opens this field in WiseView.'),
+      h('h3', { style: { marginTop: '12px' } }, 'NEOSSat (Canadian Space Agency)'), neo,
+    );
+    neossatCone(req.target.ra, req.target.dec, 0.5).then((r) => {
+      const rows = r.data.rows;
+      neo.replaceChildren(
+        h('p', { class: 'tiny' }, rows.length ? `${rows.length} NEOSSat observations within 0.5° (CADC archive, ${r.data.via}${r.source !== 'live' ? ', saved copy' : ''}). NEOSSat is an optical microsatellite (15-cm telescope, 3″ pixels); its images are separate from SPHEREx and are not mixed into the movie.` : 'NEOSSat has not observed within 0.5° of this position (its fields are sparse).'),
+        rows.length ? h('div', { class: 'explist' }, h('table', {}, h('tr', {}, ['Date (UTC)', 'Target', 'Exp. s', 'Data'].map((x) => h('th', {}, x))),
+          rows.slice(0, 80).map((o) => h('tr', {}, h('td', {}, mjdToISO(o.t_min)), h('td', {}, String(o.target_name ?? '')), h('td', {}, o.t_exptime ?? '–'),
+            h('td', {}, /^https:\/\/ws\.cadc-ccda\.hia-iha\.nrc-cnrc\.gc\.ca\//.test(o.access_url) ? h('a', { href: o.access_url, target: '_blank', rel: 'noopener' }, 'CADC') : '–'))))) : null);
+    }).catch((e) => neo.replaceChildren(h('p', { class: 'notice bad' }, `NEOSSat search unavailable right now (${e.message}).`)));
+  }
+
+  function sideObject() {
+    const sel = S.selected;
+    if (!sel) { tabBody.append(h('p', { class: 'empty' }, 'Click anything in the image to inspect it: catalogue details, its spectrum, and tools to mark it as a candidate.')); return; }
+    const o = sel.obj;
+    const specBtn = h('button', { class: 'btn primary small', onclick: () => spectrumAt(sel.ra, sel.dec) }, 'Spectrum & light curve here');
+    tabBody.append(
+      h('h3', {}, o ? (sel.cat === 'gaia' ? (o.label || `Gaia DR3 ${o.source_id}`) : (o.source_name || o.designation)) : 'Selected position'),
+      h('dl', { class: 'kv' },
+        h('dt', {}, 'RA, Dec'), h('dd', {}, `${formatRA(sel.ra)} ${formatDec(sel.dec)}`),
+        h('dt', {}, 'Decimal'), h('dd', {}, `${sel.ra.toFixed(6)}, ${sel.dec.toFixed(6)}`),
+        h('dt', {}, 'From target'), h('dd', {}, `${(separation(sel.ra, sel.dec, req.target.ra, req.target.dec) * 3600).toFixed(1)}″`),
+        o && sel.cat === 'gaia' ? [h('dt', {}, 'G mag'), h('dd', {}, o.phot_g_mean_mag?.toFixed(3) ?? '–'), h('dt', {}, 'BP−RP'), h('dd', {}, o.bp_rp?.toFixed(3) ?? '–'),
+          h('dt', {}, 'Proper motion'), h('dd', {}, o.pmra != null ? `${o.pmra.toFixed(1)}, ${o.pmdec.toFixed(1)} mas/yr (${(Math.hypot(o.pmra, o.pmdec) / 1000).toFixed(3)}″/yr)` : '–'),
+          h('dt', {}, 'Parallax'), h('dd', {}, o.parallax != null ? `${o.parallax.toFixed(3)} mas${o.parallax > 0 ? ` → ~${(1000 / o.parallax).toFixed(1)} pc (${(3261.56 / o.parallax).toFixed(1)} light-years)` : ''}` : '–')] : null,
+        o && sel.cat === 'wise' ? [h('dt', {}, 'W1, W2'), h('dd', {}, `${o.w1mpro ?? '–'}, ${o.w2mpro ?? '–'} mag`), h('dt', {}, 'W1−W2'), h('dd', {}, o.w1mpro != null && o.w2mpro != null ? (o.w1mpro - o.w2mpro).toFixed(2) : '–')] : null),
+      o && sel.cat === 'wise' && o.w1mpro - o.w2mpro > 1.5 ? h('p', { class: 'notice warn' }, 'Very red in WISE (W1−W2 > 1.5): typical of cold brown dwarfs or dusty objects.') : null,
+      h('div', { class: 'row' }, specBtn,
+        o && sel.cat === 'gaia' && (o.pmra || o.pmdec) ? h('button', { class: 'btn small', onclick: () => { commit({ target: { ra: o.ra, dec: o.dec, pmra: o.pmra, pmdec: o.pmdec, refEpoch: o.ref_epoch || 2016, name: o.label || `Gaia DR3 ${o.source_id}`, id: String(o.source_id), source: 'gaia' }, track: false }, { reload: true, push: true }); } }, 'Make this the target') : null,
+        h('button', { class: 'btn small', onclick: () => markCandidate(sel) }, icon('star'), 'Mark candidate'),
+        h('a', { class: 'btn small', href: `#/view?${toParams(normalise({ ...req, target: { ra: sel.ra, dec: sel.dec, source: 'coords' }, t: 0 }))}` }, 'Centre here')),
+    );
+  }
+
+  function spectrumAt(ra, dec) {
+    const items = [...S.frames.values()].map((f) => ({ uri: f.meta.uri }));
+    const id = Date.now();
+    const w = getWorker();
+    toast({ title: 'Measuring every exposure at this position…', glyph: '🌈', timeout: 2500 });
+    const prev = w.onmessage;
+    const handler = (ev) => {
+      const m = ev.data;
+      if (m.id !== id) { prev?.(ev); return; }
+      if (m.type === 'photDone') {
+        w.onmessage = prev;
+        S.clickSpec = { ra, dec, points: m.points.filter((p) => Number.isFinite(p.wavelength)).map((p) => ({ ...p, det: p.detector, release: '' })) };
+        S.tab = 'spectrum'; renderTabs(); renderSide();
+      }
+    };
+    w.onmessage = handler;
+    w.postMessage({ type: 'phot', id, items, ra, dec });
+  }
+
+  function markCandidate(sel) {
+    const types = [['mover', 'Moving object'], ['variable', 'Brightness change'], ['red', 'Very red / cold'], ['other', 'Something else']];
+    const note = h('textarea', { placeholder: 'What did you notice? (kept on this device)' });
+    let type = 'mover';
+    const seg = h('div', { class: 'seg' }, types.map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(v === type), onclick: (e) => { type = v; [...seg.children].forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } }, l)));
+    const close = sheet(h('div', { class: 'grid' },
+      h('h2', {}, 'Mark a candidate'),
+      h('p', { class: 'muted' }, `${formatRA(sel.ra)} ${formatDec(sel.dec)} — saved with the full view settings so anyone can check it. This is a candidate for your own vetting, not a discovery.`),
+      seg, note,
+      h('button', { class: 'btn primary', onclick: () => {
+        saveCandidate({ ra: sel.ra, dec: sel.dec, type, note: note.value.slice(0, 2000), catalog: sel.obj ? (sel.cat === 'gaia' ? `Gaia DR3 ${sel.obj.source_id}` : sel.obj.source_name || sel.obj.designation) : null,
+          url: location.href, request: req, frameDate: frameMjd(), exposures: S.display?.frames[currentIndex()]?.group.map((e) => e.meta.uri) || [] });
+        close(); toast({ title: 'Candidate saved', text: 'See it under Saved, where you can export CSV/JSON.', glyph: '⭐', timeout: 3500 });
+      } }, 'Save candidate')), { label: 'Mark a candidate' });
+  }
+
+  function sideDiscover() {
+    const D = S.display;
+    tabBody.append(
+      h('p', {}, 'Automated helpers that point your eyes at things worth checking. They can miss objects and raise false alarms: everything they find is a ', h('b', {}, 'candidate'), ' for you to inspect.'),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn primary small', disabled: !D || D.groups.length < 2, onclick: () => { S.movers = findMovers(S.display, n(), S.grid, req); drawOverlay(); renderSide(); } }, 'Spot the movers'),
+        h('button', { class: 'btn small', disabled: !D || D.groups.length < 2, onclick: () => { S.variables = findVariables(S.display, n()); drawOverlay(); renderSide(); } }, 'Find brightness changes'),
+        S.movers || S.variables ? h('button', { class: 'btn small ghost', onclick: () => { S.movers = null; S.variables = null; drawOverlay(); renderSide(); } }, 'Clear') : null),
+      !D || D.groups.length < 2 ? h('p', { class: 'tiny' }, 'Needs at least two epochs. Use “Per survey” frames for the cleanest comparison.') : null,
+      S.movers ? h('div', {}, h('h3', {}, `${S.movers.length} motion candidate${S.movers.length === 1 ? '' : 's'}`),
+        S.movers.length ? h('div', { class: 'explist' }, h('table', {}, h('tr', {}, ['#', 'Shift', 'Rate', 'Direction', 'S/N'].map((x) => h('th', {}, x))),
+          S.movers.map((m, k) => h('tr', { style: { cursor: 'pointer' }, onclick: () => { S.selected = { ra: m.ra, dec: m.dec }; S.tab = 'object'; renderTabs(); renderSide(); drawOverlay(); } },
+            h('td', {}, k + 1), h('td', {}, `${m.shift.toFixed(1)}″`), h('td', {}, `${m.rate.toFixed(2)}″/yr`), h('td', {}, `${m.pa.toFixed(0)}° E of N`), h('td', {}, m.snr.toFixed(1)))))) : h('p', { class: 'tiny' }, 'No pairs passed the checks (flags, cosmic rays, single-epoch spikes).'),
+        h('p', { class: 'tiny' }, 'Method: sources found in the first and last epoch co-adds (≥5σ peaks, flagged pixels rejected) are matched; pairs that shifted by more than half a pixel with similar brightness, and with no stationary counterpart, are listed. Pink arrows mark them.')) : null,
+      S.variables ? h('div', {}, h('h3', {}, `${S.variables.length} brightness-change candidate${S.variables.length === 1 ? '' : 's'}`),
+        S.variables.map((v) => h('p', { class: 'tiny' }, `${formatRA(v.ra)} ${formatDec(v.dec)}: ${v.sign > 0 ? 'brighter' : 'fainter'} in the latest epoch by ${v.snr.toFixed(1)}σ`)),
+        h('p', { class: 'tiny' }, 'Method: stationary peaks in the wavelength-matched difference between the first and last epoch co-adds, ≥5σ, rejecting flagged pixels. Green circles mark them.')) : null,
+    );
+  }
+
+  // ------------------------------------------------------------------ suggestions, explain, share, tour
+  function renderSuggestion() {
+    suggestionBox.replaceChildren();
+    const sg = suggestFor(req.target);
+    const tip = preset?.tip;
+    const text = [tip, sg?.text].filter(Boolean).join(' ');
+    if (!text) return;
+    const btns = [];
+    if (sg && (req.mode !== sg.mode || req.group !== 'survey')) btns.push(h('button', { class: 'btn small primary', onclick: () => commit({ mode: sg.mode, group: 'survey' }) }, `Try ${MODE_INFO[sg.mode][0]}`));
+    if (preset?.id === 'epsindib' && req.fov < 15) btns.push(h('button', { class: 'btn small', onclick: () => commit({ fov: 15, ov: [...new Set([...req.ov, 'gaia'])] }) }, 'Show the host star (15′ field)'));
+    if ((preset?.id === 'rwaur' || preset?.id === 'rdra') && S.tab !== 'lightcurve') btns.push(h('button', { class: 'btn small', onclick: () => { S.tab = 'lightcurve'; renderTabs(); renderSide(); } }, 'Open light curve'));
+    suggestionBox.append(h('div', { class: 'suggestion', style: { marginBottom: '10px' } }, h('span', { 'aria-hidden': 'true' }, '💡'), h('span', { style: { flex: 1 } }, text), btns));
+  }
+  function explain() {
+    if (explainBox.hidden) return;
+    const D = S.display;
+    const dets = req.dets.map((d) => `D${d}`).join(', ');
+    explainBox.replaceChildren(
+      h('b', {}, 'What you are seeing: '),
+      `${D?.frames.length || 0} frames of ${req.fov}′ × ${req.fov}′ of sky centred on ${name}, north up and east left. `,
+      req.group === 'survey' ? 'Each frame adds together every exposure from one six-month pass of the sky (SPHEREx maps the whole sky twice a year). ' : req.group === 'day' ? 'Each frame adds the exposures taken within one day. ' : 'Each frame is a single SPHEREx exposure at one wavelength. ',
+      `Detectors used: ${dets}. `,
+      { movie: 'Play it: things that move between passes, like nearby stars, brown dwarfs and asteroids, shift position. ', blink: 'Two epochs flip back and forth; a moving object jumps while everything else stays still — the method used to discover Pluto. ', diff: 'A reference epoch is subtracted using the same detector arrays: still stars cancel to grey, a moving object leaves a dark/bright pair, and a brightening object leaves a bright spot. ', stack: 'Epochs are added cumulatively, so the noise drops and faint objects appear as more data are stacked. ', color: 'Short wavelengths are blue, middle green, long red: very cold objects such as brown dwarfs look red, hot stars blue. ' }[req.mode],
+      `Brightness uses one ${req.stretch} stretch shared by all frames, so brightness changes are honest. `,
+      req.track ? 'Frames are shifted along the target’s proper motion, so the target stays still and background stars drift. ' : '',
+      'The yellow crosshair marks the target; the dashed line is its predicted track from its proper motion.');
+  }
+  function shareDialog() {
+    const url = new URL(location.href);
+    const qs = toParams(normalise({ ...req, t: S.frame }));
+    const page = `${url.origin}${url.pathname}`;
+    const link = `${page}?${qs}`;
+    const embedQs = new URLSearchParams(qs); embedQs.set('embed', '1');
+    const iframe = `<iframe src="${page}?${embedQs}" width="640" height="720" style="border:0;border-radius:12px" loading="lazy" title="SkyShift: SPHEREx view of ${name.replace(/"/g, '')}" allow="fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+    const box = (label, text) => {
+      const ta = h('textarea', { readonly: true, rows: 3, 'aria-label': label }, text);
+      return h('label', { class: 'field' }, label, ta, h('button', { class: 'btn small', onclick: async () => { const ok = await copyText(text); toast({ title: ok ? 'Copied' : 'Copy failed — select and copy manually', timeout: 2000, glyph: '📋' }); } }, 'Copy'));
+    };
+    sheet(h('div', { class: 'grid' }, h('h2', {}, 'Share or embed this view'),
+      h('p', { class: 'muted' }, 'The link holds the whole view (position, field, detectors, mode, stretch, overlays and frame), so others see exactly what you see.'),
+      box('Link', link), box('Embed code (iframe)', iframe),
+      h('p', { class: 'tiny' }, 'URL parameters: ra, dec (degrees or sexagesimal), fov (arcmin), det (e.g. 456), wl (e.g. 3-4), group (exposure|day|survey), mode (movie|blink|diff|stack|color), stretch, lo, hi, invert, cmap, speed (ms), track, ov, t, embed. WiseView-style size, speed, invert, diff, linear, gaia, window, pmra, pmdec are accepted too. Full list in the Guide.'),
+      navigator.share ? h('button', { class: 'btn primary', onclick: () => navigator.share({ title: `SkyShift: ${name}`, url: link }).catch(() => {}) }, 'Share…') : null), { label: 'Share or embed' });
+  }
+  function tour() {
+    const steps = [[stage, 'This is the sky around your target. Drag to pan when zoomed, scroll or pinch to zoom, click anything to inspect it.'],
+      [playBtn, 'Press Play to watch the images like a film. ← and → step through frames.'], [modeSeg, 'Switch between Movie, Blink, Difference, Stack and false Colour.'],
+      [tabsBar, 'Change detectors, field of view and overlays, and open the spectrum, light curve, flags and discovery helpers here.'], [shareBtn, 'Share a link or embed this exact view in another website.']];
+    let k = 0;
+    const ring = h('div', { class: 'tour-ring' });
+    const box = h('div', { class: 'tour', role: 'dialog', 'aria-label': 'Guided tour' });
+    document.body.append(ring, box);
+    const end = () => { ring.remove(); box.remove(); localStorage.setItem('skyshift.toured', '1'); };
+    const show = () => {
+      if (k >= steps.length) return end();
+      const [el, text] = steps[k];
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setTimeout(() => {
+        const r = el.getBoundingClientRect();
+        Object.assign(ring.style, { left: `${r.left - 6}px`, top: `${r.top - 6}px`, width: `${r.width + 12}px`, height: `${r.height + 12}px` });
+        box.replaceChildren(h('p', {}, text), h('div', { class: 'row' }, h('span', { class: 'tiny' }, `${k + 1}/${steps.length}`), h('div', { class: 'spacer' }),
+          h('button', { class: 'btn small ghost', onclick: end }, 'Skip'), h('button', { class: 'btn small primary', onclick: () => { k++; show(); } }, k === steps.length - 1 ? 'Done' : 'Next')));
+        const top = r.bottom + 12 + 160 < innerHeight ? r.bottom + 12 : Math.max(12, r.top - 172);
+        Object.assign(box.style, { left: `${Math.min(innerWidth - 352, Math.max(12, r.left))}px`, top: `${top}px` });
+        box.querySelector('.primary').focus();
+      }, 250);
+    };
+    show();
+  }
+
+  // ------------------------------------------------------------------ exports
+  const fileStem = () => (req.target.name || `${req.target.ra.toFixed(4)}_${req.target.dec.toFixed(4)}`).replace(/[^\w.-]+/g, '_');
+  function photCSV(pts) {
+    const head = 'mjd,utc,detector,wavelength_um,bandwidth_um,flux_uJy,err_uJy,n_bad_pixels,flags,release,file\n';
+    return head + pts.map((p) => [p.mjd?.toFixed(6), mjdToISO(p.mjd), p.det ?? p.detector, p.wavelength?.toFixed(5), p.bandwidth?.toFixed(5), p.flux?.toFixed(2), p.err?.toFixed(2), p.nbad, decodeFlags(p.flags || 0).join('|'), p.release, p.uri?.split('/').pop()].join(',')).join('\n');
+  }
+  function composite() {
+    const W = imgCanvas.width;
+    const c = document.createElement('canvas'); c.width = W; c.height = W + 60 * (devicePixelRatio || 1);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#05061a'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(imgCanvas, 0, 0); ctx.drawImage(ovCanvas, 0, 0);
+    const d = devicePixelRatio || 1;
+    ctx.fillStyle = '#eef0ff'; ctx.font = `${14 * d}px system-ui`;
+    ctx.fillText(`${name} · ${frameLabel.textContent}`.slice(0, 120), 10 * d, W + 22 * d);
+    ctx.fillStyle = '#9aa0d0'; ctx.font = `${12 * d}px system-ui`;
+    ctx.fillText('SPHEREx data: NASA/IPAC IRSA · made with SkyShift', 10 * d, W + 44 * d);
+    return c;
+  }
+  function exportPNG() { composite().toBlob((b) => b && download(`skyshift-${fileStem()}-frame${currentIndex() + 1}.png`, b, 'image/png')); }
+  async function exportVideo() {
+    const D = S.display;
+    if (!D?.frames.length || !window.MediaRecorder) { toast({ title: 'Video export is not supported in this browser', glyph: '🎞', timeout: 3000 }); return; }
+    stopPlay();
+    const c = composite();
+    const stream = c.captureStream(30);
+    const type = ['video/webm;codecs=vp9', 'video/webm', 'video/mp4'].find((t) => MediaRecorder.isTypeSupported(t));
+    const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const chunks = [];
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    rec.onstop = () => download(`skyshift-${fileStem()}.${(type || 'video/webm').includes('mp4') ? 'mp4' : 'webm'}`, new Blob(chunks, { type: type || 'video/webm' }));
+    rec.start();
+    toast({ title: 'Recording the animation…', glyph: '🎬', timeout: 2500 });
+    const N = req.mode === 'blink' ? 6 : D.frames.length;
+    for (let k = 0; k < N; k++) {
+      step(1);
+      const fresh = composite();
+      c.getContext('2d').drawImage(fresh, 0, 0);
+      await new Promise((r) => setTimeout(r, req.speed));
+    }
+    rec.stop();
+  }
+
+  // ------------------------------------------------------------------ lifecycle
+  const ro = new ResizeObserver(() => draw());
+  ro.observe(stage);
+  const onNewData = () => { if (S.search) { S.search = null; load(); } };
+  window.addEventListener('skyshift:newdata', onNewData);
+  window.addEventListener('skyshift:online', onNewData);
+  renderModes(); renderTabs(); renderSide();
+  ensureCats();
+  load();
+  if (!localStorage.getItem('skyshift.toured') && !req.embed) setTimeout(() => toast({ title: 'New here?', text: 'Take a 20-second tour of the viewer.', glyph: '🧭', actions: [{ label: 'Start tour', primary: true, onClick: tour }, { label: 'No thanks', onClick: () => localStorage.setItem('skyshift.toured', '1') }], timeout: 9000 }), 1500);
+
+  // When only view parameters change (e.g. Back/Forward), update in place and keep the loaded frames.
+  live.update = (r) => {
+    const next = normalise(fromParams(r.params));
+    if (!next.target) return false;
+    const sameTarget = Math.abs(next.target.ra - req.target.ra) < 1e-7 && Math.abs(next.target.dec - req.target.dec) < 1e-7;
+    if (!sameTarget) return false;
+    const prevKey = loadKey();
+    req = { ...next, target: { ...req.target, ...next.target } };
+    renderModes(); renderTabs(); renderSide();
+    if (loadKey() !== prevKey) load(); else rebuild();
+    return true;
+  };
+
+  return () => {
+    stopPlay(); ro.disconnect();
+    document.removeEventListener('keydown', onKey);
+    window.removeEventListener('skyshift:newdata', onNewData);
+    window.removeEventListener('skyshift:online', onNewData);
+    worker?.postMessage({ type: 'abort' });
+    live.update = null;
+  };
+}
+
+const live = { update: null };
+/** Called by the router when only the URL parameters of this page changed. Returns false to request a full render. */
+export function update(r) {
+  return live.update ? live.update(r) : false;
+}
+
+function renderEmpty(root, go) {
+  root.append(h('div', { class: 'card empty' },
+    h('h1', {}, 'Choose a patch of sky'),
+    h('p', {}, 'Open a challenge target from the home page, type coordinates, or add ?ra=…&dec=… to the address.'),
+    h('div', { class: 'row', style: { justifyContent: 'center' } },
+      h('a', { class: 'btn primary', href: '#/' }, 'Go to search'),
+      h('a', { class: 'btn', href: '#/view?ra=133.786245&dec=-7.244372&name=WISE%200855%E2%88%920714&id=wise0855&det=456&mode=blink' }, 'Try WISE 0855'))));
+  return () => {};
+}

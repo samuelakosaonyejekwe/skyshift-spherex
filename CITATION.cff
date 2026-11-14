@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "SkyShift: A Time Machine for the SPHEREx Sky"
+type: software
+authors:
+  - family-names: "Onyejekwe"
+    given-names: "Samuel Akosa"
+license: MIT
+repository-code: "https://github.com/samuelakosaonyejekwe/skyshift-spherex"
+url: "https://samuelakosaonyejekwe.github.io/skyshift-spherex/"
+version: "1.0.0"
+date-released: "2026-11-14"
+keywords:
+  - SPHEREx
+  - astronomy
+  - time-domain
+  - citizen science
+  - infrared
