@@ -33,7 +33,16 @@ const fmt = (v) => {
  */
 export function scatterChart(host, cfg) {
   host.replaceChildren();
-  const W = 480, H = 320, m = { l: 62, r: 12, t: cfg.legend?.length ? 34 : 14, b: 46 };
+  const W = 480, H = 320, m = { l: 62, r: 12, t: 14, b: 46 };
+  // legend laid out in as many rows as it needs, so no entry falls off the right edge
+  const legendRows = [[]];
+  { let lx = 0; const avail = W - 62 - m.r;
+    for (const it of cfg.legend || []) {
+      const w = 24 + it.label.length * 6.4;
+      if (lx + w > avail && legendRows.at(-1).length) { legendRows.push([]); lx = 0; }
+      legendRows.at(-1).push({ ...it, dx: lx }); lx += w;
+    } }
+  if (cfg.legend?.length) m.t = 14 + 18 * legendRows.length;
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img', 'aria-label': cfg.title || cfg.yLabel });
   host.appendChild(svg);
   const pts = cfg.points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
@@ -82,12 +91,11 @@ export function scatterChart(host, cfg) {
     const t = el('text', { x: X(mk.x) + 3, y: m.t + 11, class: 'chart-marker', fill: mk.color || '#c9a7ff' }, g); t.textContent = mk.label;
   }
   // legend
-  let lx = m.l;
-  for (const it of cfg.legend || []) {
-    el('circle', { cx: lx + 6, cy: 16, r: 5, fill: it.hollow ? 'none' : it.color, stroke: it.color, 'stroke-width': 2 }, svg);
-    const t = el('text', { x: lx + 15, y: 20, class: 'chart-legend' }, svg); t.textContent = it.label;
-    lx += 24 + it.label.length * 6.4;
-  }
+  legendRows.forEach((row, r) => row.forEach((it) => {
+    const cy = 16 + 18 * r;
+    el('circle', { cx: m.l + it.dx + 6, cy, r: 5, fill: it.color, stroke: it.color, 'stroke-width': 2, class: it.hollow ? 'chart-hollow' : '' }, svg);
+    const t = el('text', { x: m.l + it.dx + 15, y: cy + 4, class: 'chart-legend' }, svg); t.textContent = it.label;
+  }));
   // points
   const tip = document.createElement('div');
   tip.className = 'chart-tip'; tip.hidden = true;
@@ -96,7 +104,7 @@ export function scatterChart(host, cfg) {
   for (const p of pts) {
     const cx = X(p.x), cy = Y(p.y);
     if (p.err) el('line', { x1: cx, x2: cx, y1: Y(p.y - p.err), y2: Y(p.y + p.err), stroke: p.color, 'stroke-width': 1.2, opacity: 0.7 }, pg);
-    const c = el('circle', { cx, cy, r: 4.2, fill: p.hollow ? '#11153a' : p.color, stroke: p.color, 'stroke-width': 1.6, tabindex: 0, class: 'chart-pt' }, pg);
+    const c = el('circle', { cx, cy, r: 4.2, fill: p.color, stroke: p.color, 'stroke-width': 1.6, tabindex: 0, class: p.hollow ? 'chart-pt chart-hollow' : 'chart-pt' }, pg);
     const show = () => {
       tip.textContent = p.tip; tip.hidden = false;
       const hb = host.getBoundingClientRect(), sb = svg.getBoundingClientRect();
@@ -118,7 +126,7 @@ export function svgString(svg) {
   const clone = svg.cloneNode(true);
   clone.setAttribute('xmlns', NS);
   const style = document.createElementNS(NS, 'style');
-  style.textContent = `text{font:12px system-ui,sans-serif;fill:#dfe3ff}.chart-grid{stroke:#ffffff18}.chart-frame{fill:none;stroke:#ffffff40}.chart-zero{stroke:#ffffff60}.chart-tick{fill:#aab0d6;font-size:11px}.chart-label{font-size:13px}.chart-band{font-size:10px;fill:#aab0d6}.chart-marker{font-size:10px}`;
+  style.textContent = `text{font:12px system-ui,sans-serif;fill:#dfe3ff}.chart-grid{stroke:#ffffff18}.chart-frame{fill:none;stroke:#ffffff40}.chart-zero{stroke:#ffffff60}.chart-tick{fill:#aab0d6;font-size:11px}.chart-label{font-size:13px}.chart-band{font-size:10px;fill:#aab0d6}.chart-marker{font-size:10px}.chart-legend{font-size:11px;fill:#aab0d6}.chart-hollow{fill:#0b0e24}`;
   clone.insertBefore(style, clone.firstChild);
   const bg = document.createElementNS(NS, 'rect');
   bg.setAttribute('width', '100%'); bg.setAttribute('height', '100%'); bg.setAttribute('fill', '#0b0e24');

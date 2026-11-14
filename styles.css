@@ -252,6 +252,8 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .chart .chart-legend { font-size: 11px; fill: var(--text-2); }
 .chart .chart-empty { fill: var(--text-3); font-size: 14px; }
 .chart .chart-pt { cursor: pointer; }
+/* questionable points (and their legend entry): ring in the series colour, filled with the page background in either theme */
+.chart .chart-hollow { fill: var(--bg); stroke-width: 2; }
 .chart .chart-pt:hover, .chart .chart-pt:focus { stroke-width: 3; }
 .chart-tip { position: absolute; z-index: 5; background: #05061aee; border: 1px solid var(--line-2); padding: 6px 9px; border-radius: 8px; font: 12px/1.35 var(--mono); white-space: pre; pointer-events: none; color: #eef0ff; } /* fixed dark panel: fixed light text */
 .tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
@@ -408,6 +410,12 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 [data-theme="light"] .parsed.ok { color: #0b6a40; } [data-theme="light"] .parsed.err { color: #9b1530; }
 [data-theme="light"] .hero .gradient, [data-theme="light"] .home-hero .gradient { background: linear-gradient(90deg, #5b4bdb, #1f73c9 50%, #c27a00); -webkit-background-clip: text; background-clip: text; }
 [data-theme="light"] .chart text { fill: var(--text); } [data-theme="light"] .chart .chart-grid { stroke: #1a1f4d1a; }
+[data-theme="light"] .chart .chart-frame { stroke: #1a1f4d40; } [data-theme="light"] .chart .chart-zero { stroke: #1a1f4d66; }
+/* pop-up panels (Enlarge, Settings, Install, Share) follow the theme, so their text and charts stay readable */
+[data-theme="light"] .sheet { background: linear-gradient(170deg, #ffffff, #eef1fb 60%); color: var(--text); box-shadow: 0 -20px 60px rgba(26, 31, 77, .25); }
+[data-theme="light"] .sheet .grab { background: #1a1f4d33; }
+[data-theme="light"] .sheet ol.install-steps li { background: #1a1f4d08; }
+[data-theme="light"] .sheet-backdrop { background: #1a1f4d66; }
 /* image areas stay dark in both themes */
 [data-theme="light"] .stage, [data-theme="light"] .aladin-host { background: #05061a; }
 /* stats */

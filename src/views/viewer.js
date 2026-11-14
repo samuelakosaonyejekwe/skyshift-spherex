@@ -798,10 +798,18 @@ export async function render(root, route, { go }) {
     tabsBar.replaceChildren(...TABS.map(([id, label]) => h('button', { role: 'tab', 'aria-selected': String(S.tab === id), id: `tab-${id}`, onclick: () => { S.tab = id; renderTabs(); renderSide(); } }, label)));
   }
   function renderSide() {
+    // panels re-render as exposures stream in: keep open fold-outs open and the scroll position where the reader left it
+    const open = new Set([...tabBody.querySelectorAll('details[open] > summary')].map((x) => x.textContent));
+    const scroll = tabBody.scrollTop, sameTab = tabBody.dataset.tab === S.tab;
+    tabBody.dataset.tab = S.tab;
     tabBody.replaceChildren();
     tabBody.setAttribute('role', 'tabpanel');
     tabBody.setAttribute('aria-labelledby', `tab-${S.tab}`);
     ({ display: sideDisplay, frames: sideFrames, spectrum: sideSpectrum, lightcurve: sideLight, frame: sideFrame, context: sideContext, object: sideObject, discover: sideDiscover }[S.tab])();
+    if (sameTab) {
+      tabBody.querySelectorAll('details > summary').forEach((x) => { if (open.has(x.textContent)) x.parentElement.open = true; });
+      tabBody.scrollTop = scroll;
+    }
   }
 
   function sideDisplay() {
@@ -933,7 +941,7 @@ export async function render(root, route, { go }) {
       host,
       h('div', { class: 'row' },
         usingClick ? h('button', { class: 'btn small', onclick: () => { S.clickSpec = null; renderSide(); } }, 'Back to target spectrum') : null,
-        h('button', { class: 'btn small', onclick: () => enlarge(host, 'Spectrum') }, 'Enlarge'),
+        h('button', { class: 'btn small', onclick: () => enlarge(() => specCfg(pts, ep, nEp), 'Spectrum') }, 'Enlarge'),
         h('button', { class: 'btn small', onclick: () => download(`skyshift-spectrum-${fileStem()}.csv`, photCSV(pts), 'text/csv') }, icon('download'), 'CSV'),
         h('button', { class: 'btn small', onclick: () => { const s = host.querySelector('svg'); if (s) download(`skyshift-spectrum-${fileStem()}.svg`, svgString(s), 'image/svg+xml'); } }, icon('download'), 'SVG')),
       h('details', { class: 'panel' }, h('summary', {}, 'Molecule & line guide'),
@@ -953,7 +961,7 @@ export async function render(root, route, { go }) {
       markers: LINES,
       bands: DETECTORS.map((d) => ({ x0: d.range[0], x1: d.range[1], color: getComputedStyle(document.documentElement).getPropertyValue(`--d${d.id}`) || '#888', label: `D${d.id}`, short: `D${d.id}` })),
       xRange: [0.72, 5.03],
-      legend: [...new Set(ep.values())].sort().map((e) => ({ color: EPOCH_COLORS[e % EPOCH_COLORS.length], label: `Survey pass ${e + 1}` })).concat(nEp ? [{ color: '#aaa', label: 'flagged', hollow: true }] : []),
+      legend: [...new Set(ep.values())].sort().map((e) => ({ color: EPOCH_COLORS[e % EPOCH_COLORS.length], label: `Survey pass ${e + 1}` })).concat(pts.some(questionable) ? [{ color: '#aaa', label: 'questionable', hollow: true }] : []),
       onPoint: (pt) => focusExposure(pt.ref.uri),
     };
   }
@@ -964,7 +972,7 @@ export async function render(root, route, { go }) {
       empty: 'Light curve appears as exposures load…',
       points: ptsR.map((p) => ({ x: mjdToYear(p.mjd), y: rel ? p.rel : p.flux, err: rel ? p.relErr : p.err, color: getComputedStyle(document.documentElement).getPropertyValue(`--d${p.det}`).trim() || '#ccc', hollow: questionable(p),
         tip: `${niceDateTime(p.mjd)} (MJD ${p.mjd.toFixed(3)})\nD${p.det} λ ${p.wavelength.toFixed(3)} µm\n${p.flux.toFixed(0)} ± ${p.err.toFixed(0)} µJy${rel ? `\nrelative ${p.rel.toFixed(3)}` : ''}`, ref: p })),
-      legend: DETECTORS.filter((d) => ptsR.some((p) => p.det === d.id)).map((d) => ({ color: getComputedStyle(document.documentElement).getPropertyValue(`--d${d.id}`).trim(), label: `D${d.id}` })),
+      legend: DETECTORS.filter((d) => ptsR.some((p) => p.det === d.id)).map((d) => ({ color: getComputedStyle(document.documentElement).getPropertyValue(`--d${d.id}`).trim(), label: `D${d.id}` })).concat(ptsR.some(questionable) ? [{ color: '#aaa', label: 'questionable', hollow: true }] : []),
       onPoint: (pt) => focusExposure(pt.ref.uri),
     };
   }
@@ -1034,18 +1042,20 @@ export async function render(root, route, { go }) {
       eb.change ? h('div', { class: eb.change.sig >= 3 ? 'notice warn' : 'notice' }, eb.change.sig >= 3
         ? `Brightness-change candidate: ${(eb.change.delta * 100).toFixed(1)}% ± ${(eb.change.err * 100).toFixed(1)}% between survey passes (${eb.change.sig.toFixed(1)}σ). Check flags and neighbours before trusting it.`
         : `No significant change between survey passes (${(eb.change.delta * 100).toFixed(1)}% ± ${(eb.change.err * 100).toFixed(1)}%, ${eb.change.sig.toFixed(1)}σ).`) : null,
-      h('div', { class: 'row' }, h('button', { class: 'btn small', onclick: () => enlarge(host, 'Light curve') }, 'Enlarge'),
+      h('div', { class: 'row' }, h('button', { class: 'btn small', onclick: () => enlarge(() => lcCfg(ptsR, rel), 'Light curve') }, 'Enlarge'),
         h('button', { class: 'btn small', onclick: () => download(`skyshift-lightcurve-${fileStem()}.csv`, photCSV(pts), 'text/csv') }, icon('download'), 'CSV')),
     );
     scatterChart(host, lcCfg(ptsR, rel));
   }
 
-  function enlarge(host, label) {
-    const svg = host.querySelector('svg');
-    if (!svg) return;
-    const big = h('div', { class: 'chart-host', style: { width: 'min(1100px, 94vw)' } }, svg.cloneNode(true));
+  // The enlarged chart is drawn afresh (not copied), so its axes, legend and point details all work, and it is sized
+  // to fit the screen in both directions so the axis numbers and labels are never cut off.
+  function enlarge(cfgFn, label) {
+    const fit = `min(1100px, 94vw, calc((100dvh - 240px) * 1.5))`;
+    const big = h('div', { class: 'chart-host', style: { width: fit, margin: '0 auto' } });
     const close = sheet(h('div', {}, h('h2', {}, label), big, h('button', { class: 'btn', onclick: () => close() }, 'Close')), { label });
     const el = document.querySelector('.sheet'); if (el) el.style.width = 'min(1140px, 100vw)';
+    scatterChart(big, cfgFn());
   }
 
   function focusExposure(uri) {
