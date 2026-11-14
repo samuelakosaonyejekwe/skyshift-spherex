@@ -148,7 +148,9 @@ input[type=text], input[type=number], input[type=search], select, textarea {
 textarea { min-height: 74px; resize: vertical; }
 input:focus, select:focus, textarea:focus { border-color: var(--accent-2); outline: none; box-shadow: 0 0 0 3px #5ec8ff33; }
 input[type=range] { width: 100%; accent-color: var(--accent); min-height: 28px; }
-input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
+input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; flex: none; }
+/* native controls (check boxes, menus, scroll bars) follow the chosen theme, so an unticked box never looks ticked */
+:root { color-scheme: dark; } [data-theme="light"] { color-scheme: light; }
 .check { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: .9rem; color: var(--text-2); min-height: 32px; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
@@ -453,3 +455,6 @@ blockquote { margin: 8px 0; }
 .saved-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 14px; align-items: start; margin-bottom: 14px; }
 .empty.compact { padding: 12px 8px; text-align: left; }
 @media (max-width: 900px) { .chase-grid { grid-template-columns: minmax(0, 1fr); } }
+/* light theme: status pill and tip banner keep readable contrast (measured ≥ 4.5:1) */
+[data-theme="light"] .netpill { color: #0b6a40; background: #3ddc9726; }
+[data-theme="light"] .suggestion { background: linear-gradient(135deg, #ece8ff, #e3f0ff); border-color: #8b7bff66; color: var(--text); }

@@ -27,3 +27,26 @@ test('page texts exist in every language', () => {
   const all = new Set([...keys(el), ...keys(es), ...keys(fr)]);
   for (const [name, o] of Object.entries({ el, es, fr })) for (const k of all) assert.ok(k in o || k === o[k], `${name} lacks “${k}”`);
 });
+
+// Every English sentence or label written in the page code must have a translation (or match a value rule),
+// so a new text cannot reach the interface in English only. Key names, code examples and log text are exempt.
+test('every interface text in the code is translated', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const { UI } = await import('../src/i18n/ui.js');
+  const en = (await import('../src/i18n/en.js')).default;
+  const exempt = new Set(['Enter', 'Escape', 'Gaia at MAST', 'List saved', 'Exposure skipped:']);
+  const files = ['src/app.js', 'src/targets.js', 'src/state.js', ...readdirSync('src/views').map((f) => 'src/views/' + f), ...readdirSync('src/ui').map((f) => 'src/ui/' + f)];
+  for (const [code, pages] of Object.entries({ el, es, fr })) {
+    const known = new Set([...Object.keys(pages), ...Object.keys(UI[code].phrases), ...Object.values(en)].map((k) => k.trim()));
+    const rules = rulesFor(code), pats = UI[code].patterns;
+    const miss = [];
+    for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/'((?:[^'\\\n]|\\.){3,})'/g)) {
+      const t = m[1].replace(/\\'/g, "'").trim();
+      if (!/^[A-Z“"(]/.test(t) || (!/[a-z]{2,} [a-z]{2,}/.test(t) && !/^[A-Z][a-z]+(…)?$/.test(t))) continue;
+      if (/^(SELECT|https?:|[A-Z_]+$)|\.(js|json|png|fits)$|\$\{|\\n|^Gaia DR3$|^Show WISE 0855/.test(t) || exempt.has(t) || known.has(t)) continue;
+      let v = t; for (const [re, rep] of rules) v = v.replace(re, rep);
+      if (v === t && !pats.some(([re]) => re.test(t))) miss.push(`${f}: ${t}`);
+    }
+    assert.deepEqual(miss, [], `${code}: untranslated texts`);
+  }
+});

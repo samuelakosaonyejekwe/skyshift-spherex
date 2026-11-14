@@ -51,7 +51,8 @@ export async function applyUiLanguage(code) {
   // the short labels of src/i18n/<lang>.js too, wherever the same English text appears on a page
   const own = LANGS[code]?.strings || {};
   const short = Object.fromEntries(Object.entries(en).filter(([k]) => own[k]).map(([k, v]) => [v, own[k]]));
-  phrases = { ...short, ...pages, ...set.phrases }; patterns = set.patterns || []; rules = rulesFor(code); lang = code;
+  // keys are matched on trimmed text, so a phrase written with a trailing space still matches
+  phrases = Object.fromEntries(Object.entries({ ...short, ...pages, ...set.phrases }).map(([k, v]) => [k.trim(), v.trim()])); patterns = set.patterns || []; rules = rulesFor(code); lang = code;
   // labels translated through src/i18n/<lang>.js (menu bar, status pill, install button)
   document.querySelectorAll('#mainnav, #netpill, #installBtn, .footer').forEach(mark);
   translateNode(document.body);

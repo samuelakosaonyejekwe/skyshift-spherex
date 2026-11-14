@@ -8,7 +8,7 @@ import { searchSpherex, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossa
 import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE } from '../lib/engine.js';
 import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName } from '../lib/render.js';
 import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
-import { formatRA, formatDec, propagate, apparent, mjdToYear, mjdToISO, niceDate, niceDateTime, separation, toGalactic } from '../lib/coords.js';
+import { formatRA, formatDec, propagate, apparent, mjdToYear, yearToMjd, mjdToISO, niceDate, niceDateTime, separation, toGalactic } from '../lib/coords.js';
 import { presetById, presetToTarget, suggestFor, describePosition } from '../targets.js';
 import { scatterChart, svgString } from '../ui/charts.js';
 import { pushRecent } from './home.js';
@@ -801,6 +801,14 @@ export async function render(root, route, { go }) {
     // panels re-render as exposures stream in: keep open fold-outs open and the scroll position where the reader left it
     const open = new Set([...tabBody.querySelectorAll('details[open] > summary')].map((x) => x.textContent));
     const scroll = tabBody.scrollTop, sameTab = tabBody.dataset.tab === S.tab;
+    // while someone is typing or choosing in this panel, refresh it only once they leave the field
+    const act = document.activeElement;
+    if (sameTab && act && tabBody.contains(act) && act.matches('input:not([type=button]):not([type=checkbox]):not([type=radio]), textarea, select')) {
+      if (!tabBody.dataset.pending) { tabBody.dataset.pending = '1'; act.addEventListener('blur', () => { delete tabBody.dataset.pending; setTimeout(renderSide, 0); }, { once: true }); }
+      return;
+    }
+    const keyOf = (f) => f.getAttribute('aria-label') || f.name || f.placeholder;
+    const drafts = new Map([...tabBody.querySelectorAll('input[type=text], input[type=number], input:not([type]), textarea')].filter((f) => keyOf(f) && f.value !== f.defaultValue).map((f) => [keyOf(f), f.value]));
     tabBody.dataset.tab = S.tab;
     tabBody.replaceChildren();
     tabBody.setAttribute('role', 'tabpanel');
@@ -808,6 +816,7 @@ export async function render(root, route, { go }) {
     ({ display: sideDisplay, frames: sideFrames, spectrum: sideSpectrum, lightcurve: sideLight, frame: sideFrame, context: sideContext, object: sideObject, discover: sideDiscover }[S.tab])();
     if (sameTab) {
       tabBody.querySelectorAll('details > summary').forEach((x) => { if (open.has(x.textContent)) x.parentElement.open = true; });
+      tabBody.querySelectorAll('input, textarea').forEach((f) => { const k = keyOf(f); if (k && drafts.has(k)) f.value = drafts.get(k); });
       tabBody.scrollTop = scroll;
     }
   }
@@ -967,8 +976,8 @@ export async function render(root, route, { go }) {
   }
   function lcCfg(ptsR, rel) {
     return {
-      title: 'Light curve', xLabel: 'Date (year)', yLabel: rel ? 'Relative brightness' : 'Flux density (µJy)',
-      xFormat: (v) => v.toFixed(2),
+      title: 'Light curve', xLabel: 'Date', yLabel: rel ? 'Relative brightness' : 'Flux density (µJy)',
+      xFormat: (v) => niceDate(yearToMjd(v), true), // named months, like every other date in the app
       empty: 'Light curve appears as exposures load…',
       points: ptsR.map((p) => ({ x: mjdToYear(p.mjd), y: rel ? p.rel : p.flux, err: rel ? p.relErr : p.err, color: getComputedStyle(document.documentElement).getPropertyValue(`--d${p.det}`).trim() || '#ccc', hollow: questionable(p),
         tip: `${niceDateTime(p.mjd)} (MJD ${p.mjd.toFixed(3)})\nD${p.det} λ ${p.wavelength.toFixed(3)} µm\n${p.flux.toFixed(0)} ± ${p.err.toFixed(0)} µJy${rel ? `\nrelative ${p.rel.toFixed(3)}` : ''}`, ref: p })),
