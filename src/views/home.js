@@ -7,8 +7,9 @@ import { normalise, toParams, parseText, DEFAULTS } from '../state.js';
 import { searchSpherex } from '../lib/tap.js';
 import { splitStatements } from '../lib/expr.js';
 import { uploadPanel } from '../ui/upload-panel.js';
+import { skyMap } from '../ui/skymap.js';
 
-export const title = 'Home';
+export const title = 'Explore';
 const RECENT = 'skyshift.recent';
 
 export function recent() { try { return JSON.parse(localStorage.getItem(RECENT) || '[]'); } catch { return []; } }
@@ -138,64 +139,97 @@ export async function render(root, route, { go }) {
           h('button', { class: 'btn small', onclick: () => typed.focus() }, 'Edit'))));
   }
 
-  // ----- hero: the real SPHEREx sky (DR1 all-sky cube from IRSA's HiPS, built by scripts/allsky.mjs)
-  const art = h('a', { class: 'hero-sky', href: '#/sky', title: 'Open the interactive sky atlas' },
-    h('img', { src: 'assets/allsky-800.png', srcset: 'assets/allsky-800.png 800w, assets/allsky-1200.png 1200w', sizes: '(min-width: 1100px) 640px, 92vw',
-      width: 800, height: 400, decoding: 'async', fetchpriority: 'low',
-      alt: 'The whole sky seen by NASA SPHEREx in infrared: the Milky Way across the middle, the Magellanic Clouds below right' }));
-  const artCaption = h('p', { class: 'tiny hero-cap' }, 'The whole sky from SPHEREx Data Release 1 (IRSA all-sky spectral cube), false colour from three of its 102 bands: blue 0.9 µm, green 2.0 µm, red 4.6 µm. Galactic coordinates, Milky Way across the middle. Black spots: saturated or missing data.');
-  const raf = 0;
-
-  const freshness = h('span', { class: 'chip info' }, 'Checking newest SPHEREx data…');
-  const newest = Number(localStorage.getItem('skyshift.newestMjd') || 0);
-  if (newest) freshness.textContent = `IRSA holds SPHEREx exposures up to ${mjdToISO(newest, false)}`;
-  else import('../lib/tap.js').then(async ({ latestSpherex }) => {
-    try { const r = await latestSpherex(); if (r.data) freshness.textContent = `IRSA holds SPHEREx exposures up to ${mjdToISO(r.data, false)}${r.source !== 'live' ? ' (saved)' : ''}`; }
-    catch { freshness.textContent = 'Live archive check unavailable — saved data still works'; }
+  // ----- the interactive sky map (real SPHEREx DR1 sky from IRSA's HiPS; built by scripts/allsky.mjs)
+  const PRESET_EXTRA = { wise0855: { dets: [4, 5, 6], mode: 'blink' }, barnard: { mode: 'blink' }, epsindib: { fov: 15, ov: ['gaia', 'track', 'compass'] } };
+  let coverage = null, mission = null;
+  try { [coverage, mission] = await Promise.all([fetch('./data/coverage.json').then((r) => (r.ok ? r.json() : null)).catch(() => null), fetch('./data/mission.json').then((r) => (r.ok ? r.json() : null)).catch(() => null)]); } catch { /* offline first run */ }
+  const map = skyMap({
+    coverage, livePts: JSON.parse(localStorage.getItem('skyshift.livePts') || '[]'),
+    targets: list.map((t) => ({ id: t.id, name: t.name, ra: t.ra, dec: t.dec, kind: t.kind.split(/ [—(]/)[0] })),
+    onPick: (ra, dec) => openTarget({ ra: +ra.toFixed(5), dec: +dec.toFixed(5), source: 'coords' }),
+    onTarget: (t) => { const p = list.find((x) => x.id === t.id); openTarget(presetToTarget(p), PRESET_EXTRA[p.id] || {}); },
+    count: async (ra, dec) => {
+      const { tap, IRSA_TAP } = await import('../lib/tap.js');
+      const r = await tap(IRSA_TAP, `SELECT COUNT(*) AS n FROM spherex.plane WHERE 1 = CONTAINS(POINT('ICRS', ${ra.toFixed(4)}, ${dec.toFixed(4)}), poly)`, { timeout: 30000 });
+      return r[0]?.n ?? 0;
+    },
   });
 
+  const freshness = h('span', { class: 'chip info' }, 'Checking the newest SPHEREx data…');
+  const newest = Number(localStorage.getItem('skyshift.newestMjd') || 0);
+  if (newest) freshness.textContent = `Newest SPHEREx images in the archive: ${mjdToISO(newest, false)}`;
+  else import('../lib/tap.js').then(async ({ latestSpherex }) => {
+    try { const r = await latestSpherex(); if (r.data) freshness.textContent = `Newest SPHEREx images in the archive: ${mjdToISO(r.data, false)}${r.source !== 'live' ? ' (saved)' : ''}`; }
+    catch { freshness.textContent = 'Archive check unavailable; saved data still works'; }
+  });
+  const randomField = () => {
+    const u = Math.random(), v = Math.random();
+    openTarget({ ra: +(360 * u).toFixed(5), dec: +((Math.asin(2 * v - 1) * 180) / Math.PI).toFixed(5), source: 'coords', name: 'Random field' });
+  };
+
   root.append(
-    h('section', { class: 'hero' },
-      h('div', {},
-        h('span', { class: 'chip good' }, '102 infrared bands · whole sky every six months'),
-        h('h1', {}, 'SkyShift: ', h('span', { class: 'gradient' }, 'a time machine'), ' for the SPHEREx sky'),
-        h('p', { class: 'lead' }, 'Type a star or any coordinates, press Play, and watch NASA SPHEREx images of that patch of sky play like a little film. Moving brown dwarfs and asteroids jump out; click any object to see its infrared spectrum.'),
-        h('form', { class: 'searchbox', role: 'search', onsubmit: (e) => { e.preventDefault(); submit(); } },
-          (() => { const NS = 'http://www.w3.org/2000/svg'; const s = document.createElementNS(NS, 'svg'); s.setAttribute('class', 's-icon'); s.setAttribute('viewBox', '0 0 24 24'); const p = document.createElementNS(NS, 'path'); p.setAttribute('d', 'M11 4a7 7 0 100 14 7 7 0 000-14zM21 21l-4.3-4.3'); s.appendChild(p); return s; })(),
-          input, h('button', { class: 'btn primary go', type: 'submit' }, icon('play'), 'Play'), sugg),
-        parsed,
-        h('div', { class: 'row', style: { marginTop: '8px' } }, freshness,
-          h('button', { class: 'btn small', type: 'button', title: 'Open a random patch of sky', onclick: () => {
-            const u = Math.random(), v = Math.random();
-            const ra = 360 * u, dec = (Math.acos(2 * v - 1) * 180) / Math.PI - 90;
-            openTarget({ ra: +ra.toFixed(5), dec: +(-dec).toFixed(5), source: 'coords', name: 'Random field' });
-          } }, icon('dice'), 'Random field'))),
-      h('figure', { class: 'hero-art' }, art, artCaption)),
+    // 1. what it is + search
+    h('section', { class: 'home-hero' },
+      h('h1', {}, 'SkyShift: ', h('span', { class: 'gradient' }, 'a time machine'), ' for the SPHEREx sky'),
+      h('p', { class: 'lead' }, 'NASA’s SPHEREx telescope photographs the whole sky every six months in 102 infrared colours. Pick a spot, press Play, and watch it change: moving stars, brown dwarfs and asteroids jump out.'),
+      h('form', { class: 'searchbox', role: 'search', onsubmit: (e) => { e.preventDefault(); submit(); } },
+        (() => { const NS = 'http://www.w3.org/2000/svg'; const sv = document.createElementNS(NS, 'svg'); sv.setAttribute('class', 's-icon'); sv.setAttribute('viewBox', '0 0 24 24'); const pa = document.createElementNS(NS, 'path'); pa.setAttribute('d', 'M11 4a7 7 0 100 14 7 7 0 000-14zM21 21l-4.3-4.3'); sv.appendChild(pa); return sv; })(),
+        input, h('button', { class: 'btn primary go', type: 'submit' }, icon('play'), 'Play'), sugg),
+      parsed,
+      h('div', { class: 'row home-quick' },
+        h('span', { class: 'tiny' }, 'Try:'),
+        list.slice(0, 5).map((t) => h('button', { class: 'chip chip-btn', type: 'button', onclick: () => openTarget(presetToTarget(t), PRESET_EXTRA[t.id] || {}) }, t.name)),
+        h('button', { class: 'chip chip-btn', type: 'button', title: 'Open a random patch of sky', onclick: randomField }, '🎲 Random field'))),
+
+    // 2. the sky map
+    h('section', { class: 'home-map', 'aria-labelledby': 'map-h' },
+      h('div', { class: 'row', style: { alignItems: 'baseline' } },
+        h('h2', { id: 'map-h', style: { margin: 0 } }, 'The whole sky, as SPHEREx sees it'), h('div', { class: 'spacer' }), freshness),
+      mission ? h('div', { class: 'stat-grid compact' },
+        h('div', { class: 'stat' }, h('b', {}, mission.images.toLocaleString()), h('span', { class: 'tiny' }, 'SPHEREx images in the archive')),
+        h('div', { class: 'stat' }, h('b', {}, `${(mission.skyFraction * 100).toFixed(0)}%`), h('span', { class: 'tiny' }, 'of the sky covered')),
+        h('div', { class: 'stat' }, h('b', {}, mjdToISO(mission.lastMjd, false)), h('span', { class: 'tiny' }, 'latest observation in the map')),
+        h('div', { class: 'stat' }, h('b', {}, new Date(mission.built).toISOString().slice(0, 10)), h('span', { class: 'tiny' }, 'map refreshed'))) : null,
+      h('p', { class: 'tiny', style: { margin: '4px 0 8px' } }, 'Hover to read coordinates and how many SPHEREx images cover that spot. Click anywhere to play it, or a ✦ star for a challenge target. Ctrl + scroll or pinch to zoom.'),
+      map,
+      h('p', { class: 'tiny map-cap' }, 'Real SPHEREx Data Release 1 all-sky map (IRSA), false colour from three of its 102 bands: blue 0.9 µm, green 2.0 µm, red 4.6 µm. Equatorial grid, RA 12h at the centre; dotted line: the ecliptic, where asteroids and comets travel. ', h('a', { href: '#/sky' }, 'Zoom in with the Sky atlas →'))),
+
+    // 3. challenge targets
     h('section', { 'aria-labelledby': 'presets-h' },
-      h('h2', { id: 'presets-h' }, 'Start with a challenge target'),
+      h('h2', { id: 'presets-h' }, 'Challenge targets'),
       h('div', { class: 'presets' }, list.map((t) => h('button', {
         class: 'preset', type: 'button',
         onmouseenter: () => searchSpherex(t.ra, t.dec).catch(() => {}),
-        onclick: () => openTarget(presetToTarget(t), t.id === 'wise0855' ? { dets: [4, 5, 6], mode: 'blink' } : t.id === 'barnard' ? { mode: 'blink' } : {}),
+        onclick: () => openTarget(presetToTarget(t), PRESET_EXTRA[t.id] || {}),
       },
       h('b', {}, t.name), h('small', {}, t.kind),
       h('div', { class: 'meta' },
         h('span', { class: 'chip' }, `${t.images?.length ?? '…'} images`),
-        t.pmra || t.pmdec ? h('span', { class: 'chip warn' }, `${(Math.hypot(t.pmra, t.pmdec) / 1000).toFixed(2)}″/yr`) : null))))),
-    h('section', { class: 'steps', 'aria-label': 'How it works' },
-      [['Choose a patch of sky', 'A name, coordinates or a link with ?ra=…&dec=…'], ['Watch it change', 'Each frame is a real SPHEREx exposure or a six-month co-add, aligned on the sky.'],
-        ['Blink, subtract, stack', 'Moving and changing objects stand out; co-adds lift faint ones.'], ['Read the spectrum', 'Every frame is a different wavelength: SkyShift turns them into spectra on the fly.']]
-        .map(([a, b], i) => h('div', { class: 'card step' }, h('span', { class: 'n' }, i + 1), h('div', {}, h('b', {}, a), h('p', { class: 'muted', style: { margin: 0 } }, b))))),
-    h('section', { class: 'card typed', 'aria-labelledby': 'typed-h' },
-      h('h2', { id: 'typed-h' }, 'Or just describe it'),
-      h('p', { class: 'muted' }, 'Plain words are turned into exact settings you can check before running. Nothing is sent anywhere.'),
-      typed,
-      h('div', { class: 'row', style: { marginTop: '8px' } },
-        h('button', { class: 'btn primary', onclick: () => runTyped(typed.value) }, 'Interpret'),
-        ['Show WISE 0855 over all epochs, 3 to 5 microns, blink first and last', "Barnard's star, 4 arcmin field, track motion, with gaia", 'R Draconis per survey, color', 'WISE 0855\nmean(D5, D6) - epoch(1)\nwhere flag == 0'].map((ex) =>
-          h('button', { class: 'btn small ghost', onclick: () => runTyped(ex) }, ex))),
-      understood),
-    uploadPanel({ go }));
+        t.pmra || t.pmdec ? h('span', { class: 'chip warn' }, `moves ${(Math.hypot(t.pmra, t.pmdec) / 1000).toFixed(2)}″/yr`) : null))))),
+
+    // 4. how it works
+    h('section', { 'aria-labelledby': 'how-h' },
+      h('h2', { id: 'how-h' }, 'How it works'),
+      h('div', { class: 'steps' },
+        [['Choose a spot', 'Type a name or coordinates, click the map, or open a challenge target.'], ['Watch it change', 'Each frame is a real SPHEREx image or a six-month stack, aligned on the sky.'],
+          ['Blink, subtract, stack', 'Moving and changing objects stand out; stacks reveal faint ones.'], ['Read the spectrum', 'Click any object to see its infrared spectrum and light curve.']]
+          .map(([a2, b2], i) => h('div', { class: 'card step' }, h('span', { class: 'n' }, i + 1), h('div', {}, h('b', {}, a2), h('p', { class: 'muted', style: { margin: 0 } }, b2)))))),
+
+    // 5. more ways in (kept tidy)
+    h('section', { 'aria-labelledby': 'more-h' },
+      h('h2', { id: 'more-h' }, 'More ways to start'),
+      h('details', { class: 'card more' },
+        h('summary', {}, h('b', {}, 'Describe what you want in words or equations'), h('span', { class: 'tiny' }, ' — e.g. “WISE 0855, 3 to 5 microns, blink first and last”')),
+        h('p', { class: 'muted' }, 'Plain words and simple equations are turned into exact settings you can check before running. Nothing is sent anywhere.'),
+        typed,
+        h('div', { class: 'row', style: { marginTop: '8px' } },
+          h('button', { class: 'btn primary', onclick: () => runTyped(typed.value) }, 'Interpret'),
+          ['Show WISE 0855 over all epochs, 3 to 5 microns, blink first and last', "Barnard's star, 4 arcmin field, track motion, with gaia", 'R Draconis per survey, color', 'WISE 0855\nmean(D5, D6) - epoch(1)\nwhere flag == 0'].map((ex) =>
+            h('button', { class: 'btn small ghost', onclick: () => runTyped(ex) }, ex.replace(/\n/g, ' · ')))),
+        understood),
+      h('details', { class: 'card more' },
+        h('summary', {}, h('b', {}, 'Upload a target list or your own image'), h('span', { class: 'tiny' }, ' — CSV, Excel, FITS, VOTable and more, read on your device')),
+        uploadPanel({ go }))));
   return () => {};
 }
 

@@ -2,9 +2,12 @@
 
 ## Copyright and licence
 
-- Copyright (c) 2026 Samuel Akosa Onyejekwe. The source code is released under the MIT licence (`LICENSE`, standard text).
-- The MIT licence covers the code only. The SkyShift name, the SkyShift Cyprus team badge, and dossiers or reports generated from
-  users' data are not licensed by it.
+- Copyright (c) 2026 Samuel Akosa Onyejekwe. **All rights reserved** (`LICENSE`). Decided by Samuel on 2026-11-14, replacing the
+  MIT licence of the original brief so the work is protected: no copying, modification or reuse without written permission.
+- Public visibility (e.g. for judging) grants no rights. If the Space Apps terms require an open licence for submissions, this
+  must be revisited before submission (see the open item below).
+- Name display (Samuel, 2026-11-14): full name on the About page, LICENSE, README and CITATION.cff only; the app footer and
+  generated dossiers show "© 2026 SkyShift".
 - Third-party material keeps its own copyright and licence (see below and the About page).
 
 ## Third-party data and software

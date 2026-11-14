@@ -10,8 +10,8 @@
     "g": 2,
     "r": 4.6
   },
-  "projection": "Mollweide, galactic coordinates, l=0 at centre",
+  "projection": "Mollweide, equatorial (ICRS), RA 12h at centre, RA increasing to the left",
   "tileWidth": 512,
   "order": 9,
-  "built": "2026-11-14T09:15:59.942Z"
+  "built": "2026-11-14T09:37:07.412Z"
 }

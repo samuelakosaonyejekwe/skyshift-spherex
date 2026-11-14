@@ -1,21 +1,19 @@
-MIT License
+Copyright (c) 2026 Samuel Akosa Onyejekwe. All rights reserved.
 
-Copyright (c) 2026 Samuel Akosa Onyejekwe
+This software, its source code, design, documentation and associated files (the "Software")
+are the exclusive property of the copyright holder. No licence or right to use, copy, modify,
+merge, publish, distribute, sublicense, or sell copies of the Software, in whole or in part, is
+granted, except where the copyright holder gives prior written permission.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Viewing the Software where the copyright holder has chosen to make it publicly visible (for
+example for judging in the NASA International Space Apps Challenge) does not grant any of the
+rights above.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Third-party components keep their own licences and remain the property of their owners; see
+vendor/README.txt, vendor/ALADIN-LICENSE.txt and docs/LEGAL.md. Data shown by the Software
+belongs to its providers (NASA/IPAC IRSA, ESA/Gaia via IRSA and MAST, CADC, the Canadian Space
+Agency) and is used under their terms.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. IN NO EVENT
+SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE
+SOFTWARE OR ITS USE.

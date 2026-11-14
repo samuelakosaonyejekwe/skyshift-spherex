@@ -8,6 +8,30 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { gzipSync, brotliCompressSync, constants as zc } from 'node:zlib';
 import { Readable } from 'node:stream';
 import { handle } from './relay/core.mjs';
+import https from 'node:https';
+import tls from 'node:tls';
+
+// CSA open-data hosts send an incomplete certificate chain; add the missing public intermediate
+// (relay/certs/README.txt) to the normal roots for those hosts only. Verification stays on.
+const EXTRA_CA_HOSTS = new Set(['data.asc-csa.gc.ca', 'donnees-data.asc-csa.gc.ca']);
+const extraCa = await readFile('relay/certs/entrust-ov-tls-issuing-rsa-ca-2.pem', 'utf8').catch(() => null);
+function relayFetch(url, init = {}) {
+  const u = new URL(url);
+  if (!extraCa || !EXTRA_CA_HOSTS.has(u.hostname)) return fetch(url, init);
+  return new Promise((resolve, reject) => {
+    const req = https.request(u, { method: init.method || 'GET', headers: init.headers, ca: [...tls.rootCertificates, extraCa], signal: init.signal }, (res) => {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) { res.resume(); resolve(relayFetch(new URL(res.headers.location, u).toString(), init)); return; }
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(res.headers)) if (v != null) headers.set(k, Array.isArray(v) ? v.join(', ') : String(v));
+      const r = new Response(Readable.toWeb(res), { status: res.statusCode, headers });
+      Object.defineProperty(r, 'url', { value: u.toString() });
+      resolve(r);
+    });
+    req.on('error', reject);
+    if (init.body) req.write(Buffer.from(init.body));
+    req.end();
+  });
+}
 
 const ROOT = resolve(process.argv.includes('--src') ? '.' : 'dist');
 const PORT = Number(process.env.PORT || 8080);
@@ -79,7 +103,7 @@ async function relay(req, res, url) {
     headers: Object.fromEntries(Object.entries(req.headers).filter(([k]) => ['accept', 'content-type', 'range'].includes(k))),
     body: req.method === 'POST' ? Buffer.concat(chunks) : undefined,
   });
-  const out = await handle(request, { clientIp: req.socket.remoteAddress || 'anon' });
+  const out = await handle(request, { clientIp: req.socket.remoteAddress || 'anon', fetchImpl: relayFetch });
   res.writeHead(out.status, Object.fromEntries(out.headers));
   if (!out.body || req.method === 'HEAD') return res.end();
   Readable.fromWeb(out.body).on('error', () => res.destroy()).pipe(res);

@@ -11,7 +11,7 @@ import { toParams, normalise } from '../state.js';
 
 export const DOIS = { dr1: '10.26131/IRSA678', qr3: '10.26131/IRSA662', qr2: '10.26131/IRSA652' };
 export const SPHEREX_ACK = 'This publication makes use of data products from the Spectro-Photometer for the History of the Universe, Epoch of Reionization and Ices Explorer (SPHEREx), which is a joint project of the Jet Propulsion Laboratory and the California Institute of Technology, and is funded by the National Aeronautics and Space Administration.';
-const COPYRIGHT = 'Copyright (c) 2026 Samuel Akosa Onyejekwe. Released under the MIT licence.';
+const COPYRIGHT = '© 2026 SkyShift. All rights reserved.';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -30,56 +30,92 @@ export async function dossierId({ req, exposures, version, inputs }) {
   return (await sha256Hex(payload)).slice(0, 16);
 }
 
-/** Measured proper motion of the target between the first and last epoch co-adds (centroids). */
+/**
+ * Measured proper motion of the target from all epoch co-adds: iterative Gaussian-weighted
+ * centroids (kept within 1.5 px of the predicted position, so neighbours are not picked up),
+ * then a weighted straight-line fit of position against time. Uncertainty from the fit
+ * residuals when there are 3+ epochs, otherwise from the centroid noise.
+ */
 export function measureMotion(display, grid, req) {
   const D = display;
-  if (!D?.dmaps || D.groups.length < 2 || !(req.target.pmra || req.target.pmdec)) return null;
-  const N = grid.n;
+  if (!D?.dmaps || D.groups.length < 2) return null;
+  const hasPm = !!(req.target.pmra || req.target.pmdec);
+  const N = grid.n, D2R = Math.PI / 180;
   const mid = (g) => g.reduce((a, e) => a + e.meta.mjd, 0) / g.length;
-  const ia = 0, ib = D.groups.length - 1;
-  const common = [...D.dmaps[ia].keys()].filter((d) => D.dmaps[ib].has(d));
-  if (!common.length) return null;
-  const A = detectorBalanced(D.dmaps[ia], N, common), B = detectorBalanced(D.dmaps[ib], N, common);
   const pred = (m) => {
-    const p = propagate(req.target.ra, req.target.dec, req.target.pmra, req.target.pmdec, req.target.refEpoch || 2016, mjdToYear(m));
-    // grid is fixed on the target (tracking off) for this measurement
-    const D2R = Math.PI / 180, d0 = grid.dec * D2R, da = (p.ra - grid.ra) * D2R, d = p.dec * D2R;
+    const p = propagate(req.target.ra, req.target.dec, req.target.pmra || 0, req.target.pmdec || 0, req.target.refEpoch || 2016, mjdToYear(m));
+    const d0 = grid.dec * D2R, da = (p.ra - grid.ra) * D2R, d = p.dec * D2R;
     const cosc = Math.sin(d0) * Math.sin(d) + Math.cos(d0) * Math.cos(d) * Math.cos(da);
     const xi = (Math.cos(d) * Math.sin(da)) / cosc / D2R * 3600, eta = (Math.cos(d0) * Math.sin(d) - Math.sin(d0) * Math.cos(d) * Math.cos(da)) / cosc / D2R * 3600;
     const c = (N - 1) / 2;
     return [c - xi / grid.scale, c - eta / grid.scale];
   };
-  const centroid = (img, [x0, y0]) => {
-    let sx = 0, sy = 0, s = 0, nan = 0;
-    const r = 3;
-    const vals = [];
-    for (let j = Math.round(y0) - 6; j <= Math.round(y0) + 6; j++) for (let i = Math.round(x0) - 6; i <= Math.round(x0) + 6; i++) {
+  const sigPx = 1.2 * (6.15 / grid.scale); // PSF-like weighting width in grid pixels
+  const centroid = (img, [px, py]) => {
+    // local background and noise from a ring
+    const ring = [];
+    for (let j = Math.round(py) - 9; j <= Math.round(py) + 9; j++) for (let i = Math.round(px) - 9; i <= Math.round(px) + 9; i++) {
       if (i < 0 || j < 0 || i >= N || j >= N) continue;
-      const d = Math.hypot(i - x0, j - y0);
-      if (d > 4.5 && Number.isFinite(img[j * N + i])) vals.push(img[j * N + i]);
+      const d = Math.hypot(i - px, j - py), v = img[j * N + i];
+      if (d > 5 && d < 9 && Number.isFinite(v)) ring.push(v);
     }
-    vals.sort((a, b) => a - b);
-    const bg = vals.length ? vals[vals.length >> 1] : 0;
-    for (let j = Math.round(y0) - r; j <= Math.round(y0) + r; j++) for (let i = Math.round(x0) - r; i <= Math.round(x0) + r; i++) {
-      if (i < 0 || j < 0 || i >= N || j >= N) continue;
-      const v = img[j * N + i];
-      if (!Number.isFinite(v)) { nan++; continue; }
-      const w = Math.max(0, v - bg);
-      sx += w * i; sy += w * j; s += w;
+    if (ring.length < 10) return null;
+    ring.sort((a, b) => a - b);
+    const bg = ring[ring.length >> 1];
+    const noise = 1.4826 * ring.map((v) => Math.abs(v - bg)).sort((a, b) => a - b)[ring.length >> 1] || 1e-6;
+    let x = px, y = py, nan = 0, s = 0, peak = 0;
+    for (let it = 0; it < 8; it++) {
+      let sx = 0, sy = 0; s = 0; nan = 0; peak = 0;
+      for (let j = Math.round(y) - 4; j <= Math.round(y) + 4; j++) for (let i = Math.round(x) - 4; i <= Math.round(x) + 4; i++) {
+        if (i < 0 || j < 0 || i >= N || j >= N) continue;
+        const v = img[j * N + i];
+        if (!Number.isFinite(v)) { nan++; continue; }
+        const wgt = Math.exp(-((i - x) ** 2 + (j - y) ** 2) / (2 * sigPx * sigPx)) * Math.max(0, v - bg);
+        peak = Math.max(peak, v - bg);
+        sx += wgt * i; sy += wgt * j; s += wgt;
+      }
+      if (s <= 0) return null;
+      const nx = sx / s, ny = sy / s;
+      // stay near the prediction (protects against neighbours and noise)
+      const dx = nx - px, dy = ny - py, r = Math.hypot(dx, dy);
+      const lim = 1.5 * (6.15 / grid.scale);
+      x = r > lim ? px + (dx / r) * lim : nx; y = r > lim ? py + (dy / r) * lim : ny;
+      if (Math.abs(nx - x) < 1e-3 && Math.abs(ny - y) < 1e-3) break;
     }
-    return s > 0 ? { x: sx / s, y: sy / s, nan } : null;
+    const snr = peak / noise;
+    if (snr < 4 && !nan) return null;
+    // centroid noise ≈ PSF width / S/N (floor 0.05 px)
+    return { x, y, nan, snr, err: Math.max(0.05, (sigPx * 1.2) / Math.max(1, snr)) };
   };
-  const tA = mid(D.groups[ia]), tB = mid(D.groups[ib]);
-  const cA = centroid(A, pred(tA)), cB = centroid(B, pred(tB));
-  if (!cA || !cB) return null;
-  const dt = mjdToYear(tB) - mjdToYear(tA);
-  // grid x increases to the west, y to the south
-  const muRa = (-(cB.x - cA.x) * grid.scale) / dt * 1000, muDec = (-(cB.y - cA.y) * grid.scale) / dt * 1000;
-  const pixErr = (cA.nan || cB.nan ? 0.5 : 0.25) * grid.scale * Math.SQRT2 / dt * 1000;
+  const pts = [];
+  D.groups.forEach((g, i) => {
+    const img = detectorBalanced(D.dmaps[i], N);
+    const t = mid(g), c = centroid(img, pred(t));
+    if (c) pts.push({ t: mjdToYear(t), ...c, date: mjdToISO(t, false) });
+  });
+  if (pts.length < 2) return null;
+  // weighted least squares x = a + b t, y = c + d t
+  const fit = (key) => {
+    let S = 0, St = 0, Sx = 0, Stt = 0, Stx = 0;
+    for (const p of pts) { const w = 1 / p.err ** 2; S += w; St += w * p.t; Sx += w * p[key]; Stt += w * p.t * p.t; Stx += w * p.t * p[key]; }
+    const den = S * Stt - St * St;
+    const slope = (S * Stx - St * Sx) / den, icpt = (Sx - slope * St) / S;
+    let err = Math.sqrt(S / den);
+    if (pts.length >= 3) {
+      const chi2 = pts.reduce((a, p) => a + ((p[key] - icpt - slope * p.t) / p.err) ** 2, 0) / (pts.length - 2);
+      err *= Math.sqrt(Math.max(1, chi2));
+    }
+    return { slope, err };
+  };
+  const fx = fit('x'), fy = fit('y');
+  const muRa = -fx.slope * grid.scale * 1000, muDec = -fy.slope * grid.scale * 1000; // grid x grows west, y south
+  const unc = Math.hypot(fx.err, fy.err) / Math.SQRT2 * grid.scale * 1000;
+  const dt = pts[pts.length - 1].t - pts[0].t;
   return {
-    dtYears: dt, measured: { pmra: muRa, pmdec: muDec }, predicted: { pmra: req.target.pmra, pmdec: req.target.pmdec },
-    residual: { pmra: muRa - req.target.pmra, pmdec: muDec - req.target.pmdec }, uncertainty: pixErr,
-    saturatedCore: !!(cA.nan || cB.nan), epochs: [mjdToISO(tA, false), mjdToISO(tB, false)],
+    dtYears: dt, nEpochs: pts.length, measured: { pmra: muRa, pmdec: muDec }, predicted: hasPm ? { pmra: req.target.pmra, pmdec: req.target.pmdec } : null,
+    residual: hasPm ? { pmra: muRa - req.target.pmra, pmdec: muDec - req.target.pmdec } : null, uncertainty: unc,
+    errRa: fx.err * grid.scale * 1000, errDec: fy.err * grid.scale * 1000,
+    saturatedCore: pts.some((p) => p.nan), epochs: [pts[0].date, pts[pts.length - 1].date],
   };
 }
 
@@ -340,7 +376,7 @@ export async function buildDossier(snap) {
   // ---------- HTML
   const summary = [];
   summary.push(`SkyShift looked at a ${req.fov}′ × ${req.fov}′ patch of sky around ${esc(name)} (RA ${formatRA(req.target.ra)}, Dec ${formatDec(req.target.dec)}) in ${exps.length} SPHEREx exposures taken between ${mjdToISO(Math.min(...exps.map((e) => e.meta.mjd)), false)} and ${mjdToISO(Math.max(...exps.map((e) => e.meta.mjd)), false)}, grouped into ${groups.length} frame${groups.length > 1 ? 's' : ''}.`);
-  if (motion) summary.push(`Its measured motion between the first and last epochs is ${(Math.hypot(motion.measured.pmra, motion.measured.pmdec) / 1000).toFixed(2)}″/yr, against ${(Math.hypot(motion.predicted.pmra, motion.predicted.pmdec) / 1000).toFixed(2)}″/yr predicted from Gaia DR3${motion.saturatedCore ? ' (the core is saturated, so the centroid uses the star’s wings)' : ''}.`);
+  if (motion && motion.predicted) summary.push(`Its measured motion between the first and last epochs is ${(Math.hypot(motion.measured.pmra, motion.measured.pmdec) / 1000).toFixed(2)}″/yr, against ${(Math.hypot(motion.predicted.pmra, motion.predicted.pmdec) / 1000).toFixed(2)}″/yr predicted from Gaia DR3${motion.saturatedCore ? ' (the core is saturated, so the centroid uses the star’s wings)' : ''}.`);
   if (eb.change) summary.push(eb.change.sig >= 3 ? `Its brightness changed by ${(eb.change.delta * 100).toFixed(1)}% ± ${(eb.change.err * 100).toFixed(1)}% between survey passes (${eb.change.sig.toFixed(1)}σ): a brightness-change candidate.` : `No significant brightness change between survey passes (${(eb.change.delta * 100).toFixed(1)}% ± ${(eb.change.err * 100).toFixed(1)}%).`);
   if (snap.movers?.length) summary.push(`The mover helper flagged ${snap.movers.length} motion candidate${snap.movers.length > 1 ? 's' : ''} for human checking.`);
   if (satur) summary.push(`${satur} exposure${satur > 1 ? 's have' : ' has'} a saturated core at the target.`);
@@ -349,7 +385,7 @@ export async function buildDossier(snap) {
   const table = (cols, rows, max = 400) => `<table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.slice(0, max).map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>${rows.length > max ? `<p class="small">${rows.length - max} more rows in the ZIP bundle.</p>` : ''}`;
   const figHtml = figs.map((f) => `<figure>${f.svg ? f.svg.replace(/<svg /, '<svg role="img" ') : `<img src="${f.src}" alt="${esc(f.caption)}">`}<figcaption><b>Figure ${f.n}.</b> ${esc(f.caption)}</figcaption></figure>`).join('');
   const thumb = figs[0]?.src;
-  const motionHtml = motion ? table(['Quantity', 'μα* (mas/yr)', 'μδ (mas/yr)'], [
+  const motionHtml = motion && motion.predicted ? table(['Quantity', 'μα* (mas/yr)', 'μδ (mas/yr)'], [
     ['Measured (SkyShift, first→last epoch)', motion.measured.pmra.toFixed(0), motion.measured.pmdec.toFixed(0)],
     ['Gaia DR3 (catalogue)', motion.predicted.pmra.toFixed(0), motion.predicted.pmdec.toFixed(0)],
     ['Residual', motion.residual.pmra.toFixed(0), motion.residual.pmdec.toFixed(0)],

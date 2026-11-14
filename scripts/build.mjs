@@ -54,6 +54,14 @@ for (const f of ['relay/core.mjs', 'functions/api/relay.js']) {
   if (existsSync(f)) { mkdirSync(dirname(join(OUT, f)), { recursive: true }); copyFileSync(f, join(OUT, f)); }
 }
 
+// ---- every JavaScript module must parse (catches a broken page before it ships)
+import('node:child_process').then(() => {});
+const { execFileSync } = await import('node:child_process');
+for (const f of files.filter((x) => /\.m?js$/.test(x) && !LAZY.includes(x))) {
+  try { execFileSync(process.execPath, ['--check', f], { stdio: 'pipe' }); }
+  catch (e) { console.error(`Syntax error in ${f}:\n${String(e.stderr).split('\n').slice(0, 6).join('\n')}`); process.exit(1); }
+}
+
 // ---- size budget (first load of the Home page)
 const shell = ['index.html', 'styles.css', 'src/app.js', 'src/state.js', 'src/lib/coords.js', 'src/ui/dom.js', 'src/lib/net.js', 'src/views/home.js', 'src/targets.js', 'src/lib/tap.js', 'src/lib/store.js', 'src/lib/spherex.js', 'src/lib/fits.js', 'src/lib/wcs.js'];
 const gz = shell.reduce((a, f) => a + gzipSync(readFileSync(f), { level: 9 }).length, 0);

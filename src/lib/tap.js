@@ -137,27 +137,27 @@ export async function latestSpherex() {
   });
 }
 
-/** Gaia DR3 cone from IRSA TAP; falls back to MAST's Mast.Catalogs.GaiaDR3.Cone service. */
+/** Gaia DR3 cone: MAST's Mast.Catalogs.GaiaDR3.Cone (challenge resource 4) first, IRSA's gaia_dr3_source as fallback. */
 export async function gaiaCone(ra, dec, radiusDeg, limit = 3000) {
   const key = `gaia:${num(ra, 4)},${num(dec, 4)},${num(radiusDeg, 3)}`;
   return fresh(key, async () => {
     try {
-      const rows = await tap(IRSA_TAP, `SELECT TOP ${limit} source_id, ra, dec, pmra, pmdec, parallax, phot_g_mean_mag, bp_rp, ref_epoch
-FROM gaia_dr3_source WHERE 1 = CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${num(ra)}, ${num(dec)}, ${num(radiusDeg, 5)}))
-ORDER BY phot_g_mean_mag`);
-      return { via: 'IRSA TAP gaia_dr3_source', rows };
-    } catch (e) {
       const request = { service: 'Mast.Catalogs.GaiaDR3.Cone', params: { ra, dec, radius: radiusDeg }, format: 'json', pagesize: limit, page: 1 };
       const res = await smartFetch(MAST_API, {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'request=' + encodeURIComponent(JSON.stringify(request)),
+        body: 'request=' + encodeURIComponent(JSON.stringify(request)), timeout: 45000,
       });
       const j = await res.json();
-      if (!Array.isArray(j.data)) throw e;
+      if (!Array.isArray(j.data)) throw new Error(`MAST: ${j.status || 'no data'}`);
       return {
         via: 'MAST Mast.Catalogs.GaiaDR3.Cone',
         rows: j.data.map((s) => ({ source_id: s.source_id, ra: s.ra, dec: s.dec, pmra: s.pmra, pmdec: s.pmdec, parallax: s.parallax, phot_g_mean_mag: s.phot_g_mean_mag, bp_rp: s.bp_rp, ref_epoch: s.ref_epoch })),
       };
+    } catch (e) {
+      const rows = await tap(IRSA_TAP, `SELECT TOP ${limit} source_id, ra, dec, pmra, pmdec, parallax, phot_g_mean_mag, bp_rp, ref_epoch
+FROM gaia_dr3_source WHERE 1 = CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${num(ra)}, ${num(dec)}, ${num(radiusDeg, 5)}))
+ORDER BY phot_g_mean_mag`);
+      return { via: `IRSA TAP gaia_dr3_source (MAST unavailable: ${e.message})`, rows };
     }
   });
 }

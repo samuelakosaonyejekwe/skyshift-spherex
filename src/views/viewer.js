@@ -14,9 +14,10 @@ import { scatterChart, svgString } from '../ui/charts.js';
 import { pushRecent } from './home.js';
 import { saveCandidate, isWatched, toggleWatch, getQueue, clearQueue } from './saved.js';
 import { findMovers, findVariables, epochBrightness, questionable } from '../lib/discover.js';
+import { getSettings, effectiveReadMode } from '../settings.js';
 import { parse as parseExpr, evalScalar, evalImage, splitStatements } from '../lib/expr.js';
 
-export const title = 'Explore';
+export const title = 'Time Machine';
 
 // Spectral lines with wavelengths stated in the approved sources (IRSA SPHEREx docs,
 // Explanatory Supplement and tutorials). See docs/DATA_SOURCES.md.
@@ -80,9 +81,9 @@ export async function render(root, route, { go }) {
   const vside = h('aside', { class: 'vside' }, h('div', { class: 'card' }, tabsBar, tabBody));
 
   const shareBtn = h('button', { class: 'btn small', type: 'button', onclick: () => shareDialog(), 'aria-label': 'Share or embed' }, icon('share'), h('span', { class: 'lbl' }, 'Share / embed'));
-  const watchBtn = h('button', { class: 'btn small hide-embed', type: 'button', onclick: () => { const on = toggleWatch(req); watchBtn.querySelector('.lbl').textContent = on ? 'Saved' : 'Save'; toast({ title: on ? 'Field saved' : 'Removed from saved fields', text: on ? 'It works offline, and you will be told when new SPHEREx data covers it.' : '', glyph: '🔖', timeout: 3500 }); } 'aria-label': 'Save this field' }, icon('bookmark'), h('span', { class: 'lbl' }, isWatched(req) ? 'Saved' : 'Save'));
+  const watchBtn = h('button', { class: 'btn small hide-embed', type: 'button', onclick: () => { const on = toggleWatch(req); watchBtn.querySelector('.lbl').textContent = on ? 'Saved' : 'Save'; toast({ title: on ? 'Field saved' : 'Removed from saved fields', text: on ? 'It works offline, and you will be told when new SPHEREx data covers it.' : '', glyph: '🔖', timeout: 3500 }); }, 'aria-label': 'Save this field' }, icon('bookmark'), h('span', { class: 'lbl' }, isWatched(req) ? 'Saved' : 'Save'));
   const wiseLink = h('a', { class: 'btn small', target: '_blank', rel: 'noopener noreferrer', title: 'Compare with WISE/NEOWISE in WiseView (opens byw.tools)',
-    href: `${WISEVIEW}#ra=${req.target.ra.toFixed(6)}&dec=${req.target.dec.toFixed(6)}&size=${Math.round(Math.min(req.fov, 30) * 60 / 2.75)}&band=2&speed=${req.speed}&minbright=-50.0000&maxbright=500.0000&window=0.5&diff_window=1&linear=1&color=&zoom=9&border=0&gaia=0&invert=1` 'aria-label': 'Open in WiseView' }, icon('video'), h('span', { class: 'lbl' }, 'WiseView'));
+    href: `${WISEVIEW}#ra=${req.target.ra.toFixed(6)}&dec=${req.target.dec.toFixed(6)}&size=${Math.round(Math.min(req.fov, 30) * 60 / 2.75)}&band=2&speed=${req.speed}&minbright=-50.0000&maxbright=500.0000&window=0.5&diff_window=1&linear=1&color=&zoom=9&border=0&gaia=0&invert=1`, 'aria-label': 'Open in WiseView' }, icon('video'), h('span', { class: 'lbl' }, 'WiseView'));
   const skyLink = h('a', { class: 'btn small hide-embed', href: `#/sky?${toParams(req)}`, 'aria-label': 'Sky atlas' }, icon('sky'), h('span', { class: 'lbl' }, 'Sky atlas'));
   const explainBtn = h('button', { class: 'btn small', type: 'button', 'aria-expanded': 'false', onclick: () => { explainBox.hidden = !explainBox.hidden; explainBtn.setAttribute('aria-expanded', String(!explainBox.hidden)); explain(); }, 'aria-label': 'Explain this view' }, icon('help'), h('span', { class: 'lbl' }, 'Explain this view'));
   const dossierBtn = h('button', { class: 'btn small hide-embed', type: 'button', title: 'Generate a reproducible report with figures, tables and FITS cutouts', onclick: () => makeDossier(), 'aria-label': 'Generate dossier' }, icon('download'), h('span', { class: 'lbl' }, 'Dossier'));
@@ -203,12 +204,20 @@ export async function render(root, route, { go }) {
     if (!quick?.data?.length || added.length) {
       if (quick?.data?.length && added.length) toast({ title: `${added.length} newer SPHEREx exposure${added.length > 1 ? 's' : ''} found`, text: 'Adding them to the film now.', glyph: '🛰', timeout: 4000 });
       stream(id);
-    } else updateStatus(S.frames.size, S.exposures.filter((e) => req.dets.includes(e.det)).length, null, true);
+    } else {
+      const n = S.exposures.filter((e) => req.dets.includes(e.det)).length, cap = getSettings().maxImages || n;
+      S.moreAvailable = Math.max(0, n - cap - (S.extraImages === Infinity ? n : S.extraImages || 0));
+      updateStatus(Math.min(S.frames.size, n), Math.min(n, cap + (S.extraImages === Infinity ? n : S.extraImages || 0)), null, true);
+    }
   }
 
   /** Stream every wanted exposure that is not loaded yet (restarts the worker job). */
   function stream(id) {
-    const wanted = orderForLoading(S.exposures.filter((e) => req.dets.includes(e.det)));
+    const ordered = orderForLoading(S.exposures.filter((e) => req.dets.includes(e.det)));
+    // images per target: the round-robin order spreads the budget across epochs and detectors
+    const cap = S.extraImages === Infinity ? 0 : (getSettings().maxImages || 0) + (S.extraImages || 0);
+    const wanted = cap ? ordered.slice(0, cap) : ordered;
+    S.moreAvailable = ordered.length - wanted.length;
     const todo = wanted.filter((e) => !S.frames.has(e.uri));
     updateStatus(wanted.length - todo.length, wanted.length);
     rebuild();
@@ -225,6 +234,7 @@ export async function render(root, route, { go }) {
       if (m.type === 'frame') {
         S.frames.set(todo[m.index].uri, { data: m.data, flags: m.flags, meta: m.meta, phot: m.phot, rec: todo[m.index] });
         loading.hidden = true;
+        if (!S.autoplayed && S.display?.frames.length >= 2 && !getSettings().reduceMotion && !matchMedia('(prefers-reduced-motion: reduce)').matches && !req.embed) { S.autoplayed = true; play(); }
         const now = performance.now();
         if (now - lastBuild > 700) { lastBuild = now; rebuild(); if (['spectrum', 'lightcurve'].includes(S.tab) && !S.clickSpec) renderSide(); }
       } else if (m.type === 'skip') {
@@ -242,10 +252,10 @@ export async function render(root, route, { go }) {
         if (!S.frames.size) { loading.hidden = false; loading.querySelector('.boot-orbit').hidden = true; setLoad('None of the images could be read. The archive may be busy; please retry.', 0); }
       }
     };
-    w.postMessage({ type: 'frames', id: job, items: todo, grid: S.grid, opts: { withFlags: flagMode(), track: req.track ? pm : null, photTrack: pm, concurrency: 12 } });
+    w.postMessage({ type: 'frames', id: job, items: todo, grid: S.grid, opts: { withFlags: flagMode(), track: req.track ? pm : null, photTrack: pm, concurrency: 12, readMode: effectiveReadMode() } });
     renderSide();
   }
-  const flagMode = () => (req.ov.includes('flags') ? 'field' : 'target');
+  const flagMode = () => (req.ov.includes('flags') ? 'field' : getSettings().mask ? 'target' : false);
 
   /** Round-robin across survey epochs so a playable movie appears as early as possible. */
   function orderForLoading(list) {
@@ -274,7 +284,9 @@ export async function render(root, route, { go }) {
     const rate = S.bytes && ms ? S.bytes / (ms / 1000) : null;
     const remaining = Math.max(0, total - done);
     const eta = rate ? (remaining * per) / rate * 1000 : null;
-    statusLine.textContent = `${done}/${total} exposures loaded${S.skipped ? ` (${S.skipped} skipped: outside field or unreadable)` : ''} · ${fmtBytes(S.bytes)} transferred${rate ? ` at ${fmtBytes(rate)}/s` : ''}${!final && eta ? ` · about ${fmtDur(eta)} left` : ''} · source: ${S.search?.source === 'live' ? 'IRSA live' : S.search?.source || '…'}${S.search?.source === 'live' ? '' : ' (not live)'}`;
+    statusLine.replaceChildren();
+    if (final && S.moreAvailable > 0) statusLine.append(h('button', { class: 'btn small', style: { marginRight: '8px' }, onclick: () => { S.extraImages = (S.extraImages || 0) + Math.max(60, getSettings().maxImages || 60); stream(S.loadId); } }, `Load ${Math.min(S.moreAvailable, Math.max(60, getSettings().maxImages || 60))} more images`), h('button', { class: 'btn small ghost', style: { marginRight: '8px' }, onclick: () => { S.extraImages = Infinity; stream(S.loadId); } }, `all ${S.moreAvailable + total}`));
+    statusLine.append(`${done}/${total} exposures loaded${S.moreAvailable > 0 ? ` (of ${S.moreAvailable + total} available)` : ''}${S.skipped ? ` (${S.skipped} skipped: outside field or unreadable)` : ''} · ${fmtBytes(S.bytes)} transferred${rate ? ` at ${fmtBytes(rate)}/s` : ''}${!final && eta ? ` · about ${fmtDur(eta)} left` : ''} · source: ${S.search?.source === 'live' ? 'IRSA live' : S.search?.source || '…'}${S.search?.source === 'live' ? '' : ' (not live)'}`);
   }
 
   // ------------------------------------------------------------------ display building

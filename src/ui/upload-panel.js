@@ -103,8 +103,7 @@ export function uploadPanel({ go }) {
       res.errors?.length ? h('details', {}, h('summary', { class: 'tiny' }, `${res.errors.length} line(s) not used`), h('ul', { class: 'tiny' }, res.errors.slice(0, 20).map((e) => h('li', {}, `${e.line ? `line ${e.line}: ` : ''}${e.text ? `“${e.text}” — ` : ''}${e.msg}`)))) : null);
   }
 
-  return h('section', { class: 'card typed', 'aria-labelledby': 'up-h' },
-    h('h2', { id: 'up-h' }, 'Or upload your own list'),
+  return h('div', { class: 'upload' },
     h('p', { class: 'muted' }, 'Bring a target list, an ephemeris, a table from a paper, or your own FITS image. SkyShift reads it in your browser, shows what it understood, and fetches the SPHEREx images for each position.'),
     zone, input, h('label', { class: 'field', style: { marginTop: '8px' } }, 'Instructions for every target (optional)', instr), out);
 }

@@ -115,3 +115,17 @@ export function downlinkMbps() {
   const c = navigator.connection;
   return c && c.downlink ? c.downlink : null;
 }
+
+/** Turn a long article into a responsive grid of cards: every <h2> and what follows it becomes one card. */
+export function cardify(article, { keep = 0 } = {}) {
+  const kids = [...article.childNodes];
+  const head = [], groups = [];
+  let cur = null;
+  kids.forEach((n, i) => {
+    if (n.nodeType === 1 && n.tagName === 'H2' && i >= keep) { cur = [n]; groups.push(cur); }
+    else if (cur) cur.push(n); else head.push(n);
+  });
+  const grid = h('div', { class: 'cards' }, groups.map((g) => h('section', { class: 'card' }, g)));
+  article.replaceChildren(...head, grid);
+  return article;
+}

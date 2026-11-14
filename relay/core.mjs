@@ -63,7 +63,7 @@ function cacheControlFor(u) {
   return 'public, max-age=600';
 }
 
-export async function handle(request, { clientIp = 'anon' } = {}) {
+export async function handle(request, { clientIp = 'anon', fetchImpl = fetch } = {}) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (!['GET', 'HEAD', 'POST'].includes(request.method)) return json(405, { error: 'method not allowed' });
   const self = new URL(request.url);
@@ -89,7 +89,7 @@ export async function handle(request, { clientIp = 'anon' } = {}) {
   const timer = setTimeout(() => ctl.abort(), 55000);
   let up;
   try {
-    up = await fetch(target, { ...init, signal: ctl.signal });
+    up = await fetchImpl(target, { ...init, signal: ctl.signal });
   } catch (e) {
     clearTimeout(timer);
     // Answer 200 with an explicit error header: the relay itself is healthy, the upstream is not.

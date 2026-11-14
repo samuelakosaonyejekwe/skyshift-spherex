@@ -8,7 +8,7 @@ import { latestSpherex, latestNeossat, loadBundled } from '../lib/tap.js';
 import { mjdToISO } from '../lib/coords.js';
 import { cache } from '../lib/store.js';
 
-export const title = 'Live sources';
+export const title = 'Data freshness';
 
 export const SOURCES = [
   { id: 'irsa', n: 1, name: 'SPHEREx at NASA/IPAC IRSA', url: 'https://irsa.ipac.caltech.edu/Missions/spherex.html',
@@ -56,7 +56,15 @@ export const SOURCES = [
     } },
   { id: 'neodata', n: 8, name: 'NEOSSat open data (CSA)', url: 'https://data.asc-csa.gc.ca/dataset/neossat',
     uses: 'The open-data catalogue of NEOSSat images. Checked live; when its server cannot be reached securely, SkyShift lists NEOSSat data through CADC instead.',
-    probe: async () => pageInfo('https://data.asc-csa.gc.ca/dataset/neossat', /<title>([^<]+)/g) },
+    probe: async () => {
+      const res = await smartFetch('https://data.asc-csa.gc.ca/api/3/action/package_show?id=neossat', { timeout: 30000 });
+      const j = await res.json();
+      if (!j.success) throw new Error('Open-data API did not answer');
+      const r = j.result;
+      return { ok: true, status: 200, lastModified: r.metadata_modified ? `${r.metadata_modified.slice(0, 10)} (catalogue record)` : null,
+        extra: `${r.title?.en || r.title || 'NEOSSat'} · ${r.num_resources ?? r.resources?.length ?? '?'} resources · licence: ${r.license_title || r.license_id || 'see portal'}`,
+        lines: (r.resources || []).slice(0, 5).map((x) => (typeof x.name === 'object' ? x.name.en : x.name) || x.format || 'resource') };
+    } },
 ];
 
 async function pageInfo(url, re) {
@@ -74,13 +82,13 @@ async function pageInfo(url, re) {
   return { ok: true, status: upstream, lastModified: res.headers.get('last-modified'), lines, bytes: text.length };
 }
 
-export async function render(root) {
+export async function render(root, route, ctx, { embedded = false } = {}) {
   const grid = h('div', { class: 'sources' });
   const stamp = h('span', { class: 'tiny' });
   const refreshBtn = h('button', { class: 'btn small', onclick: () => run() }, icon('refresh'), 'Check again');
   const bundle = await loadBundled();
   root.append(
-    h('h1', {}, 'Live sources'),
+    embedded ? null : h('h1', {}, 'Data freshness'),
     h('p', { class: 'muted prose' }, 'SkyShift uses only the eight resources listed by the challenge, and pages and services reached from them. Every check below runs now, from your device, against the live sites. Archives that do not allow direct browser access are reached through a small relay that only forwards to these sites.'),
     h('div', { class: 'row', style: { marginBottom: '12px' } }, refreshBtn, stamp, h('span', { class: 'tiny' }, bundle.generated ? ` · built-in fallback image lists refreshed ${bundle.generated.slice(0, 10)}` : '')),
     grid);

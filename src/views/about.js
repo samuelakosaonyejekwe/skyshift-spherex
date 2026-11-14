@@ -1,6 +1,6 @@
 // About: project, copyright and licence, hosting addresses, data credits and terms.
 
-import { h } from '../ui/dom.js';
+import { h, cardify } from '../ui/dom.js';
 import { getConfig } from '../lib/net.js';
 
 export const title = 'About';
@@ -11,13 +11,13 @@ export async function render(root) {
   const cfg = getConfig();
   let version = '';
   try { version = (await (await fetch('./version.json', { cache: 'no-cache' })).json()).version; } catch { /* offline */ }
-  root.append(h('article', { class: 'prose' },
+  root.append(cardify(h('article', { class: 'prose' },
     h('h1', {}, 'SkyShift: A Time Machine for the SPHEREx Sky'),
     h('p', { class: 'muted' }, 'A public web tool for the 2026 NASA Space Apps Challenge “Planet X and SPHEREx”, by team SkyShift Cyprus.'),
     h('p', {}, 'SkyShift lets anyone enter a patch of sky and watch NASA SPHEREx infrared images of it change over time, so moving and changing objects stand out. It is free, needs no account, installs on phones and computers, and works offline for fields you have viewed.'),
     h('div', { class: 'card' },
-      h('p', { style: { margin: 0 } }, h('b', {}, 'Copyright (c) 2026 Samuel Akosa Onyejekwe. Released under the MIT licence.')),
-      h('p', { class: 'tiny', style: { margin: '6px 0 0' } }, 'The MIT licence covers the source code only. The SkyShift name, the team badge, and reports generated from users’ data are not covered by it. Third-party data and software keep their own licences and credits, listed below.')),
+      h('p', { style: { margin: 0 } }, h('b', {}, 'Copyright © 2026 Samuel Akosa Onyejekwe. All rights reserved.')),
+      h('p', { class: 'tiny', style: { margin: '6px 0 0' } }, 'SkyShift’s code, design and documentation may not be copied, modified or reused without written permission. Third-party data and software keep their own licences and credits, listed below.')),
     h('h2', {}, 'Where SkyShift lives'),
     h('ul', {},
       h('li', {}, 'Primary: ', h('code', {}, cfg.hosts?.primary || 'https://samuelakosaonyejekwe.github.io/skyshift-spherex/'), cfg.deployed ? '' : ' (not yet published)'),
@@ -48,6 +48,6 @@ export async function render(root) {
     h('p', { class: 'tiny' }, 'SkyShift is an independent project. It is not endorsed by NASA, Caltech/IPAC, ESA, the Canadian Space Agency, NRC/CADC or CDS, and it uses none of their logos.'),
     h('h2', {}, 'Privacy'),
     h('p', {}, 'No accounts, no tracking, no analytics. Searches go from your device to the archives (directly, or via a relay that forwards the request and keeps no logs of it). Saved fields, candidates and cached images stay in your browser’s storage.'),
-  ));
+  )));
   return () => {};
 }

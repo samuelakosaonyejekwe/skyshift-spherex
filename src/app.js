@@ -4,6 +4,7 @@
 import { h, toast, sheet, icon } from './ui/dom.js';
 import { loadConfig, onNetStatus, netStatus } from './lib/net.js';
 import { fromParams } from './state.js';
+import { getSettings, setSettings, applyTheme, DEFAULT_SETTINGS } from './settings.js';
 
 const ROUTES = {
   home: () => import('./views/home.js'),
@@ -11,6 +12,9 @@ const ROUTES = {
   sky: () => import('./views/sky.js'),
   saved: () => import('./views/saved.js'),
   sources: () => import('./views/sources.js'),
+  chase: () => import('./views/chase.js'),
+  live: () => import('./views/live.js'),
+  mission: () => import('./views/mission.js'),
   guide: () => import('./views/guide.js'),
   about: () => import('./views/about.js'),
 };
@@ -67,12 +71,15 @@ window.addEventListener('touchend', (e) => {
 export function parseHash() {
   const raw = location.hash.replace(/^#\/?/, '');
   const [path, qs = ''] = raw.split('?');
-  const name = path.split('/')[0] || 'home';
+  const ALIAS = { tm: 'view', explore: 'home', learn: 'guide' };
+  const first = path.split('/')[0] || 'home';
+  const name = ALIAS[first] || first;
   return { name: ROUTES[name] ? name : 'home', sub: path.split('/').slice(1), params: new URLSearchParams(qs) };
 }
 
 async function route() {
   syncArrows();
+  if (applyPendingUpdate()) return; // reloads into the new version at the requested page
   const seq = ++renderSeq;
   const r = parseHash();
   document.querySelectorAll('#mainnav a').forEach((a) => { if (a.dataset.route !== r.name) a.removeAttribute('aria-current'); else a.setAttribute('aria-current', 'page'); });
@@ -88,10 +95,24 @@ async function route() {
     current = { name: r.name, mod, dispose };
     const title = mod.title ? `${mod.title} · SkyShift` : 'SkyShift: A Time Machine for the SPHEREx Sky';
     document.title = title;
+    sessionStorage.removeItem('skyshift.recovered');
     if (!r.params.toString()) main.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
   } catch (e) {
     console.error(e);
+    // A module that fails to load is almost always a stale offline copy: refresh it once automatically.
+    if (!sessionStorage.getItem('skyshift.recovered') && navigator.onLine) {
+      sessionStorage.setItem('skyshift.recovered', '1');
+      try {
+        const reg = await navigator.serviceWorker?.getRegistration();
+        reg?.waiting?.postMessage({ type: 'SKIP_WAITING' });
+        reg?.active?.postMessage({ type: 'RESET' });
+        if (window.caches) for (const k of await caches.keys()) if (k.startsWith('skyshift-shell-') || k === 'skyshift-runtime-v1') await caches.delete(k);
+        await reg?.update();
+      } catch { /* ignore */ }
+      location.reload();
+      return;
+    }
     main.replaceChildren(h('div', { class: 'card notice bad' },
       h('h2', {}, 'This page could not be loaded'),
       h('p', {}, navigator.onLine ? 'Something went wrong while opening this page. Reloading usually fixes it.' : 'You are offline and this page has not been saved on this device yet.'),
@@ -173,11 +194,14 @@ export function showInstallSheet() {
 }
 
 // ---------------- service worker: offline + update pop-up ----------------
+let pendingWorker = null;
+export function applyPendingUpdate() { if (pendingWorker) { pendingWorker.postMessage({ type: 'SKIP_WAITING' }); pendingWorker = null; return true; } return false; }
 async function setupSW() {
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
   try {
     const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
     const promptUpdate = (worker) => {
+      pendingWorker = worker; // also applied automatically at the next page change (the view lives in the URL)
       toast({
         kind: 'update', glyph: '✨', timeout: 0,
         title: 'A new version of SkyShift is ready',
@@ -228,6 +252,32 @@ async function checkNewData() {
     checkWatchlist(r.data);
   } catch { /* offline or archive down: silently retry later */ }
 }
+
+// ---------------- theme + settings ----------------
+applyTheme();
+document.getElementById('themeBtn').addEventListener('click', () => { const cur = document.documentElement.dataset.theme; setSettings({ theme: cur === 'light' ? 'dark' : 'light' }); applyTheme(); });
+matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => { if (!getSettings().theme) applyTheme(); });
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  const s0 = getSettings();
+  const sel = (key, opts) => h('select', { onchange: (e) => setSettings({ [key]: isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value) }) }, opts.map(([v, l]) => h('option', { value: v, selected: String(s0[key]) === String(v) }, l)));
+  const chk = (key, label) => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!s0[key], onchange: (e) => setSettings({ [key]: e.target.checked }) }), label);
+  const close = sheet(h('div', { class: 'grid' },
+    h('h2', {}, 'Settings'),
+    h('label', { class: 'field' }, 'Default field of view for new targets', sel('fov', [[4, '4′ (small, fastest)'], [6, '6′ (default)'], [10, '10′'], [15, '15′'], [30, '30′ (large, more data)']])),
+    h('label', { class: 'field' }, 'Images per target (spread across all epochs and detectors)', sel('maxImages', [[60, '60'], [120, '120 (default)'], [240, '240'], [480, '480'], [0, 'All']])),
+    h('label', { class: 'field' }, 'Download mode', sel('readMode', [['auto', 'Auto: first images fastest, then data saver (switches to saver on slow or Save-Data connections)'], ['saver', 'Data saver: only the pixels needed (≈0.1 MB per image)'], ['fast', 'Fast: whole image rows (≈0.6 MB per image)']])),
+    chk('mask', 'Remove bad pixels from measurements using SPHEREx quality flags'),
+    chk('reduceMotion', 'Reduce motion (no automatic playback)'),
+    h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => { close(); toast({ title: 'Settings saved', text: 'They apply to the next target you open.', glyph: '⚙', timeout: 2500 }); } }, 'Done'),
+      h('button', { class: 'btn ghost', onclick: () => { localStorage.removeItem('skyshift.settings'); applyTheme(); close(); toast({ title: 'Settings reset', glyph: '⚙', timeout: 2000 }); } }, 'Reset to defaults'))), { label: 'Settings' });
+});
+// "/" focuses the search box (on Explore) from anywhere
+document.addEventListener('keydown', (e) => {
+  if (e.key !== '/' || e.target.matches('input, textarea, select')) return;
+  e.preventDefault();
+  const q = document.getElementById('q');
+  if (q) q.focus(); else { go('#/'); setTimeout(() => document.getElementById('q')?.focus(), 400); }
+});
 
 // ---------------- boot ----------------
 (async function boot() {

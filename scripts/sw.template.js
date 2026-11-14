@@ -27,6 +27,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data?.type === 'RESET') event.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith('skyshift-shell-') || k === RUNTIME).map((k) => caches.delete(k)))));
 });
 
 async function trim(cacheName, max) {
@@ -83,19 +84,19 @@ self.addEventListener('fetch', (event) => {
         if (res.ok) (await caches.open(RUNTIME)).put(req, res.clone());
         return res;
       } catch {
-        return (await caches.match(req)) || Response.error();
+        return (await (await caches.open(RUNTIME)).match(req)) || (await (await caches.open(SHELL)).match(req)) || Response.error();
       }
     })());
     return;
   }
 
-  // Versioned shell assets: cache-first; anything else same-origin (e.g. Aladin Lite): stale-while-revalidate.
+  // Shell assets come only from THIS version's cache, so old and new modules are never mixed.
+  // Other same-origin files (e.g. Aladin Lite, large images): stale-while-revalidate from the runtime cache.
   event.respondWith((async () => {
-    const hit = await caches.match(req, { ignoreSearch: false });
+    const isShell = PRECACHE.some((p) => url.pathname.endsWith(p.replace(/^\.\//, '/')) && p !== './');
+    const hit = isShell ? await (await caches.open(SHELL)).match(req) : await (await caches.open(RUNTIME)).match(req);
     if (hit) {
-      if (!PRECACHE.some((p) => url.pathname.endsWith(p.replace(/^\.\//, '/')))) {
-        fetch(req).then(async (res) => { if (res.ok) (await caches.open(RUNTIME)).put(req, res); }).catch(() => {});
-      }
+      if (!isShell) fetch(req).then(async (res) => { if (res.ok) (await caches.open(RUNTIME)).put(req, res); }).catch(() => {});
       return hit;
     }
     try {

@@ -8,11 +8,13 @@
 
 import { inflateSync, deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
+import { encodeJPEG } from './jpeg.mjs';
 
 const HIPS = 'https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube';
 // cube frame index (0-based): 17 channels per detector (IRSA cube tutorial); 50/51 are blank
 const CHANNELS = { b: 8, g: 42, r: 95 }; // ≈0.9 µm (D1), ≈2.0 µm (D3), ≈4.6 µm (D6)
 const OUT_W = Number(process.env.ALLSKY_W || 1200), OUT_H = OUT_W / 2;
+const FRAME = process.env.ALLSKY_FRAME || 'equatorial'; // 'equatorial' (RA 12h at centre, east left) or 'galactic'
 const VARIANT = Number(process.env.ALLSKY_VARIANT ?? 5); // in-tile pixel convention (verified by scripts/allsky.mjs --pick)
 
 // ------------------------------------------------------------------ PNG decode / encode
@@ -130,8 +132,8 @@ for (let j = 0; j < OUT_H; j++) {
       if ((X * X) / 8 + (Y * Y) / 2 > 1) continue;
       const th = Math.asin(Y / Math.SQRT2);
       const lat = Math.asin((2 * th + Math.sin(2 * th)) / Math.PI);
-      const lon = -(Math.PI * X) / (2 * Math.SQRT2 * Math.cos(th)); // galactic longitude increases to the left
-      const [ra, dec] = galToEq((lon * 180) / Math.PI, (lat * 180) / Math.PI);
+      const lon = -(Math.PI * X) / (2 * Math.SQRT2 * Math.cos(th)); // longitude increases to the left (sky seen from inside)
+      const [ra, dec] = FRAME === 'galactic' ? galToEq((lon * 180) / Math.PI, (lat * 180) / Math.PI) : [(((180 + (lon * 180) / Math.PI) % 360) + 360) % 360, (lat * 180) / Math.PI];
       const vb = sample(imgs.b, ra, dec), vg = sample(imgs.g, ra, dec), vr = sample(imgs.r, ra, dec);
       if (vg == null) continue;
       r += vr ?? vg; g += vg; b += vb ?? vg; n++;
@@ -148,9 +150,11 @@ for (let j = 1; j < OUT_H; j++) for (let i = 1; i < OUT_W; i++) { const o = (j *
 console.log('variant', VARIANT, 'roughness', rough);
 if (process.env.ALLSKY_DRY) process.exit(0);
 mkdirSync('assets', { recursive: true });
-writeFileSync(`assets/allsky-${OUT_W}.png`, encodePNG(OUT_W, OUT_H, out));
-writeFileSync('assets/allsky.json', JSON.stringify({
+// outside the ellipse -> page background colour, then JPEG (much smaller than PNG for a noisy sky)
+for (let k = 0; k < OUT_W * OUT_H; k++) if (!out[k * 4 + 3]) { out[k * 4] = 7; out[k * 4 + 1] = 9; out[k * 4 + 2] = 25; out[k * 4 + 3] = 255; }
+writeFileSync(`assets/${FRAME === 'galactic' ? 'allsky-gal' : 'allsky'}-${OUT_W}.jpg`, encodeJPEG(OUT_W, OUT_H, out, Number(process.env.ALLSKY_Q || 80)));
+writeFileSync(`assets/${FRAME === 'galactic' ? 'allsky-gal' : 'allsky'}.json`, JSON.stringify({
   source: `${HIPS} (SPHEREx DR1 all-sky spectral cube, IRSA HiPS, ${(props.match(/^hips_release_date\s*=\s*(.+)$/m) || [])[1]?.trim()})`,
-  channels: CHANNELS, wavelengthsApproxUm: { b: 0.9, g: 2.0, r: 4.6 }, projection: 'Mollweide, galactic coordinates, l=0 at centre', tileWidth, order, built: new Date().toISOString(),
+  channels: CHANNELS, wavelengthsApproxUm: { b: 0.9, g: 2.0, r: 4.6 }, projection: FRAME === 'galactic' ? 'Mollweide, galactic coordinates, l=0 at centre' : 'Mollweide, equatorial (ICRS), RA 12h at centre, RA increasing to the left', tileWidth, order, built: new Date().toISOString(),
 }, null, 2));
-console.log(`assets/allsky-${OUT_W}.png ${OUT_W}x${OUT_H} from HiPS order 3 Allsky (tile ${tw}px, HEALPix order ${order})`);
+console.log(`assets/allsky-${OUT_W}.jpg ${OUT_W}x${OUT_H} from HiPS order 3 Allsky (tile ${tw}px, HEALPix order ${order})`);
