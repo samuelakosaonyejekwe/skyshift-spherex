@@ -7,7 +7,7 @@ NOTICE file, the copyright notice and the licence, and must mark any files that 
 Original work by Samuel Akosa Onyejekwe (team SkyShift Cyprus) for the 2026 NASA Space Apps
 Challenge "Planet X and SPHEREx". Source: https://github.com/samuelakosaonyejekwe/skyshift-spherex
 
-Super Intelligence (SI) use: SI tools were used to help write and revise code, tests and documentation under the author's direction; the idea, design and testing are the author's own. No SI-generated images, video or audio are used.
+SI use: SI coding tools assisted with the code and documentation under the author's direction; the idea, design and testing are the author's own. No SI-generated images, video or audio are used.
 
 Third-party material (each keeps its own licence)
 - Aladin Lite 3.9.2-beta, CDS Strasbourg, LGPL-3.0-or-later (OSI approved). vendor/aladin.js,

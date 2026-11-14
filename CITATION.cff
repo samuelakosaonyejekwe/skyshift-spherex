@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-abstract: "Public web tool that plays NASA SPHEREx images of any patch of sky over time. Super Intelligence (SI) use: SI tools were used to help write and revise code, tests and documentation under the author's direction; the idea, design and testing are the author's own. No SI-generated images, video or audio are used."
+abstract: "Public web tool that plays NASA SPHEREx images of any patch of sky over time. SI use: SI coding tools assisted with the code and documentation under the author's direction; the idea, design and testing are the author's own. No SI-generated images, video or audio are used."
 title: "SkyShift: A Time Machine for the SPHEREx Sky"
 type: software
 authors:
