@@ -101,7 +101,7 @@ export class SpherexImage {
   async meta() {
     if (this._meta) return this._meta;
     const m = await this._cached('meta', async () => {
-      let n = 2880 * 12;
+      let n = 2880 * 10; // IMAGE header ends near 26 kB in DR1/QR3 files; grows automatically if needed
       for (;;) {
         const bytes = await this.src.get(0, n - 1);
         const p = parseHeader(bytes, 0);
@@ -161,13 +161,34 @@ export class SpherexImage {
     return { y0, y1, width: W, data: out };
   }
 
+  /**
+   * Column-precise read: IMAGE pixels x0..x1, y0..y1 (1-based, inclusive), one small range
+   * request per row (rotated across hostnames). About 10x less data than whole rows.
+   */
+  async block(x0, x1, y0, y1) {
+    const m = await this.meta();
+    const W = m.header.NAXIS1, H = m.header.NAXIS2;
+    x0 = Math.max(1, x0); x1 = Math.min(W, x1); y0 = Math.max(1, y0); y1 = Math.min(H, y1);
+    const w = x1 - x0 + 1, h = y1 - y0 + 1;
+    const data = await this._cached(`blk${x0},${x1},${y0},${y1}`, async () => {
+      const out = new Float32Array(w * h);
+      await Promise.all(Array.from({ length: h }, async (_, k) => {
+        const a = m.dataStart + ((y0 - 1 + k) * W + (x0 - 1)) * 4;
+        out.set(beFloat32(await this.src.get(a, a + w * 4 - 1)), k * w);
+      }));
+      return out;
+    });
+    return { y0, y1, x0, width: w, data };
+  }
+
   async _flagsLayout() {
     if (this._fl) return this._fl;
     const m = await this.meta();
     this._fl = await this._cached('flaghdr', async () => {
       const off = m.dataStart + dataSize(m.header);
-      const bytes = await this.src.get(off, off + 2880 * 10 - 1);
-      const p = parseHeader(bytes, 0);
+      let bytes = await this.src.get(off, off + 2880 * 7 - 1);
+      let p = parseHeader(bytes, 0);
+      if (!p) { bytes = await this.src.get(off, off + 2880 * 20 - 1); p = parseHeader(bytes, 0); }
       if (!p || p.header.EXTNAME !== 'FLAGS') throw new Error('FLAGS HDU not where expected');
       const h = p.header;
       const dataStart = off + p.end;
@@ -217,7 +238,7 @@ export class SpherexImage {
       const b = Math.floor((y - 1) / BLOCK_ROWS), r = (y - 1) % BLOCK_ROWS;
       out.set(blocks[b - b0].subarray(r * W, (r + 1) * W), (y - y0) * W);
     }
-    return { y0, y1, width: W, data: out, bits: L.bits };
+    return { y0, y1, x0: 1, width: W, data: out, bits: L.bits };
   }
 
   /** Load blocks b0..b1, using cache, fetching contiguous missing runs in single requests. */

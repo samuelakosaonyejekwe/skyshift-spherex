@@ -6,14 +6,15 @@ import { h, icon, toast, sheet, copyText, download, fmtBytes, fmtDur, downlinkMb
 import { normalise, fromParams, toParams, MODES, GROUPS, FOV_STEPS, DEFAULTS } from '../state.js';
 import { searchSpherex, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossatCone } from '../lib/tap.js';
 import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE } from '../lib/engine.js';
-import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd } from '../lib/render.js';
+import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA } from '../lib/render.js';
 import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
 import { formatRA, formatDec, propagate, mjdToYear, mjdToISO, separation, toGalactic } from '../lib/coords.js';
 import { presetById, suggestFor, describePosition } from '../targets.js';
 import { scatterChart, svgString } from '../ui/charts.js';
 import { pushRecent } from './home.js';
-import { saveCandidate, isWatched, toggleWatch } from './saved.js';
+import { saveCandidate, isWatched, toggleWatch, getQueue, clearQueue } from './saved.js';
 import { findMovers, findVariables, epochBrightness, questionable } from '../lib/discover.js';
+import { parse as parseExpr, evalScalar, evalImage, splitStatements } from '../lib/expr.js';
 
 export const title = 'Explore';
 
@@ -52,13 +53,13 @@ export async function render(root, route, { go }) {
     search: null, exposures: [], frames: new Map(), grid: null, display: null, frame: Math.min(req.t, 999),
     playing: false, timer: 0, blinkPhase: 0, loadId: 0, jobId: 0, bytes: 0, t0: 0, skipped: 0,
     view: { s: 1, tx: 0, ty: 0 }, hover: null, tool: null, ruler: null, selected: null,
-    cats: { gaia: null, wise: null, neossat: null }, movers: null, variables: null, clickSpec: null,
+    cats: { gaia: null, wise: null, neossat: null }, rawPixels: localStorage.getItem('skyshift.rawPixels') === '1', movers: null, variables: null, clickSpec: null,
   };
   const n = () => S.grid.n;
 
   // ------------------------------------------------------------------ DOM
   const name = req.target.name || `${formatRA(req.target.ra)} ${formatDec(req.target.dec)}`;
-  const imgCanvas = h('canvas', { class: 'pix', 'aria-hidden': 'true' });
+  const imgCanvas = h('canvas', { 'aria-hidden': 'true' });
   const ovCanvas = h('canvas', { 'aria-hidden': 'true' });
   const hud = h('div', { class: 'hud' });
   const readout = h('div', { class: 'readout', hidden: true });
@@ -78,12 +79,13 @@ export async function render(root, route, { go }) {
   const tabBody = h('div');
   const vside = h('aside', { class: 'vside' }, h('div', { class: 'card' }, tabsBar, tabBody));
 
-  const shareBtn = h('button', { class: 'btn small', type: 'button', onclick: () => shareDialog() }, icon('share'), 'Share / embed');
-  const watchBtn = h('button', { class: 'btn small hide-embed', type: 'button', onclick: () => { const on = toggleWatch(req); watchBtn.lastChild.textContent = on ? 'Saved' : 'Save'; toast({ title: on ? 'Field saved' : 'Removed from saved fields', text: on ? 'It works offline, and you will be told when new SPHEREx data covers it.' : '', glyph: '🔖', timeout: 3500 }); } }, icon('bookmark'), isWatched(req) ? 'Saved' : 'Save');
+  const shareBtn = h('button', { class: 'btn small', type: 'button', onclick: () => shareDialog(), 'aria-label': 'Share or embed' }, icon('share'), h('span', { class: 'lbl' }, 'Share / embed'));
+  const watchBtn = h('button', { class: 'btn small hide-embed', type: 'button', onclick: () => { const on = toggleWatch(req); watchBtn.querySelector('.lbl').textContent = on ? 'Saved' : 'Save'; toast({ title: on ? 'Field saved' : 'Removed from saved fields', text: on ? 'It works offline, and you will be told when new SPHEREx data covers it.' : '', glyph: '🔖', timeout: 3500 }); } 'aria-label': 'Save this field' }, icon('bookmark'), h('span', { class: 'lbl' }, isWatched(req) ? 'Saved' : 'Save'));
   const wiseLink = h('a', { class: 'btn small', target: '_blank', rel: 'noopener noreferrer', title: 'Compare with WISE/NEOWISE in WiseView (opens byw.tools)',
-    href: `${WISEVIEW}#ra=${req.target.ra.toFixed(6)}&dec=${req.target.dec.toFixed(6)}&size=${Math.round(Math.min(req.fov, 30) * 60 / 2.75)}&band=2&speed=${req.speed}&minbright=-50.0000&maxbright=500.0000&window=0.5&diff_window=1&linear=1&color=&zoom=9&border=0&gaia=0&invert=1` }, icon('video'), 'WiseView');
-  const skyLink = h('a', { class: 'btn small hide-embed', href: `#/sky?${toParams(req)}` }, icon('sky'), 'Sky atlas');
-  const explainBtn = h('button', { class: 'btn small', type: 'button', 'aria-expanded': 'false', onclick: () => { explainBox.hidden = !explainBox.hidden; explainBtn.setAttribute('aria-expanded', String(!explainBox.hidden)); explain(); } }, icon('help'), 'Explain this view');
+    href: `${WISEVIEW}#ra=${req.target.ra.toFixed(6)}&dec=${req.target.dec.toFixed(6)}&size=${Math.round(Math.min(req.fov, 30) * 60 / 2.75)}&band=2&speed=${req.speed}&minbright=-50.0000&maxbright=500.0000&window=0.5&diff_window=1&linear=1&color=&zoom=9&border=0&gaia=0&invert=1` 'aria-label': 'Open in WiseView' }, icon('video'), h('span', { class: 'lbl' }, 'WiseView'));
+  const skyLink = h('a', { class: 'btn small hide-embed', href: `#/sky?${toParams(req)}`, 'aria-label': 'Sky atlas' }, icon('sky'), h('span', { class: 'lbl' }, 'Sky atlas'));
+  const explainBtn = h('button', { class: 'btn small', type: 'button', 'aria-expanded': 'false', onclick: () => { explainBox.hidden = !explainBox.hidden; explainBtn.setAttribute('aria-expanded', String(!explainBox.hidden)); explain(); }, 'aria-label': 'Explain this view' }, icon('help'), h('span', { class: 'lbl' }, 'Explain this view'));
+  const dossierBtn = h('button', { class: 'btn small hide-embed', type: 'button', title: 'Generate a reproducible report with figures, tables and FITS cutouts', onclick: () => makeDossier(), 'aria-label': 'Generate dossier' }, icon('download'), h('span', { class: 'lbl' }, 'Dossier'));
   const tourBtn = h('button', { class: 'btn small ghost hide-embed', type: 'button', onclick: () => tour() }, 'Tour');
   const openFull = req.embed ? h('a', { class: 'btn small primary', href: location.href.replace(/([?&])embed=1&?/, '$1'), target: '_blank', rel: 'noopener' }, 'Open in SkyShift') : null;
 
@@ -93,11 +95,10 @@ export async function render(root, route, { go }) {
       h('div', { class: 'vhead' },
         h('div', {},
           h('h1', {}, name),
-          h('div', { class: 'tiny' }, `RA ${formatRA(req.target.ra)}  Dec ${formatDec(req.target.dec)}  ·  ${req.target.ra.toFixed(5)}°, ${req.target.dec.toFixed(5)}°  ·  l=${g.l.toFixed(2)}° b=${g.b.toFixed(2)}°  ·  ICRS`,
-            req.target.refEpoch ? `, epoch ${req.target.refEpoch}` : '')),
+          h('div', { class: 'tiny' }, `RA ${formatRA(req.target.ra)}  Dec ${formatDec(req.target.dec)}`, h('span', { class: 'lbl' }, `  ·  ${req.target.ra.toFixed(5)}°, ${req.target.dec.toFixed(5)}°  ·  l=${g.l.toFixed(2)}° b=${g.b.toFixed(2)}°  ·  ICRS${req.target.refEpoch ? `, epoch ${req.target.refEpoch}` : ''}`))),
         h('div', { class: 'spacer' }),
-        h('div', { class: 'row' }, explainBtn, shareBtn, watchBtn, skyLink, wiseLink, tourBtn, openFull)),
-      suggestionBox, explainBox,
+        h('div', { class: 'row' }, explainBtn, shareBtn, watchBtn, dossierBtn, skyLink, wiseLink, tourBtn, openFull)),
+      queueBar(), suggestionBox, explainBox,
       h('div', { class: 'stage-wrap' }, stage),
       h('div', { class: 'progress', 'aria-hidden': 'true' }, progressBar),
       h('div', { class: 'transport' },
@@ -111,10 +112,24 @@ export async function render(root, route, { go }) {
         h('button', { class: 'btn small', type: 'button', title: 'Zoom out (−)', 'aria-label': 'Zoom out', onclick: () => zoom(1 / 1.4) }, '−'),
         h('button', { class: 'btn small', type: 'button', title: 'Reset view (R)', onclick: () => { S.view = { s: 1, tx: 0, ty: 0 }; draw(); } }, 'Reset'),
         h('button', { class: 'btn small', type: 'button', 'aria-pressed': 'false', title: 'Ruler: drag to measure angular distance', onclick: (e) => { S.tool = S.tool === 'ruler' ? null : 'ruler'; e.currentTarget.setAttribute('aria-pressed', String(S.tool === 'ruler')); stage.style.cursor = S.tool ? 'crosshair' : ''; } }, icon('ruler'), 'Ruler'),
+        h('button', { class: 'btn small', type: 'button', 'aria-pressed': String(localStorage.getItem('skyshift.rawPixels') === '1'), title: 'Show the exact SPHEREx pixels (6.15″ squares) instead of the smooth view', onclick: (e) => { S.rawPixels = !S.rawPixels; localStorage.setItem('skyshift.rawPixels', S.rawPixels ? '1' : '0'); e.currentTarget.setAttribute('aria-pressed', String(S.rawPixels)); draw(); } }, 'Raw pixels'),
         h('button', { class: 'btn small', type: 'button', title: 'Download this frame as PNG', onclick: () => exportPNG() }, icon('download'), 'PNG'),
         h('button', { class: 'btn small', type: 'button', title: 'Record the animation as a video file', onclick: () => exportVideo() }, icon('video'), 'Video')),
       statusLine),
     vside));
+
+  function queueBar() {
+    const q = getQueue();
+    if (!q?.items?.length) return null;
+    const near = (hsh) => { const p = new URLSearchParams(hsh.split('?')[1] || ''); return Math.abs(Number(p.get('ra')) - req.target.ra) < 1e-5 && Math.abs(Number(p.get('dec')) - req.target.dec) < 1e-5; };
+    const i = q.items.findIndex((it) => near(it.hash));
+    if (i < 0) return null;
+    return h('div', { class: 'suggestion', style: { marginBottom: '10px' } }, h('span', { 'aria-hidden': 'true' }, '🗂'),
+      h('span', { style: { flex: 1 } }, `Queue: field ${i + 1} of ${q.items.length}${q.items[i].name ? ` — ${q.items[i].name}` : ''}`),
+      h('button', { class: 'btn small', disabled: i === 0, onclick: () => go(q.items[i - 1].hash) }, 'Previous'),
+      h('button', { class: 'btn small primary', disabled: i === q.items.length - 1, onclick: () => go(q.items[i + 1].hash) }, 'Next field'),
+      h('button', { class: 'btn small ghost', onclick: (e) => { clearQueue(); e.currentTarget.parentElement.remove(); } }, 'End queue'));
+  }
 
   // ------------------------------------------------------------------ URL sync
   function commit(patch, { reload = false, push = false } = {}) {
@@ -124,6 +139,7 @@ export async function render(root, route, { go }) {
     if (push) { go(hash); return; }
     req = nextReq;
     history.replaceState(history.state, '', hash);
+    renderModes();
     if (reload || loadKey() !== prevKey) load();
     else { rebuild(); renderSide(); }
   }
@@ -136,9 +152,10 @@ export async function render(root, route, { go }) {
     diff: ['Difference', 'Subtract a reference epoch: movers show as black/white pairs, changing objects as spots'],
     stack: ['Stack', 'Add epochs together to reveal faint objects'],
     color: ['Colour', 'False colour: blue = 0.75–1.6 µm (D1–D2), green = 1.6–3.8 µm (D3–D4), red = 3.8–5 µm (D5–D6)'],
+    expr: ['Equation', 'Your own image arithmetic, e.g. (D5 + D6)/2 − epoch(1)'],
   };
   function renderModes() {
-    modeSeg.replaceChildren(...MODES.map((m, i) => h('button', { type: 'button', 'aria-pressed': String(req.mode === m), title: `${MODE_INFO[m][1]} (key ${i + 1})`, onclick: () => commit({ mode: m }) }, MODE_INFO[m][0])));
+    modeSeg.replaceChildren(...MODES.filter((m) => m !== 'expr' || req.expr).map((m, i) => h('button', { type: 'button', 'aria-pressed': String(req.mode === m), title: `${MODE_INFO[m][1]} (key ${i + 1})`, onclick: () => commit({ mode: m }) }, MODE_INFO[m][0])));
   }
 
   // ------------------------------------------------------------------ loading
@@ -225,7 +242,7 @@ export async function render(root, route, { go }) {
         if (!S.frames.size) { loading.hidden = false; loading.querySelector('.boot-orbit').hidden = true; setLoad('None of the images could be read. The archive may be busy; please retry.', 0); }
       }
     };
-    w.postMessage({ type: 'frames', id: job, items: todo, grid: S.grid, opts: { withFlags: flagMode(), track: req.track ? pm : null, photTrack: pm, concurrency: 6 } });
+    w.postMessage({ type: 'frames', id: job, items: todo, grid: S.grid, opts: { withFlags: flagMode(), track: req.track ? pm : null, photTrack: pm, concurrency: 12 } });
     renderSide();
   }
   const flagMode = () => (req.ov.includes('flags') ? 'field' : 'target');
@@ -263,12 +280,28 @@ export async function render(root, route, { go }) {
   // ------------------------------------------------------------------ display building
   function selectedFrames() {
     const list = [];
+    let whereAst = null;
+    S.whereError = null;
+    if (req.where) { try { whereAst = parseExpr(req.where); } catch (e) { S.whereError = e.message; } }
     for (const f of S.frames.values()) {
       if (!req.dets.includes(f.meta.detector)) continue;
       if (req.wl && f.meta.wavelength != null && (f.meta.wavelength < req.wl[0] || f.meta.wavelength > req.wl[1])) continue;
+      if (whereAst) {
+        try { if (!evalScalar(whereAst, exposureEnv(f))) continue; } catch (e) { S.whereError = e.message; whereAst = null; }
+      }
       list.push(f);
     }
     return list;
+  }
+  /** Names usable in "where" selections. */
+  function exposureEnv(f) {
+    const p = f.phot;
+    return {
+      t: f.meta.mjd, mjd: f.meta.mjd, year: mjdToYear(f.meta.mjd), wl: f.meta.wavelength ?? NaN, det: f.meta.detector,
+      release: String(f.meta.release || '').toLowerCase(), qa: f.meta.header?.L2DQAFLG || '',
+      flag: p ? p.flags & BAD_MASK : 0, bad: p && p.nap ? p.nbad / p.nap : 0, saturated: f.meta.saturated ? 1 : 0,
+      flux: p ? p.flux : NaN, snr: p && p.err ? p.flux / p.err : NaN,
+    };
   }
 
   function rebuild() {
@@ -279,6 +312,35 @@ export async function render(root, route, { go }) {
     const frames = [];
     if (!groups.length) { S.display = { frames: [], groups: [], lims: [0, 1] }; draw(); updateTimeline(); return; }
     const dmaps = groups.map((gr) => perDetector(gr, N));
+    if (req.mode === 'expr' && req.expr) {
+      S.exprError = null;
+      let ast = null;
+      try { ast = parseExpr(req.expr); } catch (e) { S.exprError = e.message; }
+      const exprFrames = [];
+      if (ast) {
+        for (let i = 0; i < groups.length; i++) {
+          try {
+            const r = evalImage(ast, {
+              n: N, vars: { pi: Math.PI },
+              D: (d) => dmaps[i].get(d) || null,
+              epoch: (k) => (k >= 1 && k <= groups.length ? detectorBalanced(dmaps[k - 1], N) : null),
+              wl: (a, b) => { const sel = groups[i].filter((e) => e.meta.wavelength >= Math.min(a, b) && e.meta.wavelength <= Math.max(a, b)); return sel.length ? coadd(sel, N) : null; },
+              all: () => detectorBalanced(dmaps[i], N),
+            });
+            exprFrames.push({ data: r.data, group: groups[i], note: `= ${req.expr}${r.missing ? ` (no data for ${r.missing} in this epoch)` : ''}` });
+          } catch (e) { S.exprError = e.message; break; }
+        }
+      }
+      if (exprFrames.length) {
+        const vals = []; for (const f of exprFrames) for (let k = 0; k < f.data.length; k += 7) if (Number.isFinite(f.data[k])) vals.push(f.data[k]);
+        vals.sort((a, b) => a - b);
+        const signed = vals.length && vals[Math.floor(vals.length * 0.02)] < -0.25 * Math.abs(vals[Math.floor(vals.length * 0.98)]);
+        S.display = { frames: exprFrames, groups, lims: limits(exprFrames.map((f) => f.data), req.lo, req.hi, signed), kind: signed ? 'diff' : 'mono', dmaps };
+        if (S.frame >= exprFrames.length) S.frame = exprFrames.length - 1;
+        updateTimeline(); draw();
+        return;
+      }
+    }
     if (req.mode === 'color') {
       for (let i = 0; i < groups.length; i++) {
         frames.push({ rgb: [detectorBalanced(dmaps[i], N, [5, 6]), detectorBalanced(dmaps[i], N, [3, 4]), detectorBalanced(dmaps[i], N, [1, 2])], group: groups[i] });
@@ -340,19 +402,30 @@ export async function render(root, route, { go }) {
     const D = S.display, i = currentIndex();
     if (!D || i < 0) { drawOverlay(); updateHud(); return; }
     const N = n();
-    if (off.width !== N) { off.width = N; off.height = N; }
     const octx = off.getContext('2d');
-    const im = octx.createImageData(N, N);
+    const im = new ImageData(N, N);
     const fr = D.frames[i];
     if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch });
     else if (D.kind === 'diff') paintDiff(fr.data, im.data, D.lims, { invert: req.invert });
     else paint(fr.data, im.data, D.lims, { stretch: req.stretch, cmap: req.cmap, invert: req.invert });
     if (req.ov.includes('flags')) tintFlags(fr.group, im.data, N);
-    octx.putImageData(im, 0, 0);
     const k = W / N;
-    ctx.imageSmoothingEnabled = false;
-    ctx.setTransform(k * S.view.s, 0, 0, k * S.view.s, S.view.tx * W, S.view.ty * W);
-    ctx.drawImage(off, 0, 0);
+    if (S.rawPixels) {
+      if (off.width !== N) { off.width = N; off.height = N; }
+      octx.putImageData(im, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.setTransform(k * S.view.s, 0, 0, k * S.view.s, S.view.tx * W, S.view.ty * W);
+      ctx.drawImage(off, 0, 0);
+    } else {
+      // natural look: bicubic upsampling for display only (measurements use original pixels)
+      const f = Math.max(1, Math.min(4, Math.round(Math.min(720, W * S.view.s) / N)));
+      const up = upsampleRGBA(im.data, N, f);
+      if (off.width !== up.size) { off.width = up.size; off.height = up.size; }
+      octx.putImageData(new ImageData(up.data, up.size, up.size), 0, 0);
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.setTransform((k * S.view.s) / f, 0, 0, (k * S.view.s) / f, S.view.tx * W, S.view.ty * W);
+      ctx.drawImage(off, 0, 0);
+    }
     drawOverlay();
     updateHud();
     updateLabel();
@@ -635,7 +708,7 @@ export async function render(root, route, { go }) {
     if (k === ' ') { e.preventDefault(); S.playing ? stopPlay() : play(); }
     else if (k === 'ArrowRight') { e.preventDefault(); step(1); }
     else if (k === 'ArrowLeft') { e.preventDefault(); step(-1); }
-    else if (/^[1-5]$/.test(k)) commit({ mode: MODES[Number(k) - 1] });
+    else if (/^[1-6]$/.test(k) && (MODES[Number(k) - 1] !== 'expr' || req.expr)) commit({ mode: MODES[Number(k) - 1] });
     else if (k === 'f') toggleOv('flags');
     else if (k === 'g') toggleOv('gaia');
     else if (k === 'w') toggleOv('wise');
@@ -716,6 +789,7 @@ export async function render(root, route, { go }) {
       req.mode === 'diff' ? h('label', { class: 'field' }, 'Subtract', segment([['mean', 'Mean of others'], ['first', 'First epoch'], ['prev', 'Previous']], req.diff, (v) => commit({ diff: v }))) : null,
       req.mode === 'blink' && S.display?.frames.length > 1 ? h('div', { class: 'row' },
         h('label', { class: 'field' }, 'Blink A', blinkSel(0)), h('label', { class: 'field' }, 'Blink B', blinkSel(1))) : null,
+      equationPanel(),
       h('label', { class: 'field' }, `Field of view — larger fields catch faster movers but transfer more data (${nSel} exposures, ≈${fmtBytes(perExp)} each)`, fovSel),
       h('label', { class: 'field' }, 'Stretch', segment([['asinh', 'Asinh'], ['log', 'Log'], ['sqrt', 'Sqrt'], ['linear', 'Linear']], req.stretch, (v) => commit({ stretch: v }))),
       h('div', { class: 'row' },
@@ -732,6 +806,34 @@ export async function render(root, route, { go }) {
         `Follow the target’s motion (${(Math.hypot(req.target.pmra, req.target.pmdec) / 1000).toFixed(2)}″/yr)`) : null,
     );
   }
+  function equationPanel() {
+    const ta = h('textarea', { 'aria-label': 'Equations and selections', rows: 3, placeholder: '(D5 + D6)/2 - epoch(1)\nwhere t > 2025-06-01 and flag == 0' },
+      [req.expr, req.where ? `where ${req.where}` : ''].filter(Boolean).join('\n'));
+    const msg = h('div', { class: 'tiny', 'aria-live': 'polite' });
+    if (S.exprError || S.whereError) msg.append(h('div', { class: 'notice bad' }, S.exprError || S.whereError));
+    const apply = () => {
+      const st = splitStatements(ta.value);
+      if (st.errors.length) { msg.replaceChildren(...st.errors.map((e) => h('pre', { class: 'notice bad mono', style: { whiteSpace: 'pre-wrap', margin: '4px 0' } }, `${e.message}\n${e.pointer}`))); return; }
+      const patch = { expr: st.image || '', where: st.where || '', mode: st.image ? 'expr' : (req.mode === 'expr' ? 'movie' : req.mode) };
+      const a = st.assign;
+      if (a.pmra != null || a.pmdec != null || a.epoch != null) patch.target = { ...req.target, pmra: a.pmra ?? req.target.pmra ?? 0, pmdec: a.pmdec ?? req.target.pmdec ?? 0, refEpoch: a.epoch ?? req.target.refEpoch ?? 2016 };
+      if (a.fov != null) patch.fov = a.fov;
+      if (a.speed != null) patch.speed = a.speed;
+      commit(patch, { reload: patch.target != null || patch.fov != null });
+      renderModes();
+    };
+    return h('details', { class: 'panel', open: !!(req.expr || req.where) },
+      h('summary', {}, 'Equations & selections'),
+      h('div', { class: 'body' },
+        h('p', { class: 'tiny' }, 'Image maths per frame: D1–D6 (that epoch’s co-add of an array), frame (all selected arrays), epoch(k) (co-add of epoch k), wl(a,b) (exposures between a and b µm), numbers, + − × ÷ ^, abs, sqrt, log10, min, max, mean, clip. Selections start with “where” and can use t (date or MJD), year, wl, det, release, qa, flag, bad, saturated, flux, snr. Motion: pmra = …; pmdec = …; epoch = … . Nothing is executed as code.'),
+        ta,
+        h('div', { class: 'row' }, h('button', { class: 'btn small primary', onclick: apply }, 'Apply'),
+          [['Long minus short', 'mean(D5, D6) - mean(D1, D2)'], ['Latest minus first', 'frame - epoch(1)'], ['Clean only', 'where flag == 0 and saturated == 0'], ['3–4 µm', 'wl(3, 4)']].map(([l, ex]) =>
+            h('button', { class: 'btn small ghost', onclick: () => { ta.value = ex; apply(); } }, l)),
+          req.expr || req.where ? h('button', { class: 'btn small ghost', onclick: () => commit({ expr: '', where: '', mode: req.mode === 'expr' ? 'movie' : req.mode }) || renderModes() }, 'Clear') : null),
+        msg));
+  }
+
   function setWl(a, b) {
     const cur = req.wl || [0.75, 5.0];
     const lo = a != null ? Number(a) : cur[0], hi = b != null ? Number(b) : cur[1];
@@ -770,7 +872,7 @@ export async function render(root, route, { go }) {
     const blend = blendInfo();
     tabBody.append(
       h('p', { class: 'tiny' }, usingClick ? `Spectrum at ${formatRA(S.clickSpec.ra)} ${formatDec(S.clickSpec.dec)} (clicked position).` : `Spectrum of the target at its predicted position in every loaded exposure. Each exposure samples a different wavelength, so together they form a ${pts.length}-point spectrum.`,
-        ' Hollow points are questionable: saturated core, or more than 20% of the aperture masked by contamination flags. Aperture 2.5 px (15″) radius, background from a 6–10 px annulus.'),
+        ' Hollow points are questionable: saturated core, or more than 20% of the aperture masked by contamination flags. Aperture 2.5 px (15″) radius, background from a 5–8 px annulus.'),
       blend ? h('div', { class: 'notice warn' }, blend) : null,
       host,
       h('div', { class: 'row' },
@@ -784,7 +886,10 @@ export async function render(root, route, { go }) {
           h('ul', {}, LINES.map((l) => h('li', {}, h('b', {}, l.label), ' — ', l.title, ' ', h('button', { class: 'btn small ghost', onclick: () => commit({ wl: [+(l.x - 0.05).toFixed(3), +(l.x + 0.05).toFixed(3)], dets: DETECTORS.filter((d) => d.range[1] >= l.x - 0.05 && d.range[0] <= l.x + 0.05).map((d) => d.id) }, { reload: true }) }, 'Image this band')))),
           h('p', {}, 'Exact wavelengths for water, CO₂ and CO ice bands were not found in the approved sources read for this version, so they are not marked (see docs/DATA_SOURCES.md). Cold brown dwarfs are faint at short wavelengths and brightest near 4–5 µm because molecules in their atmospheres absorb light at other wavelengths.'))),
     );
-    scatterChart(host, {
+    scatterChart(host, specCfg(pts, ep, nEp));
+  }
+  function specCfg(pts, ep = epochIndex(pts), nEp = new Set(ep.values()).size) {
+    return {
       title: 'Spectrum', xLabel: 'Wavelength (µm)', yLabel: 'Flux density (µJy)',
       empty: S.frames.size ? 'No valid measurements (target saturated, outside the images or masked)' : 'Spectrum appears as exposures load…',
       points: pts.map((p) => ({ x: p.wavelength, y: p.flux, err: p.err, color: EPOCH_COLORS[(ep.get(p.mjd) || 0) % EPOCH_COLORS.length], hollow: questionable(p),
@@ -794,8 +899,55 @@ export async function render(root, route, { go }) {
       xRange: [0.72, 5.03],
       legend: [...new Set(ep.values())].sort().map((e) => ({ color: EPOCH_COLORS[e % EPOCH_COLORS.length], label: `Survey pass ${e + 1}` })).concat(nEp ? [{ color: '#aaa', label: 'flagged', hollow: true }] : []),
       onPoint: (pt) => focusExposure(pt.ref.uri),
-    });
+    };
   }
+  function lcCfg(ptsR, rel) {
+    return {
+      title: 'Light curve', xLabel: 'Date (year)', yLabel: rel ? 'Relative brightness' : 'Flux density (µJy)',
+      xFormat: (v) => v.toFixed(2),
+      empty: 'Light curve appears as exposures load…',
+      points: ptsR.map((p) => ({ x: mjdToYear(p.mjd), y: rel ? p.rel : p.flux, err: rel ? p.relErr : p.err, color: getComputedStyle(document.documentElement).getPropertyValue(`--d${p.det}`).trim() || '#ccc', hollow: questionable(p),
+        tip: `${mjdToISO(p.mjd)} (MJD ${p.mjd.toFixed(3)})\nD${p.det} λ ${p.wavelength.toFixed(3)} µm\n${p.flux.toFixed(0)} ± ${p.err.toFixed(0)} µJy${rel ? `\nrelative ${p.rel.toFixed(3)}` : ''}`, ref: p })),
+      legend: DETECTORS.filter((d) => ptsR.some((p) => p.det === d.id)).map((d) => ({ color: getComputedStyle(document.documentElement).getPropertyValue(`--d${d.id}`).trim(), label: `D${d.id}` })),
+      onPoint: (pt) => focusExposure(pt.ref.uri),
+    };
+  }
+
+  async function makeDossier() {
+    if (!S.display?.frames.length) { toast({ title: 'Nothing to put in a dossier yet', text: 'Wait for at least one epoch to load.', glyph: '📄', timeout: 3000 }); return; }
+    const t = toast({ title: 'Building the dossier…', text: 'Figures, tables and FITS cutouts are made on this device.', glyph: '📄', timeout: 0 });
+    try {
+      const { buildDossier, zip } = await import('../lib/dossier.js');
+      const pts = photPoints();
+      const tmp = h('div');
+      scatterChart(tmp, specCfg(pts)); const specSvg = pts.length ? svgString(tmp.querySelector('svg')) : null;
+      const eb = epochBrightness(pts);
+      scatterChart(tmp, lcCfg(eb.points, true)); const lcSvg = pts.length ? svgString(tmp.querySelector('svg')) : null;
+      let version = 'dev';
+      try { version = (await (await fetch('./version.json', { cache: 'no-cache' })).json()).version; } catch { /* offline */ }
+      const cands = (JSON.parse(localStorage.getItem('skyshift.candidates') || '[]')).filter((c) => separation(c.ra, c.dec, req.target.ra, req.target.dec) * 60 < req.fov);
+      const d = await buildDossier({ req, grid: S.grid, display: S.display, frames: selectedFrames(), phot: pts, cats: S.cats, movers: S.movers, variables: S.variables,
+        version, specSvg, lcSvg, inputs: { url: location.href, source: req.target.source || 'unknown' }, candidates: cands });
+      t();
+      const stem = `skyshift-dossier-${fileStem()}-${d.id}`;
+      const openHtml = () => { const w = window.open(URL.createObjectURL(new Blob([d.html], { type: 'text/html' })), '_blank', 'noopener'); if (!w) download(`${stem}.html`, d.html, 'text/html'); };
+      const close = sheet(h('div', { class: 'grid' },
+        h('h2', {}, 'Dossier ready'),
+        h('p', { class: 'muted' }, `ID ${d.id} — the same request on the same data release gives the same ID; any change gives a new one.`),
+        h('ul', { class: 'tiny' }, d.checks.map(([txt, ok]) => h('li', { style: { color: ok ? 'var(--good)' : 'var(--bad)' } }, `${ok ? '✔' : '✘'} ${txt}`))),
+        h('div', { class: 'row' },
+          h('button', { class: 'btn primary', onclick: openHtml }, 'Open (print to PDF, A4 or Letter)'),
+          h('button', { class: 'btn', onclick: () => download(`${stem}.html`, d.html, 'text/html') }, icon('download'), 'HTML'),
+          h('button', { class: 'btn', onclick: async () => download(`${stem}.zip`, await zip(d.files)) }, icon('download'), `ZIP (${d.files.length} files)`)),
+        h('p', { class: 'tiny' }, 'The ZIP holds the HTML, figures (PNG, SVG, animated PNG), photometry and exposure tables (CSV, VOTable), FITS cutouts of every epoch and the difference image, and request.json.'),
+        h('button', { class: 'btn ghost', onclick: () => close() }, 'Close')), { label: 'Dossier' });
+      await (await import('../lib/store.js')).cache.set(`dossier:${d.id}`, { id: d.id, name: d.name, html: d.html, created: Date.now() });
+    } catch (e) {
+      t(); console.error(e);
+      toast({ title: 'The dossier could not be built', text: String(e.message || e), glyph: '⚠', timeout: 6000 });
+    }
+  }
+
   function blendInfo() {
     const gaia = S.cats.gaia?.rows;
     if (!gaia?.length) return null;
@@ -829,15 +981,7 @@ export async function render(root, route, { go }) {
       h('div', { class: 'row' }, h('button', { class: 'btn small', onclick: () => enlarge(host, 'Light curve') }, 'Enlarge'),
         h('button', { class: 'btn small', onclick: () => download(`skyshift-lightcurve-${fileStem()}.csv`, photCSV(pts), 'text/csv') }, icon('download'), 'CSV')),
     );
-    scatterChart(host, {
-      title: 'Light curve', xLabel: 'Date (year)', yLabel: rel ? 'Relative brightness' : 'Flux density (µJy)',
-      xFormat: (v) => v.toFixed(2),
-      empty: 'Light curve appears as exposures load…',
-      points: ptsR.map((p) => ({ x: mjdToYear(p.mjd), y: rel ? p.rel : p.flux, err: rel ? p.relErr : p.err, color: getComputedStyle(document.documentElement).getPropertyValue(`--d${p.det}`).trim() || '#ccc', hollow: questionable(p),
-        tip: `${mjdToISO(p.mjd)} (MJD ${p.mjd.toFixed(3)})\nD${p.det} λ ${p.wavelength.toFixed(3)} µm\n${p.flux.toFixed(0)} ± ${p.err.toFixed(0)} µJy${rel ? `\nrelative ${p.rel.toFixed(3)}` : ''}`, ref: p })),
-      legend: DETECTORS.filter((d) => ptsR.some((p) => p.det === d.id)).map((d) => ({ color: getComputedStyle(document.documentElement).getPropertyValue(`--d${d.id}`).trim(), label: `D${d.id}` })),
-      onPoint: (pt) => focusExposure(pt.ref.uri),
-    });
+    scatterChart(host, lcCfg(ptsR, rel));
   }
 
   function enlarge(host, label) {
@@ -1013,7 +1157,7 @@ export async function render(root, route, { go }) {
       `${D?.frames.length || 0} frames of ${req.fov}′ × ${req.fov}′ of sky centred on ${name}, north up and east left. `,
       req.group === 'survey' ? 'Each frame adds together every exposure from one six-month pass of the sky (SPHEREx maps the whole sky twice a year). ' : req.group === 'day' ? 'Each frame adds the exposures taken within one day. ' : 'Each frame is a single SPHEREx exposure at one wavelength. ',
       `Detectors used: ${dets}. `,
-      { movie: 'Play it: things that move between passes, like nearby stars, brown dwarfs and asteroids, shift position. ', blink: 'Two epochs flip back and forth; a moving object jumps while everything else stays still — the method used to discover Pluto. ', diff: 'A reference epoch is subtracted using the same detector arrays: still stars cancel to grey, a moving object leaves a dark/bright pair, and a brightening object leaves a bright spot. ', stack: 'Epochs are added cumulatively, so the noise drops and faint objects appear as more data are stacked. ', color: 'Short wavelengths are blue, middle green, long red: very cold objects such as brown dwarfs look red, hot stars blue. ' }[req.mode],
+      { expr: `Each frame is your equation “${req.expr}” evaluated on that epoch’s images. `, movie: 'Play it: things that move between passes, like nearby stars, brown dwarfs and asteroids, shift position. ', blink: 'Two epochs flip back and forth; a moving object jumps while everything else stays still — the method used to discover Pluto. ', diff: 'A reference epoch is subtracted using the same detector arrays: still stars cancel to grey, a moving object leaves a dark/bright pair, and a brightening object leaves a bright spot. ', stack: 'Epochs are added cumulatively, so the noise drops and faint objects appear as more data are stacked. ', color: 'Short wavelengths are blue, middle green, long red: very cold objects such as brown dwarfs look red, hot stars blue. ' }[req.mode],
       `Brightness uses one ${req.stretch} stretch shared by all frames, so brightness changes are honest. `,
       req.track ? 'Frames are shifted along the target’s proper motion, so the target stays still and background stars drift. ' : '',
       'The yellow crosshair marks the target; the dashed line is its predicted track from its proper motion.');

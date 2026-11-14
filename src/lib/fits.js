@@ -62,7 +62,34 @@ export function dataSize(h) {
   return Math.ceil(bytes / BLOCK) * BLOCK;
 }
 
-/** Byte-range fetcher with retry, abort support and transfer accounting. */
+// The public IRSA SPHEREx bucket answers on several CORS-enabled hostnames. Rotating small
+// range requests across them multiplies the browser's per-host connection limit.
+export const S3_HOSTS = [
+  'https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/',
+  'https://nasa-irsa-spherex.s3.amazonaws.com/',
+  'https://s3.us-east-1.amazonaws.com/nasa-irsa-spherex/',
+  'https://s3.amazonaws.com/nasa-irsa-spherex/',
+  'https://nasa-irsa-spherex.s3.dualstack.us-east-1.amazonaws.com/',
+  'https://nasa-irsa-spherex.s3-external-1.amazonaws.com/',
+  'https://s3-external-1.amazonaws.com/nasa-irsa-spherex/',
+  'https://s3.dualstack.us-east-1.amazonaws.com/nasa-irsa-spherex/',
+];
+let hostRR = 0;
+function viaHost(url, shift) {
+  const base = S3_HOSTS[0];
+  if (!url.startsWith(base)) return url;
+  return S3_HOSTS[(hostRR++ + shift) % S3_HOSTS.length] + url.slice(base.length);
+}
+// global limiter: 8 hosts x 6 HTTP/1.1 connections
+const POOL = { max: 48, active: 0, q: [] };
+function pooled(fn) {
+  return new Promise((res, rej) => {
+    const run = () => { POOL.active++; fn().then(res, rej).finally(() => { POOL.active--; const n = POOL.q.shift(); if (n) n(); }); };
+    if (POOL.active < POOL.max) run(); else POOL.q.push(run);
+  });
+}
+
+/** Byte-range fetcher with host rotation, stall timeout, retry, abort support and transfer accounting. */
 export class RangeSource {
   constructor(url, { fetchImpl, onBytes = () => {}, signal } = {}) {
     // keep fetch unbound from this object (browsers throw "Illegal invocation" otherwise)
@@ -77,9 +104,27 @@ export class RangeSource {
   async tail(n) { return this._req(`bytes=-${n}`); }
   async _req(range) {
     let lastErr;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 4; attempt++) {
       try {
-        const res = await this.fetch(this.url, { headers: { Range: range }, signal: this.signal, cache: 'no-store' });
+        return await pooled(() => this._once(range, attempt));
+      } catch (e) {
+        if (e.name === 'AbortError' && this.signal?.aborted) throw e;
+        lastErr = e;
+        await new Promise((r) => setTimeout(r, 150 * (attempt + 1) ** 2));
+      }
+    }
+    throw lastErr;
+  }
+  async _once(range, attempt) {
+    // a stalled request is abandoned after 10 s and retried on another hostname
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 10000);
+    const onAbort = () => ctl.abort();
+    this.signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      {
+        // no-store: the HTTP cache's per-URL lock would serialise parallel ranges (results are cached in IndexedDB)
+        const res = await this.fetch(viaHost(this.url, attempt), { headers: { Range: range }, signal: ctl.signal, cache: 'no-store', mode: 'cors' });
         if (res.status !== 206 && res.status !== 200) throw new Error(`HTTP ${res.status} for ${range}`);
         const cr = res.headers.get('content-range');
         if (cr) { const m = cr.match(/\/(\d+)$/); if (m) this.size = Number(m[1]); }
@@ -91,13 +136,11 @@ export class RangeSource {
           return buf.subarray(a, Number.isFinite(b) ? b + 1 : undefined);
         }
         return buf;
-      } catch (e) {
-        if (e.name === 'AbortError') throw e;
-        lastErr = e;
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1) ** 2));
       }
+    } finally {
+      clearTimeout(timer);
+      this.signal?.removeEventListener('abort', onAbort);
     }
-    throw lastErr;
   }
 }
 

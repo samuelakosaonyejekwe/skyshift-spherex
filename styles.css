@@ -174,22 +174,28 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .preset b { display: block; font-size: 1.02rem; margin-bottom: 3px; }
 .preset small { display: block; color: var(--text-2); font-size: .82rem; }
 .preset .meta { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
-.hero-art { position: relative; aspect-ratio: 1; max-width: 460px; justify-self: center; width: 100%; }
-.hero-art canvas { width: 100%; height: 100%; border-radius: 50%; box-shadow: 0 0 80px #4b3fd055, inset 0 0 0 1px #ffffff22; }
+.hero-art { margin: 0; width: 100%; justify-self: center; }
+.hero-sky { display: block; border-radius: 50%; overflow: hidden; aspect-ratio: 2 / 1; background: radial-gradient(closest-side, #12183f, transparent); }
+.hero-sky img { display: block; width: 100%; height: auto; transition: transform .6s ease; }
+.hero-sky:hover img { transform: scale(1.03); }
+.hero-cap { margin-top: 8px; text-align: center; }
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 22px 0; }
 .step { display: flex; gap: 12px; align-items: flex-start; }
 .step .n { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: linear-gradient(135deg, #6c5cff, #2f8ee8); }
 .typed { margin-top: 18px; }
 .understood { margin-top: 10px; display: grid; gap: 8px; }
 .understood ul { margin: 0; padding-left: 18px; }
-@media (max-width: 860px) { .hero { grid-template-columns: 1fr; } .hero-art { max-width: 300px; order: -1; } }
+@media (max-width: 860px) { .hero { grid-template-columns: 1fr; } .hero-art { order: -1; } }
 
 /* ---------- viewer ---------- */
 .viewer { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
+.vside { max-height: calc(100dvh - var(--top) - 24px); overflow: auto; position: sticky; top: calc(var(--top) + 12px); }
+@media (max-width: 1100px) { .vside { max-height: none; position: static; } }
 .vhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-.vhead h1 { font-size: clamp(1.25rem, 2.6vw, 1.8rem); margin: 0; }
-.stage-wrap { position: relative; }
-.stage { position: relative; width: 100%; aspect-ratio: 1; background: #05061a; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line-2); touch-action: none; user-select: none; -webkit-user-select: none; }
+.vhead h1 { font-size: clamp(1.15rem, 2.2vw, 1.5rem); margin: 0; }
+.stage-wrap { position: relative; display: flex; justify-content: center; }
+/* the square image always fits the visible screen height (laptops, tablets, phones in any orientation) */
+.stage { position: relative; width: min(100%, max(260px, calc(100dvh - var(--top) - 270px))); aspect-ratio: 1; background: #05061a; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line-2); touch-action: none; user-select: none; -webkit-user-select: none; }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .stage canvas.pix { image-rendering: pixelated; image-rendering: crisp-edges; }
 .stage canvas.smooth { image-rendering: auto; }
@@ -303,3 +309,16 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
 @media (forced-colors: active) { .btn, .arrow, .det { border: 1px solid CanvasText; } }
+
+.dropzone { display: grid; place-items: center; gap: 6px; text-align: center; padding: 22px 16px; border: 2px dashed #8b7bff77; border-radius: var(--radius); background: #8b7bff0d; cursor: pointer; transition: background .15s, border-color .15s; }
+.dropzone svg { width: 28px; height: 28px; fill: none; stroke: var(--accent-2); stroke-width: 2; }
+.dropzone:hover, .dropzone.over { background: #8b7bff22; border-color: var(--accent-2); }
+
+@media (max-width: 600px) {
+  .vhead .btn .lbl, .vhead .tiny .lbl { display: none; }
+  .vhead .btn { min-width: 40px; padding: 6px 9px; }
+  .vhead h1 { font-size: 1.1rem; }
+  .suggestion { font-size: .82rem; padding: 8px 10px; }
+  main { padding-top: 10px; }
+  .stage { width: min(100%, max(240px, calc(100dvh - var(--top) - 200px))); }
+}

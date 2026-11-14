@@ -93,7 +93,7 @@ export function scatterChart(host, cfg) {
   for (const p of pts) {
     const cx = X(p.x), cy = Y(p.y);
     if (p.err) el('line', { x1: cx, x2: cx, y1: Y(p.y - p.err), y2: Y(p.y + p.err), stroke: p.color, 'stroke-width': 1.2, opacity: 0.7 }, pg);
-    const c = el('circle', { cx, cy, r: 4.2, fill: p.hollow ? 'var(--bg-2)' : p.color, stroke: p.color, 'stroke-width': 1.6, tabindex: 0, class: 'chart-pt' }, pg);
+    const c = el('circle', { cx, cy, r: 4.2, fill: p.hollow ? '#11153a' : p.color, stroke: p.color, 'stroke-width': 1.6, tabindex: 0, class: 'chart-pt' }, pg);
     const show = () => {
       tip.textContent = p.tip; tip.hidden = false;
       const hb = host.getBoundingClientRect(), sb = svg.getBoundingClientRect();

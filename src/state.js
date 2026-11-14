@@ -2,7 +2,7 @@
 // WiseView-style parameters) and typed text all compile to this object, and every
 // downstream component reads only this object.
 
-import { parsePosition, parseAngle } from './lib/coords.js';
+import { parsePosition, parseAngle, wrap360 } from './lib/coords.js';
 
 export const SCHEMA_VERSION = 1;
 
@@ -22,9 +22,11 @@ export const DEFAULTS = Object.freeze({
   ov: ['track', 'compass'], // overlays: gaia, wise, flags, track, compass, grid
   t: 0,
   embed: false,
+  expr: '', // image arithmetic, e.g. (D5 + D6)/2 - epoch(1)
+  where: '', // exposure selection, e.g. t > 2025-06-01 and flag == 0
 });
 
-export const MODES = ['movie', 'blink', 'diff', 'stack', 'color'];
+export const MODES = ['movie', 'blink', 'diff', 'stack', 'color', 'expr'];
 export const GROUPS = ['exposure', 'day', 'survey'];
 export const STRETCHES = ['asinh', 'linear', 'log', 'sqrt'];
 export const CMAPS = ['gray', 'heat', 'ice', 'viridis'];
@@ -40,7 +42,7 @@ export function normalise(partial = {}) {
   if (r.target) {
     const t = r.target;
     if (!Number.isFinite(t.ra) || !Number.isFinite(t.dec) || t.dec < -90 || t.dec > 90) r.target = null;
-    else r.target = { ...t, ra: ((t.ra % 360) + 360) % 360 };
+    else r.target = { ...t, ra: wrap360(t.ra) };
   }
   r.fov = clamp(Number(r.fov) || DEFAULTS.fov, 1, 60);
   r.dets = [...new Set((r.dets || []).map(Number).filter((d) => d >= 1 && d <= 6))].sort();
@@ -58,6 +60,9 @@ export function normalise(partial = {}) {
   r.t = Math.max(0, Math.floor(Number(r.t) || 0));
   if (r.blink && !(Array.isArray(r.blink) && r.blink.length === 2 && r.blink.every((x) => Number.isInteger(x) && x >= 0))) r.blink = null;
   r.invert = !!r.invert; r.track = !!r.track; r.embed = !!r.embed;
+  r.expr = String(r.expr || '').slice(0, 500);
+  r.where = String(r.where || '').slice(0, 500);
+  if (r.mode === 'expr' && !r.expr) r.mode = 'movie';
   return r;
 }
 
@@ -105,6 +110,8 @@ export function fromParams(params) {
   }
   if (p('t')) out.t = Number(p('t'));
   if (p('embed') != null) out.embed = truthy(p('embed'));
+  if (p('expr')) out.expr = String(p('expr'));
+  if (p('where')) out.where = String(p('where'));
   return out;
 }
 
@@ -137,6 +144,8 @@ export function toParams(r) {
   if (r.ov.slice().sort().join() !== d.ov.slice().sort().join()) q.set('ov', r.ov.join(','));
   if (r.t) q.set('t', String(r.t));
   if (r.embed) q.set('embed', '1');
+  if (r.expr) q.set('expr', r.expr);
+  if (r.where) q.set('where', r.where);
   return q;
 }
 

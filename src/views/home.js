@@ -5,6 +5,8 @@ import { presets, resolveTarget, presetToTarget, presetById, describePosition, f
 import { parsePosition, formatRA, formatDec, mjdToISO } from '../lib/coords.js';
 import { normalise, toParams, parseText, DEFAULTS } from '../state.js';
 import { searchSpherex } from '../lib/tap.js';
+import { splitStatements } from '../lib/expr.js';
+import { uploadPanel } from '../ui/upload-panel.js';
 
 export const title = 'Home';
 const RECENT = 'skyshift.recent';
@@ -96,14 +98,34 @@ export async function render(root, route, { go }) {
   const understood = h('div', { class: 'understood', 'aria-live': 'polite' });
   async function runTyped(text) {
     typed.value = text;
-    const pt = parseText(text);
+    // Lines that look like equations or selections go to the expression engine; the rest is plain words.
+    const lines = String(text).split(/\n+/);
+    const isEq = (l) => /^\s*(where\b|epochs?\s+where\b)|[=]|\bD[1-6]\b|epoch\(|wl\(/i.test(l) && !/\b(show|compare|play)\b/i.test(l);
+    const eqText = lines.filter(isEq).join('\n');
+    const st = eqText ? splitStatements(eqText) : null;
+    // a trailing "… where …" inside a sentence is a selection too
+    const inline = String(text).match(/\bwhere\s+(.+)$/i);
+    const pt = parseText(lines.filter((l) => !isEq(l)).join(' ').replace(/\bwhere\s+.+$/i, ''));
     const partial = { ...pt.partial };
+    if (st) {
+      if (st.image) { partial.expr = st.image; partial.mode = 'expr'; pt.understood.push({ text: st.image, meaning: 'equation for every frame' }); }
+      if (st.where) { partial.where = st.where; pt.understood.push({ text: `where ${st.where}`, meaning: 'only exposures matching this selection' }); }
+      if (st.assign.pmra != null || st.assign.pmdec != null) pt.understood.push({ text: `pmra = ${st.assign.pmra ?? 0}; pmdec = ${st.assign.pmdec ?? 0}`, meaning: 'proper motion for the track (mas/yr)' });
+      if (st.assign.fov != null) { partial.fov = st.assign.fov; pt.understood.push({ text: `fov = ${st.assign.fov}`, meaning: `field of view ${st.assign.fov}′` }); }
+      for (const e of st.errors) pt.unparsed.push(`[${e.message}: ${e.line}]`);
+    }
+    if (inline && !st?.where) {
+      const s2 = splitStatements(`where ${inline[1]}`);
+      if (!s2.errors.length) { partial.where = s2.where; pt.understood.push({ text: `where ${s2.where}`, meaning: 'only exposures matching this selection' }); }
+      else pt.unparsed.push(`[${s2.errors[0].message}: where ${inline[1]}]`);
+    }
     let target = partial.target || null;
     if (partial.preset) { const t = await presetById(partial.preset); if (t) target = presetToTarget(t); }
     if (partial.galactic) target = { ...fromGalactic(...partial.galactic), source: 'text', name: `l=${partial.galactic[0]}, b=${partial.galactic[1]}` };
     delete partial.preset; delete partial.galactic;
     if (partial.blinkFirstLast) { partial.mode = partial.mode || 'blink'; delete partial.blinkFirstLast; }
     if (partial.wl && !partial.dets) partial.dets = detsForRange(partial.wl);
+    if (st && (st.assign.pmra != null || st.assign.pmdec != null) && target) target = { ...target, pmra: st.assign.pmra ?? target.pmra ?? 0, pmdec: st.assign.pmdec ?? target.pmdec ?? 0, refEpoch: st.assign.epoch ?? target.refEpoch ?? 2016 };
     const req = normalise({ ...partial, target });
     understood.replaceChildren(
       h('div', { class: 'notice' + (target ? '' : ' warn') },
@@ -116,30 +138,13 @@ export async function render(root, route, { go }) {
           h('button', { class: 'btn small', onclick: () => typed.focus() }, 'Edit'))));
   }
 
-  // ----- hero art: animated blink of a moving star (illustration, labelled as such) -----
-  const art = h('canvas', { width: 460, height: 460, role: 'img', 'aria-label': 'Illustration: a star shifting position between two epochs' });
-  let raf = 0;
-  (function animate() {
-    const ctx = art.getContext('2d');
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const stars = Array.from({ length: 150 }, (_, i) => [((i * 97) % 460), ((i * 211) % 460), 0.4 + ((i * 7) % 10) / 10]);
-    const t0 = performance.now();
-    const draw = (now) => {
-      const t = (now - t0) / 1000, phase = reduce ? 0 : Math.floor(t / 0.8) % 2;
-      const g = ctx.createRadialGradient(150, 110, 20, 230, 230, 330);
-      g.addColorStop(0, '#2c2390'); g.addColorStop(1, '#05061a');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, 460, 460);
-      for (const [x, y, s] of stars) { ctx.fillStyle = `rgba(220,230,255,${0.35 + s * 0.5})`; ctx.beginPath(); ctx.arc(x, y, s, 0, 7); ctx.fill(); }
-      const x = phase ? 262 : 214, y = phase ? 202 : 250;
-      const rg = ctx.createRadialGradient(x, y, 0, x, y, 30); rg.addColorStop(0, '#fff'); rg.addColorStop(0.25, '#ffcf7a'); rg.addColorStop(1, 'rgba(255,160,90,0)');
-      ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(x, y, 30, 0, 7); ctx.fill();
-      ctx.strokeStyle = '#ffcf7a88'; ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.moveTo(214, 250); ctx.lineTo(262, 202); ctx.stroke(); ctx.setLineDash([]);
-      ctx.font = '600 15px system-ui'; ctx.fillStyle = '#dfe3ff'; ctx.fillText(phase ? 'Later' : 'Earlier', 28, 430);
-      ctx.fillStyle = '#9aa0d0'; ctx.font = '12px system-ui'; ctx.fillText('Illustration', 380, 430);
-      if (!reduce) raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-  })();
+  // ----- hero: the real SPHEREx sky (DR1 all-sky cube from IRSA's HiPS, built by scripts/allsky.mjs)
+  const art = h('a', { class: 'hero-sky', href: '#/sky', title: 'Open the interactive sky atlas' },
+    h('img', { src: 'assets/allsky-800.png', srcset: 'assets/allsky-800.png 800w, assets/allsky-1200.png 1200w', sizes: '(min-width: 1100px) 640px, 92vw',
+      width: 800, height: 400, decoding: 'async', fetchpriority: 'low',
+      alt: 'The whole sky seen by NASA SPHEREx in infrared: the Milky Way across the middle, the Magellanic Clouds below right' }));
+  const artCaption = h('p', { class: 'tiny hero-cap' }, 'The whole sky from SPHEREx Data Release 1 (IRSA all-sky spectral cube), false colour from three of its 102 bands: blue 0.9 µm, green 2.0 µm, red 4.6 µm. Galactic coordinates, Milky Way across the middle. Black spots: saturated or missing data.');
+  const raf = 0;
 
   const freshness = h('span', { class: 'chip info' }, 'Checking newest SPHEREx data…');
   const newest = Number(localStorage.getItem('skyshift.newestMjd') || 0);
@@ -165,7 +170,7 @@ export async function render(root, route, { go }) {
             const ra = 360 * u, dec = (Math.acos(2 * v - 1) * 180) / Math.PI - 90;
             openTarget({ ra: +ra.toFixed(5), dec: +(-dec).toFixed(5), source: 'coords', name: 'Random field' });
           } }, icon('dice'), 'Random field'))),
-      h('div', { class: 'hero-art' }, art)),
+      h('figure', { class: 'hero-art' }, art, artCaption)),
     h('section', { 'aria-labelledby': 'presets-h' },
       h('h2', { id: 'presets-h' }, 'Start with a challenge target'),
       h('div', { class: 'presets' }, list.map((t) => h('button', {
@@ -187,10 +192,11 @@ export async function render(root, route, { go }) {
       typed,
       h('div', { class: 'row', style: { marginTop: '8px' } },
         h('button', { class: 'btn primary', onclick: () => runTyped(typed.value) }, 'Interpret'),
-        ['Show WISE 0855 over all epochs, 3 to 5 microns, blink first and last', "Barnard's star, 4 arcmin field, track motion, with gaia", 'R Draconis per survey, color'].map((ex) =>
+        ['Show WISE 0855 over all epochs, 3 to 5 microns, blink first and last', "Barnard's star, 4 arcmin field, track motion, with gaia", 'R Draconis per survey, color', 'WISE 0855\nmean(D5, D6) - epoch(1)\nwhere flag == 0'].map((ex) =>
           h('button', { class: 'btn small ghost', onclick: () => runTyped(ex) }, ex))),
-      understood));
-  return () => cancelAnimationFrame(raf);
+      understood),
+    uploadPanel({ go }));
+  return () => {};
 }
 
 export function detsForRange([a, b]) {

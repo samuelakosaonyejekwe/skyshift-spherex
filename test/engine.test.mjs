@@ -34,3 +34,16 @@ test('render Barnard\'s Star exposure', { timeout: 120000 }, async () => {
   console.log('neighbour', ph && ph.flux.toFixed(0), '+-', ph && ph.err.toFixed(0), 'uJy at', ph && ph.wavelength.toFixed(3));
   assert.ok(ph && ph.flux > 5 * ph.err, 'neighbour detected');
 });
+
+test('column-precise reads give the same pixels as whole-row reads, with far less data', { timeout: 120000 }, async () => {
+  const uri = 'ibe/data/spherex/dr1/level2/2025W33_2C/l2b-v27-2026-228/3/level2_2025W33_2C_0321_1D3_spx_l2b-v27-2026-228.fits';
+  const g = makeGrid(269.4626, 4.7069, 3);
+  let bf = 0, bs = 0;
+  const rf = await renderExposure(new SpherexImage(uri, { onBytes: (n) => (bf += n) }), g, { uri }, { readMode: 'fast', withFlags: false });
+  const rs = await renderExposure(new SpherexImage(uri, { onBytes: (n) => (bs += n) }), g, { uri }, { readMode: 'saver', withFlags: false });
+  let maxd = 0;
+  for (let k = 0; k < rf.data.length; k++) if (Number.isFinite(rf.data[k]) || Number.isFinite(rs.data[k])) maxd = Math.max(maxd, Math.abs(rf.data[k] - rs.data[k]));
+  console.log('fast bytes', bf, 'saver bytes', bs, 'max pixel difference', maxd);
+  assert.ok(maxd < 1e-6, 'identical pixels');
+  assert.ok(bs < bf / 3, 'saver reads much less');
+});

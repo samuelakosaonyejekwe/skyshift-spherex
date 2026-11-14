@@ -48,6 +48,12 @@ export async function checkWatchlist(newestMjd) {
   write(WATCH, list);
 }
 
+// ---- queue of fields to inspect (from uploads or "many hands" lists)
+const QUEUE = 'skyshift.queue';
+export function setQueue(hashes, names = []) { localStorage.setItem(QUEUE, JSON.stringify({ items: hashes.map((h, i) => ({ hash: h, name: names[i] || null })), created: Date.now() })); }
+export function getQueue() { try { return JSON.parse(localStorage.getItem(QUEUE) || 'null'); } catch { return null; } }
+export function clearQueue() { localStorage.removeItem(QUEUE); }
+
 export function saveCandidate(c) {
   const list = read(CANDS);
   const id = `C${Date.now().toString(36)}`;

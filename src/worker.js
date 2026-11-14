@@ -46,7 +46,9 @@ self.onmessage = async (e) => {
     await pool(items, opts.concurrency || 6, async (rec, k) => {
       try {
         const img = getImage(rec.uri, ctl.signal);
-        const r = await renderExposure(img, grid, rec, opts);
+        // 'auto': the first few exposures as whole rows (appear fastest), the rest column-precise (far less data)
+        const readMode = opts.readMode === 'fast' ? 'fast' : opts.readMode === 'saver' ? 'saver' : (k < 6 ? 'fast' : 'saver');
+        const r = await renderExposure(img, grid, rec, { ...opts, readMode });
         if (ctl.signal.aborted) return;
         if (!r) { self.postMessage({ type: 'skip', id: msg.id, index: k, reason: 'outside' }); return; }
         const transfer = [r.data.buffer];

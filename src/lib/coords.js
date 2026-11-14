@@ -4,6 +4,9 @@
 const D2R = Math.PI / 180;
 const R2D = 180 / Math.PI;
 
+/** Wrap an angle into [0, 360) without disturbing values already in range (keeps typed and uploaded values identical). */
+export const wrap360 = (a) => (a >= 0 && a < 360 ? a : ((a % 360) + 360) % 360);
+
 /** Parse one sexagesimal or decimal angle. hours=true treats "h m s" / 3-part input as hours. */
 export function parseAngle(text, { hours = false } = {}) {
   if (text == null) return NaN;
@@ -50,7 +53,7 @@ export function parsePosition(text) {
   const dec = parseAngle(decStr);
   if (!Number.isFinite(ra) || !Number.isFinite(dec)) return null;
   if (dec < -90 || dec > 90) return null;
-  return { ra: ((ra % 360) + 360) % 360, dec };
+  return { ra: wrap360(ra), dec };
 }
 
 const pad = (n, w, d = 0) => {
@@ -113,7 +116,7 @@ export function propagate(ra, dec, pmra, pmdec, fromYear, toYear) {
   const ddec = (pmdec * dt) / 3.6e6;
   const cosd = Math.cos(dec * D2R) || 1e-9;
   const dra = (pmra * dt) / 3.6e6 / cosd;
-  return { ra: (((ra + dra) % 360) + 360) % 360, dec: dec + ddec };
+  return { ra: wrap360(ra + dra), dec: dec + ddec };
 }
 
 export const mjdToDate = (mjd) => new Date((mjd - 40587) * 86400000);

@@ -8,8 +8,8 @@ import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 
 const OUT = 'dist';
-const INCLUDE = ['index.html', 'styles.css', 'manifest.webmanifest', 'config.json', 'src', 'vendor', 'icons', 'data'];
-const LAZY = ['vendor/aladin.js']; // fetched on first use, then cached; not precached
+const INCLUDE = ['index.html', 'styles.css', 'manifest.webmanifest', 'config.json', 'src', 'vendor', 'icons', 'data', 'assets'];
+const LAZY = ['vendor/aladin.js', 'assets/allsky-1200.png']; // fetched on first use, then cached; not precached
 const BUDGET_SHELL_GZ = 140 * 1024; // first-load shell (HTML + CSS + JS needed for Home), gzip
 
 function walk(p) {

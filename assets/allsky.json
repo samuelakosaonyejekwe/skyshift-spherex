@@ -1,0 +1,17 @@
+{
+  "source": "https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube (SPHEREx DR1 all-sky spectral cube, IRSA HiPS, 2026-11-01T01:58Z)",
+  "channels": {
+    "b": 8,
+    "g": 42,
+    "r": 95
+  },
+  "wavelengthsApproxUm": {
+    "b": 0.9,
+    "g": 2,
+    "r": 4.6
+  },
+  "projection": "Mollweide, galactic coordinates, l=0 at centre",
+  "tileWidth": 512,
+  "order": 9,
+  "built": "2026-11-14T09:15:59.942Z"
+}

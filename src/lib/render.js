@@ -191,3 +191,45 @@ export function paintRGB(chs, out, lims, { stretch = 'asinh' } = {}) {
     out[o + 3] = 255;
   }
 }
+
+/**
+ * Smooth display upsampling (separable Catmull-Rom bicubic) of an RGBA image n x n by factor f.
+ * Used only for display: measurements always use the original pixels.
+ */
+export function upsampleRGBA(src, n, f) {
+  if (f <= 1) return { data: src, size: n };
+  const m = n * f;
+  const w = (t) => { const a = Math.abs(t); return a < 1 ? 1.5 * a ** 3 - 2.5 * a ** 2 + 1 : a < 2 ? -0.5 * a ** 3 + 2.5 * a ** 2 - 4 * a + 2 : 0; };
+  // precompute taps for one axis
+  const taps = new Array(m);
+  for (let o = 0; o < m; o++) {
+    const x = (o + 0.5) / f - 0.5, x0 = Math.floor(x);
+    const ws = [], idx = [];
+    let sum = 0;
+    for (let k = -1; k <= 2; k++) { const wk = w(x - (x0 + k)); ws.push(wk); idx.push(Math.min(n - 1, Math.max(0, x0 + k))); sum += wk; }
+    taps[o] = { idx, ws: ws.map((v) => v / sum) };
+  }
+  const tmp = new Float32Array(m * n * 4);
+  for (let y = 0; y < n; y++) {
+    for (let o = 0; o < m; o++) {
+      const { idx, ws } = taps[o];
+      for (let c = 0; c < 4; c++) {
+        let v = 0;
+        for (let k = 0; k < 4; k++) v += ws[k] * src[(y * n + idx[k]) * 4 + c];
+        tmp[(y * m + o) * 4 + c] = v;
+      }
+    }
+  }
+  const out = new Uint8ClampedArray(m * m * 4);
+  for (let o = 0; o < m; o++) {
+    const { idx, ws } = taps[o];
+    for (let x = 0; x < m; x++) {
+      for (let c = 0; c < 4; c++) {
+        let v = 0;
+        for (let k = 0; k < 4; k++) v += ws[k] * tmp[(idx[k] * m + x) * 4 + c];
+        out[(o * m + x) * 4 + c] = v;
+      }
+    }
+  }
+  return { data: out, size: m };
+}

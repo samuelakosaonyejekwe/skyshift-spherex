@@ -96,20 +96,27 @@ export function robustStats(data, sampleMax = 6000) {
  * Aperture photometry in native pixels at FITS pixel (x, y).
  * rows: {y0, width, data}; flags optional (same geometry). Returns µJy.
  */
-export function photometry(rows, flags, x, y, omegaArcsec2, { rAp = 2.5, rIn = 6, rOut = 10 } = {}) {
-  const W = rows.width, nrow = rows.data.length / W;
+export function photometry(rows, flags, x, y, omegaArcsec2, { rAp = 2.5, rIn = 5, rOut = 8 } = {}) {
+  const val = (xx, yy) => {
+    const ry = yy - rows.y0, rx = xx - (rows.x0 || 1);
+    if (ry < 0 || rx < 0 || rx >= rows.width || ry >= rows.data.length / rows.width) return undefined;
+    return rows.data[ry * rows.width + rx];
+  };
+  const flg = (xx, yy) => {
+    if (!flags) return 0;
+    const ry = yy - flags.y0, rx = xx - (flags.x0 || 1);
+    if (ry < 0 || rx < 0 || rx >= flags.width || ry >= flags.data.length / flags.width) return 0;
+    return flags.data[ry * flags.width + rx];
+  };
   const ap = [], ann = [], annSrc = [];
   let nbad = 0, nap = 0, flagOr = 0;
   const xr = Math.round(x), yr = Math.round(y);
   for (let yy = yr - rOut; yy <= yr + rOut; yy++) {
-    const ry = yy - rows.y0;
-    if (ry < 0 || ry >= nrow) continue;
     for (let xx = xr - rOut; xx <= xr + rOut; xx++) {
-      if (xx < 1 || xx > W) continue;
+      const v = val(xx, yy);
+      if (v === undefined) continue;
       const r = Math.hypot(xx - x, yy - y);
-      const k = ry * W + (xx - 1);
-      const v = rows.data[k];
-      const f = flags ? flags.data[k] : 0;
+      const f = flg(xx, yy);
       if (r <= rAp) {
         nap++; flagOr |= f;
         if (!Number.isFinite(v) || (f & BAD_MASK)) { nbad++; continue; }
@@ -138,7 +145,7 @@ export function photometry(rows, flags, x, y, omegaArcsec2, { rAp = 2.5, rIn = 6
  * @returns {Promise<null | {data, flags, meta, phot}>}
  */
 export async function renderExposure(img, grid, rec, opts = {}) {
-  const { withFlags = true, track = null, phot = true, photTrack = null } = opts;
+  const { withFlags = true, track = null, phot = true, photTrack = null, readMode = 'fast' } = opts;
   const m = await img.meta();
   const wcs = img.wcs;
   const H = m.header.NAXIS2, W = m.header.NAXIS1;
@@ -162,40 +169,35 @@ export async function renderExposure(img, grid, rec, opts = {}) {
   const y0 = Math.max(1, Math.floor(Math.min(ymin, ty) - pad)), y1 = Math.min(H, Math.ceil(Math.max(ymax, ty) + pad));
   // withFlags: 'field' (map flags over the whole cutout) | 'target' (only rows needed for photometry) | false
   const flagMode = withFlags === true ? 'field' : withFlags;
-  const fy0 = flagMode === 'target' ? Math.max(1, Math.floor(ty) - 11) : y0;
-  const fy1 = flagMode === 'target' ? Math.min(H, Math.ceil(ty) + 11) : y1;
+  const fy0 = flagMode === 'target' ? Math.max(1, Math.floor(ty) - 8) : y0;
+  const fy1 = flagMode === 'target' ? Math.min(H, Math.ceil(ty) + 8) : y1;
+  const x0 = Math.max(1, Math.floor(Math.min(xmin, tx) - pad)), x1 = Math.min(W, Math.ceil(Math.max(xmax, tx) + pad));
   const [rows, flagsRaw, wave] = await Promise.all([
-    img.rows(y0, y1),
+    readMode === 'saver' ? img.block(x0, x1, y0, y1) : img.rows(y0, y1),
     flagMode && Number.isFinite(ty) && fy1 >= fy0 ? img.flagRows(fy0, fy1).catch(() => null) : Promise.resolve(null),
     img.wave().catch(() => null),
   ]);
-  // photometry needs flags aligned with the image rows: pad target-only flags into the row geometry
-  let flags = flagsRaw;
-  if (flagsRaw && flagMode === 'target') {
-    const full = new Int32Array(rows.data.length);
-    for (let y = Math.max(rows.y0, flagsRaw.y0); y <= Math.min(rows.y1, flagsRaw.y1); y++) {
-      full.set(flagsRaw.data.subarray((y - flagsRaw.y0) * W, (y - flagsRaw.y0 + 1) * W), (y - rows.y0) * W);
-    }
-    flags = { y0: rows.y0, y1: rows.y1, width: W, data: full, bits: flagsRaw.bits, partial: true };
-  }
+  const flags = flagsRaw ? { ...flagsRaw, partial: flagMode === 'target' } : null;
   const n = grid.n;
   const out = new Float32Array(n * n).fill(NaN);
   const fout = flags && !flags.partial ? new Int32Array(n * n) : null;
   const f = grid.scale / NATIVE_SCALE;
   const sub = f > 1.5 ? Math.min(4, Math.round(f)) : 1;
-  const nrow = rows.data.length / W;
+  const RW = rows.width, RX = rows.x0 || 1;
+  const nrow = rows.data.length / RW;
   const sample = (x, y) => {
-    // bilinear on 1-based pixel coords
-    const x0 = Math.floor(x), yb = Math.floor(y);
-    if (x0 < 1 || x0 >= W || yb < rows.y0 || yb >= rows.y0 + nrow - 1) return NaN;
-    const ax = x - x0, ay = y - yb;
-    const k = (yb - rows.y0) * W + (x0 - 1);
-    const v00 = rows.data[k], v10 = rows.data[k + 1], v01 = rows.data[k + W], v11 = rows.data[k + W + 1];
+    // bilinear on 1-based pixel coords, within the fetched window
+    const xa = Math.floor(x), yb = Math.floor(y);
+    if (xa < RX || xa >= RX + RW - 1 || yb < rows.y0 || yb >= rows.y0 + nrow - 1) return NaN;
+    const ax = x - xa, ay = y - yb;
+    const k = (yb - rows.y0) * RW + (xa - RX);
+    const v00 = rows.data[k], v10 = rows.data[k + 1], v01 = rows.data[k + RW], v11 = rows.data[k + RW + 1];
     const v = (1 - ax) * (1 - ay) * v00 + ax * (1 - ay) * v10 + (1 - ax) * ay * v01 + ax * ay * v11;
     if (Number.isFinite(v)) return v;
-    const nn = rows.data[(Math.round(y) - rows.y0) * W + (Math.round(x) - 1)];
+    const nn = rows.data[(Math.round(y) - rows.y0) * RW + (Math.round(x) - RX)];
     return Number.isFinite(nn) ? nn : NaN;
   };
+  const fnrow = flags ? flags.data.length / flags.width : 0;
   const flagCounts = new Map();
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
@@ -212,9 +214,9 @@ export async function renderExposure(img, grid, rec, opts = {}) {
       if (cnt) out[k] = acc / cnt;
       if (fout) {
         const [x, y] = map.at(i, j);
-        const xr = Math.round(x), yr = Math.round(y) - rows.y0;
-        if (xr >= 1 && xr <= W && yr >= 0 && yr < nrow) {
-          const fv = flags.data[yr * W + xr - 1];
+        const xr = Math.round(x), yr = Math.round(y) - flags.y0;
+        if (xr >= 1 && xr <= W && yr >= 0 && yr < fnrow) {
+          const fv = flags.data[yr * flags.width + xr - 1];
           fout[k] = fv;
           if (fv) for (const [b] of FLAG_BITS) if (fv & (1 << b)) flagCounts.set(b, (flagCounts.get(b) || 0) + 1);
         }
@@ -245,7 +247,7 @@ export async function renderExposure(img, grid, rec, opts = {}) {
       targetPixel: inside ? [tx, ty] : null, center: [cra, cdec], photPos: [pra, pdec],
       bg: stats.median, sigma: stats.sigma, coverage: stats.n,
       flagCounts: fout ? Object.fromEntries(flagCounts) : null, header,
-      rowsFetched: y1 - y0 + 1, saturated: inside && satur > 2,
+      rowsFetched: y1 - y0 + 1, readMode, saturated: inside && satur > 2,
     },
   };
 }
@@ -267,9 +269,10 @@ export async function photAt(img, ra, dec, withFlags = true) {
 }
 
 /** Bytes a cutout of this field costs per exposure (header + tail + rows + flags). */
-export function estimateBytesPerExposure(fovArcmin, flagMode = 'target') {
-  // rows spanned by a rotated square field, plus photometry padding and 8-row block alignment
-  const rows = Math.ceil((fovArcmin * 60 * 1.42) / NATIVE_SCALE) + 22 + 8;
-  const flagRows = flagMode === 'field' ? rows : flagMode === 'target' ? 30 : 0;
-  return 34560 + 17280 + rows * 2040 * 4 + (flagMode ? 28800 + 512 + flagRows * 5200 : 0);
+export function estimateBytesPerExposure(fovArcmin, flagMode = 'target', readMode = 'saver') {
+  // rows/columns spanned by a rotated square field, plus photometry padding
+  const span = Math.ceil((fovArcmin * 60 * 1.42) / NATIVE_SCALE) + 22;
+  const image = readMode === 'saver' ? span * (span * 4 + 900) : (span + 8) * 2040 * 4;
+  const flagRows = flagMode === 'field' ? span + 8 : flagMode === 'target' ? 22 : 0;
+  return 28800 + 17280 + image + (flagMode ? 20160 + 512 + flagRows * 5200 : 0);
 }
