@@ -44,9 +44,9 @@ export function skyMap({ targets = [], onPick, onTarget, count, coverage = null,
   const W = 1000, H = 500;
   const img = h('img', { src: 'assets/allsky-1000.jpg', srcset: 'assets/allsky-1000.jpg 1000w, assets/allsky-1600.jpg 1600w', sizes: '(min-width: 1200px) 1200px, 100vw',
     width: W, height: H, alt: 'The whole sky seen by NASA SPHEREx in infrared (equatorial coordinates); the Milky Way arcs across it', decoding: 'async', draggable: 'false' });
-  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'skymap-ov', 'aria-hidden': 'true' });
-  // graticule: RA every 2h (labels every 4h), Dec every 30°
-  const g = el('g', { class: 'grat' }, svg);
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'skymap-ov', role: 'group', 'aria-label': 'Sky map markers' });
+  // graticule: RA every 2h (labels every 4h), Dec every 30° (decorative for screen readers)
+  const g = el('g', { class: 'grat', 'aria-hidden': 'true' }, svg);
   const line = (pts, cls) => { const d = pts.filter(Boolean).map(([x, y], i) => `${i ? 'L' : 'M'}${(x * W).toFixed(1)},${(y * H).toFixed(1)}`).join(''); el('path', { d, class: cls }, g); };
   for (let raH = 0; raH < 24; raH += 2) {
     const pts = []; for (let dec = -90; dec <= 90; dec += 3) pts.push(project(raH * 15 === 180 ? 180 : raH * 15, dec));
@@ -90,7 +90,7 @@ export function skyMap({ targets = [], onPick, onTarget, count, coverage = null,
   });
 
   // galactic plane (dashed) and centre
-  const gal = el('g', { class: 'galp' }, svg);
+  const gal = el('g', { class: 'galp', 'aria-hidden': 'true' }, svg);
   {
     const M = [[-0.0548755604, 0.4941094279, -0.8676661490], [-0.8734370902, -0.4448296300, -0.1980763734], [-0.4838350155, 0.7469822445, 0.4559837762]];
     const pts = [];
@@ -106,7 +106,7 @@ export function skyMap({ targets = [], onPick, onTarget, count, coverage = null,
     const t = el('text', { x: cx * W + 8, y: cy * H - 6, class: 'g-lab g-gal-lab' }, gal); t.textContent = 'Galactic centre';
   }
   // newest frames developed on the Live page
-  const live = el('g', { class: 'livepts' }, svg);
+  const live = el('g', { class: 'livepts', 'aria-hidden': 'true' }, svg);
   for (const p of livePts) { const [x, y] = project(p.ra, p.dec); el('circle', { cx: x * W, cy: y * H, r: 6, class: 'live-ring' }, live); }
   svg.insertBefore(gal, svg.firstChild);
 

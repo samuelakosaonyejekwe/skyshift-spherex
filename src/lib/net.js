@@ -72,7 +72,9 @@ export async function smartFetch(url, opts = {}) {
     try {
       const target = `${relay}${relay.includes('?') ? '&' : '?'}url=${encodeURIComponent(url)}`;
       const res = await fetch(target, { ...init, signal: t.signal });
-      if (res.status === 502 || res.status === 503 || res.status === 504 || res.status === 404) {
+      // fail over only when the relay itself is missing or broken, not when an upstream site answered 404
+      const upstream = res.headers.get('x-relay-upstream-status');
+      if (res.status === 502 || res.status === 503 || res.status === 504 || (res.status === 404 && !upstream) || res.status === 405) {
         lastErr = new Error(`Relay ${relay} answered ${res.status}`);
         continue;
       }

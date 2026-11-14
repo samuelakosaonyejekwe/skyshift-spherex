@@ -63,16 +63,13 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.endsWith('/api/relay')) return;
 
   if (req.mode === 'navigate') {
+    // the page HTML comes from this version's cache, so HTML, CSP, scripts and styles always match;
+    // a new version arrives through the service-worker update (and its pop-up)
     event.respondWith((async () => {
-      try {
-        const pre = await event.preloadResponse;
-        if (pre) return pre;
-        const res = await fetch(req);
-        return res;
-      } catch {
-        const c = await caches.open(SHELL);
-        return (await c.match('./index.html')) || (await c.match('./')) || Response.error();
-      }
+      const c = await caches.open(SHELL);
+      const hit = (await c.match('./index.html')) || (await c.match('./'));
+      if (hit) return hit;
+      try { return (await event.preloadResponse) || (await fetch(req)); } catch { return Response.error(); }
     })());
     return;
   }
@@ -101,10 +98,11 @@ self.addEventListener('fetch', (event) => {
     }
     try {
       const res = await fetch(req);
-      if (res.ok) (await caches.open(RUNTIME)).put(req, res.clone());
+      // a shell file missing from the cache is put back (self-healing); others go to the runtime cache
+      if (res.ok) (await caches.open(isShell ? SHELL : RUNTIME)).put(req, res.clone());
       return res;
     } catch {
-      return Response.error();
+      return (await (await caches.open(RUNTIME)).match(req)) || Response.error();
     }
   })());
 });

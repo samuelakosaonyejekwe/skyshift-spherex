@@ -9,7 +9,7 @@ import { gzipSync } from 'node:zlib';
 
 const OUT = 'dist';
 const INCLUDE = ['index.html', 'styles.css', 'manifest.webmanifest', 'config.json', 'src', 'vendor', 'icons', 'data', 'assets'];
-const LAZY = ['vendor/aladin.js', 'assets/allsky-1200.png']; // fetched on first use, then cached; not precached
+const LAZY = ['vendor/aladin.js', 'assets/allsky-1600.jpg']; // fetched on first use, then cached; not precached
 const BUDGET_SHELL_GZ = 140 * 1024; // first-load shell (HTML + CSS + JS needed for Home), gzip
 
 function walk(p) {
@@ -28,7 +28,8 @@ for (const f of files) {
   copyFileSync(f, dest);
   hash.update(f).update(readFileSync(f));
 }
-const version = `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${hash.digest('hex').slice(0, 10)}`;
+// content hash only: an unchanged build keeps its version (no needless update prompt or re-download)
+const version = hash.digest('hex').slice(0, 12);
 
 // Precache everything except lazily loaded heavy modules.
 const precache = ['./', ...files.filter((f) => !LAZY.includes(f)).map((f) => `./${f}`)];
@@ -49,6 +50,14 @@ writeFileSync(join(OUT, 'security-headers.json'), JSON.stringify(headers, null, 
 writeFileSync(join(OUT, '_headers'), `/*\n${Object.entries(headers).map(([k, v]) => `  ${k}: ${v}`).join('\n')}\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/version.json\n  Cache-Control: no-cache\n/config.json\n  Cache-Control: no-cache\n`);
 writeFileSync(join(OUT, '.nojekyll'), '');
 writeFileSync(join(OUT, '404.html'), readFileSync('index.html', 'utf8'));
+// Presentation (slides + playable demo video) published at /presentation/, not precached.
+if (existsSync('docs/presentation/slides.html')) {
+  for (const f of walk('docs/presentation')) {
+    const dest = join(OUT, 'presentation', relative('docs/presentation', f));
+    mkdirSync(dirname(dest), { recursive: true }); copyFileSync(f, dest);
+  }
+  copyFileSync('docs/presentation/slides.html', join(OUT, 'presentation', 'index.html'));
+}
 // Relay alongside the static files for hosts with functions (Cloudflare Pages).
 for (const f of ['relay/core.mjs', 'functions/api/relay.js']) {
   if (existsSync(f)) { mkdirSync(dirname(join(OUT, f)), { recursive: true }); copyFileSync(f, join(OUT, f)); }

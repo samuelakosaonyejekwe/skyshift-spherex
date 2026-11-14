@@ -11,7 +11,7 @@ export async function render(root) {
   const cfg = getConfig();
   let version = '';
   try { version = (await (await fetch('./version.json', { cache: 'no-cache' })).json()).version; } catch { /* offline */ }
-  root.append(cardify(h('article', { class: 'prose' },
+  const article = cardify(h('article', { class: 'prose' },
     h('h1', {}, 'SkyShift: A Time Machine for the SPHEREx Sky'),
     h('p', { class: 'muted' }, 'A public web tool for the 2026 NASA Space Apps Challenge “Planet X and SPHEREx”, by team SkyShift Cyprus.'),
     h('p', {}, 'SkyShift lets anyone enter a patch of sky and watch NASA SPHEREx infrared images of it change over time, so moving and changing objects stand out. It is free, needs no account, installs on phones and computers, and works offline for fields you have viewed.'),
@@ -48,6 +48,7 @@ export async function render(root) {
     h('p', { class: 'tiny' }, 'SkyShift is an independent project. It is not endorsed by NASA, Caltech/IPAC, ESA, the Canadian Space Agency, NRC/CADC or CDS, and it uses none of their logos.'),
     h('h2', {}, 'Privacy'),
     h('p', {}, 'No accounts, no tracking, no analytics. Searches go from your device to the archives (directly, or via a relay that forwards the request and keeps no logs of it). Saved fields, candidates and cached images stay in your browser’s storage.'),
-  )));
-  return () => {};
+  ));
+  root.append(article);
+  return () => article.dispose?.();
 }

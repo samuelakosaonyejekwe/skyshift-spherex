@@ -40,7 +40,7 @@ export async function render(root, route, { go }) {
     h('h2', {}, 'Newest observing periods in the archive'), periods,
     h('h2', {}, 'Latest frames'), h('p', { class: 'tiny' }, 'Detector 3 (1.63–2.41 µm) frames from the newest planning period; each frame is one 3.5° × 3.5° patch of sky.'), frames);
 
-  let last = 0;
+  let last = 0, disposed = false;
   async function run(force) {
     if (!force && Date.now() - last < 5 * 60 * 1000) return;
     last = Date.now();
@@ -80,7 +80,7 @@ export async function render(root, route, { go }) {
       const cardsEls = latest.map((k) => frameCard(k));
       frames.replaceChildren(...cardsEls);
       // develop the newest frames automatically, one after another (about 0.3 MB each)
-      (async () => { for (const c of cardsEls) { const b = c.querySelector('button'); if (b && b.textContent === 'Develop') { b.click(); await new Promise((r) => setTimeout(r, 400)); while (b.isConnected && b.disabled) await new Promise((r) => setTimeout(r, 300)); } } })();
+      (async () => { for (const c of cardsEls) { if (disposed || !c.isConnected) return; const b = c.querySelector('button'); if (b && b.textContent === 'Develop') { b.click(); await new Promise((r) => setTimeout(r, 400)); while (b.isConnected && b.disabled) await new Promise((r) => setTimeout(r, 300)); } } })();
       status.textContent = `${keys.length} detector-3 frames listed in ${top.period}. Archive checked just now (${new Date().toLocaleTimeString()}).`;
       await cache.set('live:last', { at: Date.now(), top, keys: latest });
     } catch (e) {
@@ -128,5 +128,5 @@ export async function render(root, route, { go }) {
   }
   run(true);
   const t = setInterval(() => run(false), 60 * 1000);
-  return () => clearInterval(t);
+  return () => { disposed = true; clearInterval(t); };
 }

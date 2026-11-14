@@ -9,7 +9,7 @@ import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SC
 import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName } from '../lib/render.js';
 import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
 import { formatRA, formatDec, propagate, apparent, mjdToYear, mjdToISO, separation, toGalactic } from '../lib/coords.js';
-import { presetById, suggestFor, describePosition } from '../targets.js';
+import { presetById, presetToTarget, suggestFor, describePosition } from '../targets.js';
 import { scatterChart, svgString } from '../ui/charts.js';
 import { pushRecent } from './home.js';
 import { saveCandidate, isWatched, toggleWatch, getQueue, clearQueue } from './saved.js';
@@ -43,7 +43,7 @@ export async function render(root, route, { go }) {
   let req = normalise(fromParams(route.params));
   if (route.params.get('target') || fromParams(route.params).preset) {
     const t = await presetById(route.params.get('target') || fromParams(route.params).preset);
-    if (t) req = normalise({ ...req, target: { ra: t.ra, dec: t.dec, name: t.name, id: t.id, pmra: t.pmra || 0, pmdec: t.pmdec || 0, refEpoch: 2026.0, source: 'preset' } });
+    if (t) req = normalise({ ...req, target: presetToTarget(t) });
   }
   if (!req.target) return renderEmpty(root, go);
   const preset = req.target.id ? await presetById(req.target.id) : null;
@@ -167,7 +167,10 @@ export async function render(root, route, { go }) {
     S.grid = makeGrid(req.target.ra, req.target.dec, req.fov);
     const key = loadKey();
     if (!session.has(key)) session.set(key, { frames: new Map() });
-    S.frames = session.get(key).frames;
+    // keep only the 3 most recently used fields in memory (pixels stay cached on disk in IndexedDB)
+    const entry = session.get(key); session.delete(key); session.set(key, entry);
+    while (session.size > 3) session.delete(session.keys().next().value);
+    S.frames = entry.frames;
     S.bytes = 0; S.t0 = performance.now(); S.skipped = 0;
     loading.hidden = false;
     loading.querySelector('.boot-orbit').hidden = false;
@@ -229,7 +232,8 @@ export async function render(root, route, { go }) {
     let lastBuild = 0;
     const done0 = wanted.length - todo.length;
     const job = ++S.jobId;
-    w.onmessage = (ev) => {
+    if (S.streamListener) w.removeEventListener('message', S.streamListener);
+    S.streamListener = (ev) => {
       const m = ev.data;
       if (m.id !== job || id !== S.loadId) return;
       if (m.type === 'frame') {
@@ -253,6 +257,7 @@ export async function render(root, route, { go }) {
         if (!S.frames.size) { loading.hidden = false; loading.querySelector('.boot-orbit').hidden = true; setLoad('None of the images could be read. The archive may be busy; please retry.', 0); }
       }
     };
+    w.addEventListener('message', S.streamListener);
     w.postMessage({ type: 'frames', id: job, items: todo, grid: S.grid, opts: { withFlags: flagMode(), track: req.track ? pm : null, photTrack: pm, concurrency: 12, readMode: effectiveReadMode() } });
     renderSide();
   }
@@ -465,7 +470,7 @@ export async function render(root, route, { go }) {
     return ms.reduce((a, b) => a + b, 0) / ms.length;
   }
   function frameCenter(i = currentIndex()) {
-    if (!req.track || !(req.target.pmra || req.target.pmdec)) return [req.target.ra, req.target.dec];
+    if (!req.track || !(req.target.pmra || req.target.pmdec || req.target.plx)) return [req.target.ra, req.target.dec];
     const p = apparent(req.target.ra, req.target.dec, req.target.pmra, req.target.pmdec, req.target.plx, req.target.refEpoch || 2016, frameMjd(i));
     return [p.ra, p.dec];
   }
@@ -716,7 +721,10 @@ export async function render(root, route, { go }) {
     let best = null;
     const yr = mjdToYear(frameMjd() || 61000);
     const consider = (s, cat) => {
-      const p = cat === 'gaia' ? propagate(s.ra, s.dec, s.pmra || 0, s.pmdec || 0, s.ref_epoch || 2016, yr) : { ra: s.ra, dec: s.dec };
+      const m = frameMjd() || 61000;
+      const p = cat === 'gaia'
+        ? apparent(s.ra, s.dec, s.pmra || 0, s.pmdec || 0, s.parallax > 0 ? s.parallax : 0, s.ref_epoch || 2016, m)
+        : propagate(s.ra, s.dec, (s.pmra || 0) * (s.meanobsmjd ? 1000 : 1), (s.pmdec || 0) * (s.meanobsmjd ? 1000 : 1), s.meanobsmjd ? mjdToYear(s.meanobsmjd) : 2010.5, mjdToYear(m));
       const d = separation(ra, dec, p.ra, p.dec) * 3600;
       if (d < 2.2 * S.grid.scale && (!best || d < best.d)) best = { d, s, cat, ra: p.ra, dec: p.dec };
     };
@@ -739,7 +747,11 @@ export async function render(root, route, { go }) {
 
   // ------------------------------------------------------------------ keyboard
   const onKey = (e) => {
-    if (e.target.matches('input, textarea, select') || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    // shortcuts apply only when focus is on the page or the image, never on a control or inside a dialog
+    const t = e.target;
+    if (t.closest?.('input, textarea, select, button, a, summary, [role=button], [role=tab], [contenteditable], .sheet, .tour, [role=dialog]') && !t.closest?.('.stage')) return;
+    if (getSettings().noShortcuts) return;
     const k = e.key;
     if (k === ' ') { e.preventDefault(); S.playing ? stopPlay() : play(); }
     else if (k === 'ArrowRight') { e.preventDefault(); step(1); }
@@ -829,8 +841,7 @@ export async function render(root, route, { go }) {
       h('label', { class: 'field' }, `Field of view — larger fields catch faster movers but transfer more data (${nSel} exposures, ≈${fmtBytes(perExp)} each)`, fovSel),
       h('label', { class: 'field' }, 'Stretch', segment([['asinh', 'Asinh'], ['log', 'Log'], ['sqrt', 'Sqrt'], ['linear', 'Linear']], req.stretch, (v) => commit({ stretch: v }))),
       h('div', { class: 'row' },
-        h('label', { class: 'field', style: { flex: 1 } }, `Black point ${req.lo}%`, h('input', { type: 'range', min: 0, max: 30, step: 0.5, value: req.lo, oninput: (e) => commit({ lo: Number(e.target.value) }) })),
-        h('label', { class: 'field', style: { flex: 1 } }, `White point ${req.hi}%`, h('input', { type: 'range', min: 80, max: 100, step: 0.1, value: req.hi, oninput: (e) => commit({ hi: Number(e.target.value) }) }))),
+        slider2('lo', 'Black point', 0, 30, 0.5), slider2('hi', 'White point', 80, 100, 0.1)),
       h('div', { class: 'row' },
         h('label', { class: 'field' }, 'Colours', h('select', { onchange: (e) => commit({ cmap: e.target.value }) }, [['auto', 'By wavelength (tint of the detectors shown)'], ['gray', 'Grey (classic blink look)'], ['viridis', 'Viridis (colour-blind safe)'], ['heat', 'Heat'], ['ice', 'Ice']].map(([v, l]) => h('option', { value: v, selected: req.cmap === v }, l)))),
         h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: req.invert, onchange: (e) => commit({ invert: e.target.checked }) }), 'Invert (black stars on white)')),
@@ -868,6 +879,15 @@ export async function render(root, route, { go }) {
             h('button', { class: 'btn small ghost', onclick: () => { ta.value = ex; apply(); } }, l)),
           req.expr || req.where ? h('button', { class: 'btn small ghost', onclick: () => commit({ expr: '', where: '', mode: req.mode === 'expr' ? 'movie' : req.mode }) || renderModes() }, 'Clear') : null),
         msg));
+  }
+
+  /** Range control that previews while dragging (no panel rebuild) and commits when released. */
+  function slider2(key, label, min, max, step) {
+    const lab = h('span', {}, `${label} ${req[key]}%`);
+    const inp = h('input', { type: 'range', min, max, step, value: req[key], 'aria-label': label });
+    inp.addEventListener('input', () => { const v = Number(inp.value); lab.textContent = `${label} ${v}%`; req = normalise({ ...req, [key]: v }); rebuild(); });
+    inp.addEventListener('change', () => { history.replaceState(history.state, '', `#/view?${toParams(req)}`); });
+    return h('label', { class: 'field', style: { flex: 1 } }, lab, inp);
   }
 
   function setWl(a, b) {
@@ -966,7 +986,7 @@ export async function render(root, route, { go }) {
         version, specSvg, lcSvg, inputs: { url: location.href, source: req.target.source || 'unknown' }, candidates: cands });
       t();
       const stem = `skyshift-dossier-${fileStem()}-${d.id}`;
-      const openHtml = () => { const w = window.open(URL.createObjectURL(new Blob([d.html], { type: 'text/html' })), '_blank', 'noopener'); if (!w) download(`${stem}.html`, d.html, 'text/html'); };
+      const openHtml = () => { const w = window.open(URL.createObjectURL(new Blob([d.html], { type: 'text/html' })), '_blank'); if (!w) download(`${stem}.html`, d.html, 'text/html'); else w.opener = null; };
       const close = sheet(h('div', { class: 'grid' },
         h('h2', {}, 'Dossier ready'),
         h('p', { class: 'muted' }, `ID ${d.id} — the same request on the same data release gives the same ID; any change gives a new one.`),
@@ -1182,18 +1202,17 @@ export async function render(root, route, { go }) {
     const id = Date.now();
     const w = getWorker();
     toast({ title: 'Measuring every exposure at this position…', glyph: '🌈', timeout: 2500 });
-    const prev = w.onmessage;
     const handler = (ev) => {
       const m = ev.data;
-      if (m.id !== id) { prev?.(ev); return; }
+      if (m.id !== `p${id}`) return;
       if (m.type === 'photDone') {
-        w.onmessage = prev;
+        w.removeEventListener('message', handler);
         S.clickSpec = { ra, dec, points: m.points.filter((p) => Number.isFinite(p.wavelength)).map((p) => ({ ...p, det: p.detector, release: '' })) };
         S.tab = 'spectrum'; renderTabs(); renderSide();
       }
     };
-    w.onmessage = handler;
-    w.postMessage({ type: 'phot', id, items, ra, dec });
+    w.addEventListener('message', handler);
+    w.postMessage({ type: 'phot', id: `p${id}`, items, ra, dec });
   }
 
   function markCandidate(sel) {
@@ -1217,8 +1236,8 @@ export async function render(root, route, { go }) {
     tabBody.append(
       h('p', {}, 'Automated helpers that point your eyes at things worth checking. They can miss objects and raise false alarms: everything they find is a ', h('b', {}, 'candidate'), ' for you to inspect.'),
       h('div', { class: 'row' },
-        h('button', { class: 'btn primary small', disabled: !D || D.groups.length < 2, onclick: () => { S.movers = findMovers(S.display, n(), S.grid, req); drawOverlay(); renderSide(); } }, 'Spot the movers'),
-        h('button', { class: 'btn small', disabled: !D || D.groups.length < 2, onclick: () => { S.variables = findVariables(S.display, n()); drawOverlay(); renderSide(); } }, 'Find brightness changes'),
+        h('button', { class: 'btn primary small', disabled: !D || D.groups.length < 2, onclick: () => { S.movers = findMovers(S.display, n(), S.grid, req, frameCenter(S.display.frames.length - 1)); drawOverlay(); renderSide(); } }, 'Spot the movers'),
+        h('button', { class: 'btn small', disabled: !D || D.groups.length < 2, onclick: () => { S.variables = findVariables(S.display, n(), S.grid, frameCenter(S.display.frames.length - 1)); drawOverlay(); renderSide(); } }, 'Find brightness changes'),
         S.movers || S.variables ? h('button', { class: 'btn small ghost', onclick: () => { S.movers = null; S.variables = null; drawOverlay(); renderSide(); } }, 'Clear') : null),
       !D || D.groups.length < 2 ? h('p', { class: 'tiny' }, 'Needs at least two epochs. Use “Per survey” frames for the cleanest comparison.') : null,
       S.movers ? h('div', {}, h('h3', {}, `${S.movers.length} motion candidate${S.movers.length === 1 ? '' : 's'}`),
@@ -1284,7 +1303,8 @@ export async function render(root, route, { go }) {
     const ring = h('div', { class: 'tour-ring' });
     const box = h('div', { class: 'tour', role: 'dialog', 'aria-label': 'Guided tour' });
     document.body.append(ring, box);
-    const end = () => { ring.remove(); box.remove(); localStorage.setItem('skyshift.toured', '1'); };
+    const end = () => { ring.remove(); box.remove(); localStorage.setItem('skyshift.toured', '1'); S.endTour = null; };
+    S.endTour = end;
     const show = () => {
       if (k >= steps.length) return end();
       const [el, text] = steps[k];
@@ -1376,7 +1396,7 @@ export async function render(root, route, { go }) {
   renderModes(); renderTabs(); renderSide();
   ensureCats();
   load();
-  if (!localStorage.getItem('skyshift.toured') && !req.embed) setTimeout(() => toast({ title: 'New here?', text: 'Take a 20-second tour of the viewer.', glyph: '🧭', actions: [{ label: 'Start tour', primary: true, onClick: tour }, { label: 'No thanks', onClick: () => localStorage.setItem('skyshift.toured', '1') }], timeout: 9000 }), 1500);
+  if (!localStorage.getItem('skyshift.toured') && !req.embed) S.tourTimer = setTimeout(() => toast({ title: 'New here?', text: 'Take a 20-second tour of the viewer.', glyph: '🧭', actions: [{ label: 'Start tour', primary: true, onClick: tour }, { label: 'No thanks', onClick: () => localStorage.setItem('skyshift.toured', '1') }], timeout: 9000 }), 1500);
 
   // When only view parameters change (e.g. Back/Forward), update in place and keep the loaded frames.
   live.update = (r) => {
@@ -1393,6 +1413,8 @@ export async function render(root, route, { go }) {
 
   return () => {
     stopPlay(); ro.disconnect();
+    clearTimeout(S.tourTimer); S.endTour?.();
+    if (worker && S.streamListener) worker.removeEventListener('message', S.streamListener);
     document.removeEventListener('keydown', onKey);
     window.removeEventListener('skyshift:newdata', onNewData);
     window.removeEventListener('skyshift:online', onNewData);

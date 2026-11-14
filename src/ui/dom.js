@@ -170,6 +170,7 @@ export function cardify(article, { keep = 0, minWidth = 380 } = {}) {
   const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(layout, 120); });
   ro.observe(article);
   if (document.fonts?.ready) document.fonts.ready.then(layout);
+  article.dispose = () => { ro.disconnect(); clearTimeout(t); };
   return article;
 }
 
@@ -191,5 +192,6 @@ export function masonry(container, cards, minWidth = 320) {
   };
   lay();
   let t = 0; const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(lay, 150); }); ro.observe(container);
+  lay.disconnect = () => { ro.disconnect(); clearTimeout(t); };
   return lay;
 }

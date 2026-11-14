@@ -10,7 +10,7 @@ export const wrap360 = (a) => (a >= 0 && a < 360 ? a : ((a % 360) + 360) % 360);
 /** Parse one sexagesimal or decimal angle. hours=true treats "h m s" / 3-part input as hours. */
 export function parseAngle(text, { hours = false } = {}) {
   if (text == null) return NaN;
-  let s = String(text).trim().toLowerCase();
+  let s = String(text).trim().toLowerCase().replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, '-');
   if (!s) return NaN;
   const hasH = /h/.test(s);
   const hasD = /[d°]/.test(s);
@@ -33,7 +33,7 @@ export function parseAngle(text, { hours = false } = {}) {
  */
 export function parsePosition(text) {
   if (!text) return null;
-  let s = String(text).trim().replace(/ra\s*=?|dec\s*=?/gi, ' ').replace(/[;]/g, ' ');
+  let s = String(text).trim().replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, '-').replace(/ra\s*=?|dec\s*=?/gi, ' ').replace(/[;]/g, ' ');
   // split on comma between numbers or on whitespace before a signed dec
   let raStr, decStr;
   const comma = s.split(/\s*,\s*/);

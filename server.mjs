@@ -4,7 +4,7 @@
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { createReadStream, existsSync } from 'node:fs';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { gzipSync, brotliCompressSync, constants as zc } from 'node:zlib';
 import { Readable } from 'node:stream';
 import { handle } from './relay/core.mjs';
@@ -19,8 +19,8 @@ function relayFetch(url, init = {}) {
   const u = new URL(url);
   if (!extraCa || !EXTRA_CA_HOSTS.has(u.hostname)) return fetch(url, init);
   return new Promise((resolve, reject) => {
+    // redirects are returned to the relay core, which checks every hop against the allow-list
     const req = https.request(u, { method: init.method || 'GET', headers: init.headers, ca: [...tls.rootCertificates, extraCa], signal: init.signal }, (res) => {
-      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) { res.resume(); resolve(relayFetch(new URL(res.headers.location, u).toString(), init)); return; }
       const headers = new Headers();
       for (const [k, v] of Object.entries(res.headers)) if (v != null) headers.set(k, Array.isArray(v) ? v.join(', ') : String(v));
       const r = new Response(Readable.toWeb(res), { status: res.statusCode, headers });
@@ -58,7 +58,7 @@ const server = http.createServer(async (req, res) => {
     let p = decodeURIComponent(url.pathname);
     if (p.endsWith('/')) p += 'index.html';
     const file = normalize(join(ROOT, p));
-    if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
+    if (file !== ROOT && !file.startsWith(ROOT + sep)) { res.writeHead(403).end(); return; }
     let st = await stat(file).catch(() => null);
     let target = file;
     if (!st || st.isDirectory()) { target = join(ROOT, 'index.html'); st = await stat(target); }

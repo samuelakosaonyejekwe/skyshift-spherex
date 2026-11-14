@@ -46,7 +46,7 @@ function persistent(group, k) {
 
 const meanMjd = (g) => g.reduce((a, e) => a + e.meta.mjd, 0) / g.length;
 
-export function findMovers(display, n, grid, req) {
+export function findMovers(display, n, grid, req, centre = [grid.ra, grid.dec]) {
   const D = display;
   if (!D?.dmaps || D.groups.length < 2) return [];
   const ia = 0, ib = D.groups.length - 1;
@@ -80,13 +80,13 @@ export function findMovers(display, n, grid, req) {
     const shift = best.d * grid.scale;
     // position angle east of north: grid x grows west, y grows south
     const pa = ((Math.atan2(-(best.q.x - p.x), -(best.q.y - p.y)) * 180) / Math.PI + 360) % 360;
-    const [ra, dec] = gridToWorld(grid, best.q.x, best.q.y);
+    const [ra, dec] = gridToWorld(grid, best.q.x, best.q.y, centre[0], centre[1]);
     out.push({ a: [p.x, p.y], b: [best.q.x, best.q.y], shift, rate: shift / dtYr, pa, snr: Math.min(p.snr, best.q.snr), ra, dec });
   }
   return out.slice(0, 25);
 }
 
-export function findVariables(display, n) {
+export function findVariables(display, n, grid, centre = [grid?.ra, grid?.dec]) {
   const D = display;
   if (!D?.dmaps || D.groups.length < 2) return [];
   const ia = 0, ib = D.groups.length - 1;
@@ -108,7 +108,8 @@ export function findVariables(display, n) {
       if ((di || dj) && Math.sign(diff.data[kk] - st.median) === -sign && Math.abs(diff.data[kk] - st.median) > 3 * st.sigma) { opp = true; break; }
     }
     if (opp) continue;
-    out.push({ at: [p.x, p.y], snr: p.snr, sign, ra: null, dec: null });
+    const [ra, dec] = grid ? gridToWorld(grid, p.x, p.y, centre[0], centre[1]) : [null, null];
+    out.push({ at: [p.x, p.y], snr: p.snr, sign, ra, dec });
   }
   return out.slice(0, 25);
 }

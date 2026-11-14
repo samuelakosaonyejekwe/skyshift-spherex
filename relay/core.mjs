@@ -75,7 +75,7 @@ export async function handle(request, { clientIp = 'anon', fetchImpl = fetch } =
   const init = {
     method: request.method,
     headers: { 'User-Agent': 'SkyShift-relay/1.0', Accept: request.headers.get('accept') || '*/*' },
-    redirect: 'follow',
+    redirect: 'manual', // every hop is checked against the allow-list before it is followed
   };
   const range = request.headers.get('range');
   if (range && /^bytes=\d*-\d*$/.test(range)) init.headers.Range = range;
@@ -89,26 +89,32 @@ export async function handle(request, { clientIp = 'anon', fetchImpl = fetch } =
   const timer = setTimeout(() => ctl.abort(), 55000);
   let up;
   try {
-    up = await fetchImpl(target, { ...init, signal: ctl.signal });
+    let url = target;
+    for (let hop = 0; ; hop++) {
+      up = await fetchImpl(url, { ...init, signal: ctl.signal });
+      const loc = up.status >= 300 && up.status < 400 ? up.headers.get('location') : null;
+      if (!loc) break;
+      const next = new URL(loc, url).toString();
+      if (hop >= 3 || !isAllowed(next, 'GET')) {
+        clearTimeout(timer);
+        return json(403, { error: hop >= 3 ? 'too many redirects' : 'redirect off allow-list' });
+      }
+      url = next;
+      if (init.method === 'POST' && up.status !== 307 && up.status !== 308) { init.method = 'GET'; delete init.body; }
+    }
   } catch (e) {
     clearTimeout(timer);
     // Answer 200 with an explicit error header: the relay itself is healthy, the upstream is not.
     return new Response(JSON.stringify({ error: 'upstream unreachable', detail: String(e?.cause?.code || e?.message || e).slice(0, 200) }),
       { status: 200, headers: { ...CORS, 'Content-Type': 'application/json', 'X-Relay-Error': 'upstream-unreachable', 'X-Relay-Upstream-Status': '0' } });
   }
-  if (up.url && !isAllowed(up.url, 'GET') && up.url !== target) {
-    clearTimeout(timer);
-    return json(403, { error: 'redirected off allow-list' });
-  }
   const len = Number(up.headers.get('content-length') || 0);
   if (len > MAX_BYTES) { clearTimeout(timer); return json(413, { error: 'response too large' }); }
-  const headers = { ...CORS, 'X-Relay-Upstream-Status': String(up.status), 'Cache-Control': cacheControlFor(new URL(target)), 'X-Content-Type-Options': 'nosniff' };
+  // every relayed body is inert on the relay's origin (no scripts, no rendering as an active page)
+  const headers = { ...CORS, 'X-Relay-Upstream-Status': String(up.status), 'Cache-Control': cacheControlFor(new URL(target)), 'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; sandbox", 'Content-Disposition': 'attachment' };
   for (const h of ['content-type', 'content-range', 'last-modified', 'etag']) {
     const v = up.headers.get(h); if (v) headers[h] = v;
-  }
-  // HTML from upstream must never render as a page on the relay origin
-  if (/html/i.test(headers['content-type'] || '')) {
-    headers['Content-Security-Policy'] = "default-src 'none'; sandbox";
   }
   let seen = 0;
   const limiter = new TransformStream({

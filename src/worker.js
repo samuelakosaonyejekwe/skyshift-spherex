@@ -9,16 +9,20 @@ let current = null; // { id, ctl }
 const images = new Map(); // small LRU of SpherexImage objects (keeps parsed headers in memory)
 let bytes = 0;
 
-function getImage(uri, signal) {
-  let img = images.get(uri);
+// One image object per job kind, so a click-spectrum job never takes over (or cancels) the
+// abort signal of a frame job; parsed headers are shared through the IndexedDB cache.
+function getImage(uri, signal, kind = 'frames') {
+  const key = `${kind}|${uri}`;
+  let img = images.get(key);
   if (!img) {
     img = new SpherexImage(uri, { cache, onBytes: (n) => { bytes += n; } });
-    images.set(uri, img);
-    if (images.size > 800) images.delete(images.keys().next().value);
+    images.set(key, img);
+    if (images.size > 1200) images.delete(images.keys().next().value);
   }
   img.src.signal = signal;
   return img;
 }
+let currentPhot = null;
 
 async function pool(items, limit, fn, signal) {
   let i = 0;
@@ -33,7 +37,7 @@ async function pool(items, limit, fn, signal) {
 
 self.onmessage = async (e) => {
   const msg = e.data;
-  if (msg.type === 'abort') { current?.ctl.abort(); return; }
+  if (msg.type === 'abort') { current?.ctl.abort(); currentPhot?.abort(); return; }
 
   if (msg.type === 'frames') {
     current?.ctl.abort();
@@ -67,17 +71,19 @@ self.onmessage = async (e) => {
   }
 
   if (msg.type === 'phot') {
+    currentPhot?.abort();
     const ctl = new AbortController();
+    currentPhot = ctl;
     const out = [];
     let done = 0;
     await pool(msg.items, 6, async (rec) => {
       try {
-        const p = await photAt(getImage(rec.uri, ctl.signal), msg.ra, msg.dec, true);
+        const p = await photAt(getImage(rec.uri, ctl.signal, 'phot'), msg.ra, msg.dec, true);
         if (p) out.push({ ...p, uri: rec.uri });
       } catch { /* skip */ }
       done++;
       if (done % 4 === 0) self.postMessage({ type: 'photProgress', id: msg.id, done, total: msg.items.length });
     }, ctl.signal);
-    self.postMessage({ type: 'photDone', id: msg.id, points: out });
+    if (!ctl.signal.aborted) self.postMessage({ type: 'photDone', id: msg.id, points: out });
   }
 };

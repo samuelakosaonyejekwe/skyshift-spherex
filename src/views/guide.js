@@ -8,7 +8,7 @@ export const title = 'Learn';
 
 export async function render(root) {
   const det = (d) => h('tr', {}, h('td', {}, h('span', { class: 'legend-dot', style: { '--c': `var(--d${d.id})` } }), `D${d.id}`), h('td', {}, `${d.range[0]}–${d.range[1]} µm`), h('td', {}, `R = ${d.R}`), h('td', {}, d.id <= 3 ? 'Short-wave array (SWIR)' : 'Mid-wave array (MWIR)'));
-  root.append(cardify(h('article', { class: 'prose' },
+  const article = cardify(h('article', { class: 'prose' },
     h('h1', {}, 'Learn'),
     h('p', { class: 'muted' }, 'Everything you need to use SkyShift, in plain words.'),
     h('nav', { class: 'card', 'aria-label': 'On this page' }, h('div', { class: 'row' },
@@ -91,6 +91,7 @@ export async function render(root) {
       h('li', {}, 'Object names resolve only for the five challenge targets and Gaia DR3 source IDs; use coordinates for anything else.'),
       h('li', {}, 'Exact water, CO₂ and CO ice band wavelengths were not found in the approved sources, so they are not marked on spectra.'),
       h('li', {}, 'Some archive services do not allow direct browser access; SkyShift reaches them through a small relay. If every relay is down, image searches fall back to saved or built-in lists, while image pixels still stream directly from IRSA’s cloud bucket.')),
-  )));
-  return () => {};
+  ));
+  root.append(article);
+  return () => article.dispose?.();
 }

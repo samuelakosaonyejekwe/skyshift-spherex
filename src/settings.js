@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   readMode: 'auto', // auto | saver | fast
   mask: true, // remove bad pixels using SPHEREx quality flags in photometry
   reduceMotion: false, // no auto-play
+  noShortcuts: false, // turn off single-key shortcuts (accessibility)
   theme: null, // 'dark' | 'light' | null (follow system)
   lang: 'en', // interface language (src/i18n)
 });

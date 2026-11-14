@@ -179,7 +179,7 @@ const UNIT = { arcsec: 1 / 60, '″': 1 / 60, '"': 1 / 60, arcmin: 1, "'": 1, '�
 
 export function parseText(input) {
   const raw = String(input || '').slice(0, 2000);
-  let s = ' ' + raw.replace(/[\u2212\u2013\u2014]/g, '-').replace(/\s+/g, ' ') + ' ';
+  let s = ' ' + raw.replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, '-').replace(/\s+/g, ' ') + ' ';
   const understood = [], conflicts = [];
   const partial = {};
   const take = (re, fn) => {
@@ -192,7 +192,8 @@ export function parseText(input) {
     s = s.slice(0, preset.index + 1) + ' ' + s.slice(preset.index + 1 + preset.match.length);
   }
   // field of view: "10 arcmin field", "0.5 deg fov", "5' field"
-  take(/(\d+(?:\.\d+)?)\s*(arcsec|arcmin|degrees?|deg|°|′|'|″|")\s*(?:wide\s*)?(?:field(?: of view)?|fov|patch|box|square)?/i, (m, n, u) => {
+  // a field size is a number + unit that is not part of a sexagesimal coordinate (no digit or : before, no digit after)
+  take(/(?<![\d:.°′'″"])(\d+(?:\.\d+)?)\s*(arcsec|arcmin|degrees?|deg|°|′|'|″|")(?!\s*[\d.])\s*(?:wide\s*)?(?:field(?: of view)?|fov|patch|box|square)?/i, (m, n, u) => {
     const f = Number(n) * UNIT[u.toLowerCase()];
     if (!Number.isFinite(f)) return false;
     partial.fov = f;
@@ -241,7 +242,8 @@ export function parseText(input) {
   }
   take(/\binvert(?:ed)?\b/i, (m) => { partial.invert = true; understood.push({ text: m.trim(), meaning: 'inverted greyscale' }); });
   take(/\b(\d{2,4})\s*ms\b/i, (m, n) => { partial.speed = Number(n); understood.push({ text: m.trim(), meaning: `${n} ms per frame` }); });
-  // coordinates (after other numbers are consumed)
+  // coordinates (after other numbers are consumed); "ra"/"dec" labels are not part of the numbers
+  s = s.replace(/\b(ra|dec|right ascension|declination)\b\s*[=:]?\s*/gi, ' ');
   if (!partial.preset) {
     const coordRe = /(\d{1,2}[h:\s]\s*\d{1,2}[m:\s]\s*\d{1,2}(?:\.\d+)?s?|\d{1,3}(?:\.\d+)?)\s*,?\s*([+-]\s*\d{1,2}(?:[d°:\s]\s*\d{1,2}[m′':\s]\s*\d{1,2}(?:\.\d+)?[s″"]?|(?:\.\d+)?)|\d{1,2}(?:\.\d+)?)/i;
     const gal = s.match(/\b(?:l\s*=?\s*)(\d{1,3}(?:\.\d+)?)\s*,?\s*(?:b\s*=?\s*)([+-]?\d{1,2}(?:\.\d+)?)\b/i);

@@ -9,11 +9,13 @@ import { pushRecent } from './home.js';
 
 export const title = 'Sky atlas';
 export const SPHEREX_HIPS = 'https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube';
+// Aladin Lite has no teardown, so one map instance (and its WebGL context) is kept and re-used across visits.
+let atlas = null; // { host, aladin, A }
 
 export async function render(root, route, { go }) {
   const req = normalise(fromParams(route.params));
   const t = req.target || { ra: 133.786245, dec: -7.244372, name: 'WISE 0855−0714' };
-  const host = h('div', { class: 'aladin-host', id: 'aladin', role: 'application', 'aria-label': 'Interactive sky map' });
+  const host = atlas?.host || h('div', { class: 'aladin-host', id: 'aladin', role: 'application', 'aria-label': 'Interactive sky map' });
   const info = h('div', { class: 'tiny', 'aria-live': 'polite' }, 'Loading the sky map…');
   const picked = h('div', { class: 'row' });
   const props = h('p', { class: 'tiny' });
@@ -40,15 +42,24 @@ export async function render(root, route, { go }) {
   }
   let aladin;
   try {
-    const mod = await import('../../vendor/aladin.js');
-    const A = mod.default;
-    await A.init;
-    aladin = A.aladin(host, {
-      survey: SPHEREX_HIPS, fov: Math.max(1.5, (req.fov / 60) * 6), target: `${t.ra} ${t.dec}`, cooFrame: 'ICRSd',
-      showReticle: true, showLayersControl: false, showSimbadPointerControl: false, showShareControl: false, showSettingsControl: false,
-      showProjectionControl: false, showContextMenu: false, showCooGridControl: true, showFullscreenControl: true, showFrame: true, showZoomControl: true,
-      backgroundColor: 'rgb(5,6,26)', reticleColor: '#ffcf7a',
-    });
+    let A;
+    if (atlas) {
+      ({ A, aladin } = atlas);
+      try { aladin.removeOverlays(); } catch { /* ignore */ }
+      aladin.gotoRaDec(t.ra, t.dec);
+      aladin.setFoV(Math.max(1.5, (req.fov / 60) * 6));
+    } else {
+      A = (await import('../../vendor/aladin.js')).default;
+      await A.init;
+      aladin = A.aladin(host, {
+        survey: SPHEREX_HIPS, fov: Math.max(1.5, (req.fov / 60) * 6), target: `${t.ra} ${t.dec}`, cooFrame: 'ICRSd',
+        showReticle: true, showLayersControl: false, showSimbadPointerControl: false, showShareControl: false, showSettingsControl: false,
+        showProjectionControl: false, showContextMenu: false, showCooGridControl: true, showFullscreenControl: true, showFrame: true, showZoomControl: true,
+        backgroundColor: 'rgb(5,6,26)', reticleColor: '#ffcf7a',
+      });
+      atlas = { host, aladin, A };
+      aladin.on('click', (e) => atlas.onClick?.(e));
+    }
     // field outline
     const ov = A.graphicOverlay({ color: '#ffcf7a', lineWidth: 2, name: 'Current field' });
     aladin.addOverlay(ov);
@@ -72,12 +83,12 @@ export async function render(root, route, { go }) {
       cat.addSources([...r.data.rows].sort((a, b) => (a.w1mpro ?? 99) - (b.w1mpro ?? 99)).slice(0, 300).map((s) => A.source(s.ra, s.dec, { name: s.source_name })));
       cat.hide();
     }).catch(() => {});
-    aladin.on('click', (e) => {
+    atlas.onClick = (e) => {
       if (!e || e.ra == null) return;
       const ra = e.ra, dec = e.dec;
       picked.replaceChildren(h('span', { class: 'chip' }, `${formatRA(ra)} ${formatDec(dec)}`),
         h('button', { class: 'btn small primary', onclick: () => { const tt = { ra, dec, source: 'coords' }; pushRecent(tt); go(`#/view?${toParams(normalise({ ...req, target: tt, t: 0 }))}`); } }, 'Play this spot'));
-    });
+    };
     fetch(`${SPHEREX_HIPS}/properties`).then((r) => r.text()).then((txt) => {
       const get = (k) => (txt.match(new RegExp(`^${k}\\s*=\\s*(.+)$`, 'm')) || [])[1]?.trim();
       props.textContent = `HiPS: ${get('obs_title') || 'SPHEREx'} · released ${get('hips_release_date') || '?'} · ${get('hips_cube_depth') || '?'} spectral frames · served by IRSA (${get('hips_copyright') || 'Caltech/IPAC'}). The HiPS PNG tiles are for visualisation only (fixed stretch). Aladin opens the cube’s middle channel, which IRSA leaves blank, so SkyShift shows the neighbouring channel (index 49, about 2.4 µm) instead; use Explore for every wavelength.`;
@@ -87,5 +98,5 @@ export async function render(root, route, { go }) {
     host.replaceChildren(h('div', { class: 'empty' }, navigator.onLine ? `The sky map could not start (${e.message || e}).` : 'The sky map needs a connection the first time. Explore works offline for saved fields.'));
     info.textContent = '';
   }
-  return () => { try { host.replaceChildren(); } catch { /* ignore */ } };
+  return () => { if (atlas) atlas.onClick = null; host.remove(); /* the map instance is kept for the next visit */ };
 }

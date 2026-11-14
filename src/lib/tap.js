@@ -36,8 +36,11 @@ export function parseCSV(text) {
     const o = {};
     head.forEach((h, k) => {
       const v = r[k] ?? '';
-      const n = v.trim() === '' ? null : Number(v);
-      o[h] = n === null ? null : Number.isFinite(n) && /^[-+.\deE]+$/.test(v.trim()) ? n : v;
+      const t = v.trim();
+      // integers beyond 2^53 (e.g. Gaia DR3 source_id) must stay exact: keep them as strings
+      if (/^-?\d{16,}$/.test(t)) { o[h] = t; return; }
+      const n = t === '' ? null : Number(t);
+      o[h] = n === null ? null : Number.isFinite(n) && /^[-+.\deE]+$/.test(t) ? n : v;
     });
     return o;
   });
@@ -147,11 +150,12 @@ export async function gaiaCone(ra, dec, radiusDeg, limit = 3000) {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'request=' + encodeURIComponent(JSON.stringify(request)), timeout: 45000,
       });
-      const j = await res.json();
+      // quote 64-bit IDs before parsing so they are not rounded by JSON number precision
+      const j = JSON.parse((await res.text()).replace(/"(source_id|solution_id|random_index)"\s*:\s*(-?\d{16,})/g, '"$1":"$2"'));
       if (!Array.isArray(j.data)) throw new Error(`MAST: ${j.status || 'no data'}`);
       return {
         via: 'MAST Mast.Catalogs.GaiaDR3.Cone',
-        rows: j.data.map((s) => ({ source_id: s.source_id, ra: s.ra, dec: s.dec, pmra: s.pmra, pmdec: s.pmdec, parallax: s.parallax, phot_g_mean_mag: s.phot_g_mean_mag, bp_rp: s.bp_rp, ref_epoch: s.ref_epoch })),
+        rows: j.data.map((s) => ({ source_id: String(s.source_id), ra: s.ra, dec: s.dec, pmra: s.pmra, pmdec: s.pmdec, parallax: s.parallax, phot_g_mean_mag: s.phot_g_mean_mag, bp_rp: s.bp_rp, ref_epoch: s.ref_epoch })),
       };
     } catch (e) {
       const rows = await tap(IRSA_TAP, `SELECT TOP ${limit} source_id, ra, dec, pmra, pmdec, parallax, phot_g_mean_mag, bp_rp, ref_epoch

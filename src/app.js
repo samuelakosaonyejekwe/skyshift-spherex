@@ -89,6 +89,9 @@ async function route() {
   }
   lastIdx = idx();
   syncArrows();
+  // dialogs belong to the page that opened them: close any that are still open
+  document.querySelectorAll('.sheet, .tour, .tour-ring').forEach((el) => el.remove());
+  const backdrop = document.getElementById('sheetBackdrop'); if (backdrop) backdrop.hidden = true;
   if (applyPendingUpdate()) return; // reloads into the new version at the requested page
   const seq = ++renderSeq;
   const r = parseHash();
@@ -118,11 +121,10 @@ async function route() {
     if (!sessionStorage.getItem('skyshift.recovered') && navigator.onLine) {
       sessionStorage.setItem('skyshift.recovered', '1');
       try {
+        // a clean reinstall: unregister the worker and drop its caches; the reload installs and precaches afresh
         const reg = await navigator.serviceWorker?.getRegistration();
-        reg?.waiting?.postMessage({ type: 'SKIP_WAITING' });
-        reg?.active?.postMessage({ type: 'RESET' });
+        await reg?.unregister();
         if (window.caches) for (const k of await caches.keys()) if (k.startsWith('skyshift-shell-') || k === 'skyshift-runtime-v1') await caches.delete(k);
-        await reg?.update();
       } catch { /* ignore */ }
       location.reload();
       return;
@@ -202,7 +204,7 @@ export function showInstallSheet() {
   }
   const close = sheet(h('div', {},
     h('div', { class: 'row' }, h('img', { src: 'icons/icon-192.png', width: 56, height: 56, alt: '' }),
-      h('div', {}, h('h2', { style: { margin: 0 } }, 'Install SkyShift'), h('p', { class: 'muted', style: { margin: 0 } }, 'Free, no account, about 1 MB. Works in airplane mode.'))),
+      h('div', {}, h('h2', { style: { margin: 0 } }, 'Install SkyShift'), h('p', { class: 'muted', style: { margin: 0 } }, 'Free, no account, about 2 MB with its offline files. Works in airplane mode.'))),
     h('ol', { class: 'install-steps' }, steps.map(([g, t]) => h('li', {}, g, h('span', {}, t)))),
     h('button', { class: 'btn primary', style: { width: '100%' }, onclick: () => close() }, 'Got it')), { label: 'How to install SkyShift' });
 }
@@ -300,6 +302,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
     h('label', { class: 'field' }, 'Interface language (menus and messages; page content is in English)', sel('lang', Object.entries(LANGS).map(([k, v]) => [k, v.name]))),
     chk('mask', 'Remove bad pixels from measurements using SPHEREx quality flags'),
     chk('reduceMotion', 'Reduce motion (no automatic playback)'),
+    chk('noShortcuts', 'Turn off single-key keyboard shortcuts (for screen-reader and switch users)'),
     h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => { close(); toast({ title: 'Settings saved', text: 'They apply to the next target you open.', glyph: '⚙', timeout: 2500 }); } }, 'Done'),
       h('button', { class: 'btn ghost', onclick: () => { localStorage.removeItem('skyshift.settings'); applyTheme(); close(); toast({ title: 'Settings reset', glyph: '⚙', timeout: 2000 }); } }, 'Reset to defaults'))), { label: 'Settings' });
 });

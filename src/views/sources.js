@@ -34,7 +34,7 @@ export const SOURCES = [
     probe: async () => {
       const page = await pageInfo('https://archive.stsci.edu/missions-and-data/gaia', /Gaia (?:DR\d|EDR\d)[^\n<]{0,80}/g).catch((e) => ({ ok: false, error: e.message }));
       const res = await smartFetch('https://mast.stsci.edu/api/v0/invoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'request=' + encodeURIComponent(JSON.stringify({ service: 'Mast.Catalogs.GaiaDR3.Cone', params: { ra: 269.4485, dec: 4.7394, radius: 0.005 }, format: 'json', pagesize: 1, page: 1 })) });
-      const j = await res.json().catch(() => ({}));
+      const j = JSON.parse((await res.text().catch(() => '{}')).replace(/"(source_id|solution_id|random_index)"\s*:\s*(-?\d{16,})/g, '"$1":"$2"') || '{}');
       return { ...page, ok: page.ok !== false || j.status === 'COMPLETE', extra: j.status === 'COMPLETE' ? `MAST Gaia DR3 cone search answered live (${j.data?.length ?? 0} row test).` : `MAST API status: ${j.status || res.status}` };
     } },
   { id: 'neossat', n: 5, name: 'NEOSSat (Canadian Space Agency)', url: 'https://www.asc-csa.gc.ca/eng/satellites/neossat/',
@@ -136,5 +136,5 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
   }
   run();
   timer = setInterval(run, 10 * 60 * 1000);
-  return () => clearInterval(timer);
+  return () => { clearInterval(timer); relayout.disconnect?.(); };
 }

@@ -9,9 +9,11 @@ Built for the 2026 NASA Space Apps Challenge "Planet X and SPHEREx" by team **Sk
 - Code: https://github.com/samuelakosaonyejekwe/skyshift-spherex
 - Backup mirror: Cloudflare Pages (to be set up; needs a Cloudflare account)
 
-On GitHub Pages there is no search relay yet, so searches of new positions use saved or built-in image lists; the five
-challenge targets, the sky map, Live, Mission and the Sky atlas work fully. Adding a relay host (see `wrangler.toml`)
-enables live searches anywhere.
+On GitHub Pages there is no search relay yet. What works there: the five challenge targets (built-in image lists, with
+pixels streamed live from IRSA's cloud bucket), the Explore sky map and coverage, Live (newest frames, read straight from
+IRSA's bucket), Mission statistics (pre-built from IRSA), the Sky atlas imagery, saved fields, uploads, equations and dossiers.
+What needs a relay host (see `wrangler.toml`): searching new positions, Gaia and WISE overlays, Gaia ID look-ups, NEOSSat
+listings, Sky atlas catalogues and the live data-freshness checks; without it the app says so and uses saved data.
 - Local: `npm start`, then open http://localhost:8080/
 
 ## What you can do
@@ -79,8 +81,10 @@ No runtime dependencies. Aladin Lite (CDS, LGPL-3.0-or-later) is vendored in `ve
 
 ## Presentation
 
-`docs/presentation/`: 28.5-second demo video (`skyshift-demo-barnard.webm`), 7-slide deck (`slides.html`, opens in any browser;
-print to PDF for a handout) and the slide images.
+Watch online (slides with the playable demo video): https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/
+
+Files in `docs/presentation/`: 28-second demo video (`skyshift-demo-barnard.webm`), 7-slide deck (`slides.html`, opens in any
+browser; print to PDF for a handout) and the slide images.
 
 ## Copyright
 
