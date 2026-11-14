@@ -93,3 +93,5 @@ Files in `docs/presentation/`: 28-second demo video (`skyshift-demo-barnard.webm
 Copyright 2026 Samuel Akosa Onyejekwe. Licensed under the [Apache License 2.0](LICENSE), as the NASA Space Apps terms require
 for submissions; keep the [NOTICE](NOTICE) file when redistributing. Third-party data and software keep their own licences
 ([NOTICE](NOTICE), [docs/LEGAL.md](docs/LEGAL.md)).
+
+Super Intelligence (SI) use, as the Space Apps rules ask: SI tools were used to help write and revise code, tests and documentation under the author's direction; the idea, design and testing are the author's own. No SI-generated images, video or audio are used.

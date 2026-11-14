@@ -22,5 +22,6 @@
     "type": "git",
     "url": "https://github.com/samuelakosaonyejekwe/skyshift-spherex.git"
   },
-  "homepage": "https://samuelakosaonyejekwe.github.io/skyshift-spherex/"
+  "homepage": "https://samuelakosaonyejekwe.github.io/skyshift-spherex/",
+  "siUse": "SI tools were used to help write and revise code, tests and documentation under the author's direction; the idea, design and testing are the author's own. No SI-generated images, video or audio are used."
 }

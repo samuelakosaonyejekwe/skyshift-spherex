@@ -37,6 +37,7 @@ Submission Guide (13 November 2026), as transcribed by Samuel. How SkyShift meet
 | No personal data beyond names; nothing of persons under 18; no commercial promotion | Only the author's name; no images of people; no adverts |
 | Demo and slides hosted on a public site without login | GitHub repository and GitHub Pages |
 | Videos: the participant's own recording, no third-party copyright | The demo video is a screen recording of SkyShift itself |
+| Indicate SI use (text and metadata for code; watermark only for SI-generated media) | One sentence in `README.md` and `NOTICE`; `siUse` in `package.json`; CITATION.cff abstract. No SI-generated media |
 
 Gaia DR3 values in `data/targets.json` are distributed under ESA's CC BY-NC 3.0 IGO licence (non-commercial); ESA is a Space
 Apps partner agency and Gaia is listed by the challenge itself.
