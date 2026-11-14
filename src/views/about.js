@@ -21,7 +21,11 @@ export async function render(root) {
     h('h2', {}, 'Where SkyShift lives'),
     h('ul', {},
       h('li', {}, 'Live app: ', h('a', { href: cfg.hosts?.primary || 'https://samuelakosaonyejekwe.github.io/skyshift-spherex/' }, cfg.hosts?.primary || 'https://samuelakosaonyejekwe.github.io/skyshift-spherex/')),
-      h('li', {}, 'Backup mirror: ', cfg.hosts?.backup || 'Cloudflare Pages (to be set up)'),
+      h('li', {}, 'Backup mirror: ', ...(() => {
+        // every https address in the mirror list (or the backup text) becomes a link, like the other two
+        const urls = cfg.hosts?.mirrors?.length ? cfg.hosts.mirrors : String(cfg.hosts?.backup || '').match(/https:\/\/[^\s)]+/g) || [];
+        return urls.length ? urls.flatMap((u, i) => [i ? ' · ' : null, h('a', { href: u, target: '_blank', rel: 'noopener' }, u)]).filter(Boolean) : [cfg.hosts?.backup || 'not set up yet'];
+      })()),
       h('li', {}, 'Source code: ', h('a', { href: cfg.hosts?.code || 'https://github.com/samuelakosaonyejekwe/skyshift-spherex' }, cfg.hosts?.code || 'https://github.com/samuelakosaonyejekwe/skyshift-spherex'))),
     h('p', {}, 'Both hosts serve the same build. Installed copies keep working offline even if a host is unreachable, and data requests go from your device straight to the archives.'),
     version ? h('p', { class: 'tiny' }, `App version ${version}`) : null,
