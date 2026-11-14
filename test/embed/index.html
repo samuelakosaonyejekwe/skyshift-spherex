@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Embed test: SkyShift in another site</title>
+<style>body{font:15px system-ui,sans-serif;margin:24px;background:#f4f4f8;color:#111}iframe{width:min(100%,720px);height:760px;border:0;border-radius:12px;box-shadow:0 4px 20px #0002}</style></head>
+<body>
+<h1>Another website embedding SkyShift</h1>
+<p>Served from a different origin (e.g. <code>python3 -m http.server 8091 -d test/embed</code>). The iframe below uses the snippet from Share → Embed.</p>
+<iframe src="http://localhost:8080/?ra=133.786245&dec=-7.244372&name=WISE%200855&det=456&mode=blink&embed=1" loading="lazy" title="SkyShift: SPHEREx view of WISE 0855" allow="fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+<p id="host-check">Host page script still runs: <span id="ok">no</span></p>
+<script>document.getElementById('ok').textContent = 'yes';</script>
+</body></html>

@@ -48,7 +48,7 @@ export async function resolveTarget(text) {
     const rows = await tap(IRSA_TAP, `SELECT source_id, ra, dec, pmra, pmdec, parallax, phot_g_mean_mag, ref_epoch FROM gaia_dr3_source WHERE source_id = ${gaia[1]}`);
     if (!rows.length) return { error: `Gaia DR3 ${gaia[1]} was not found`, hint: 'Check the source ID (19 digits for most stars).' };
     const g = rows[0];
-    return { kind: 'gaia', target: { ra: g.ra, dec: g.dec, pmra: g.pmra || 0, pmdec: g.pmdec || 0, refEpoch: g.ref_epoch, name: `Gaia DR3 ${g.source_id}`, id: String(g.source_id), source: 'gaia' }, note: `Gaia DR3 (IRSA) position at epoch ${g.ref_epoch}, G=${g.phot_g_mean_mag?.toFixed(2)}` };
+    return { kind: 'gaia', target: { ra: g.ra, dec: g.dec, pmra: g.pmra || 0, pmdec: g.pmdec || 0, plx: g.parallax > 0 ? g.parallax : 0, refEpoch: g.ref_epoch, name: `Gaia DR3 ${g.source_id}`, id: String(g.source_id), source: 'gaia' }, note: `Gaia DR3 (IRSA) position at epoch ${g.ref_epoch}, G=${g.phot_g_mean_mag?.toFixed(2)}` };
   }
   const pos = parsePosition(s);
   if (pos) return { kind: 'coords', target: { ...pos, source: 'coords' }, note: 'ICRS coordinates' };
@@ -65,7 +65,7 @@ export async function resolveTarget(text) {
 }
 
 export function presetToTarget(t) {
-  return { ra: t.ra, dec: t.dec, name: t.name, id: t.id, pmra: t.pmra || 0, pmdec: t.pmdec || 0, refEpoch: t.pmra || t.pmdec ? 2026.0 : undefined, source: 'preset' };
+  return { ra: t.ra, dec: t.dec, name: t.name, id: t.id, pmra: t.pmra || 0, pmdec: t.pmdec || 0, plx: t.parallax || 0, refEpoch: t.pmra || t.pmdec ? 2026.0 : undefined, source: 'preset' };
 }
 
 /** Suggested field of view / mode for a target (the "smart next step"). */

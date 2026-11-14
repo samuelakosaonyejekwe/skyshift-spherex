@@ -3,7 +3,7 @@
 // target, and summarise flags. Runs inside a Web Worker (and in Node for tests).
 
 import { BAD_MASK, FLAG_BITS, META_KEYS, describeUri } from './spherex.js';
-import { propagate, mjdToYear } from './coords.js';
+import { propagate, mjdToYear, apparent } from './coords.js';
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 export const NATIVE_SCALE = 6.15; // arcsec / pixel (SPHEREx spectral image pixel)
@@ -151,16 +151,16 @@ export async function renderExposure(img, grid, rec, opts = {}) {
   const H = m.header.NAXIS2, W = m.header.NAXIS1;
   const mjd = m.header['MJD-AVG'] ?? rec.mjd;
   let cra = grid.ra, cdec = grid.dec;
-  if (track && (track.pmra || track.pmdec)) {
-    const p = propagate(grid.ra, grid.dec, track.pmra, track.pmdec, track.refYear, mjdToYear(mjd));
+  if (track && (track.pmra || track.pmdec || track.plx)) {
+    const p = apparent(grid.ra, grid.dec, track.pmra, track.pmdec, track.plx, track.refYear, mjd);
     cra = p.ra; cdec = p.dec;
   }
   const map = buildMapping(grid, wcs, cra, cdec);
   const [xmin, xmax, ymin, ymax] = map.bbox;
   // photometry follows the target's predicted position (proper motion) when known
   let pra = cra, pdec = cdec;
-  if (photTrack && (photTrack.pmra || photTrack.pmdec)) {
-    const p = propagate(grid.ra, grid.dec, photTrack.pmra, photTrack.pmdec, photTrack.refYear, mjdToYear(mjd));
+  if (photTrack && (photTrack.pmra || photTrack.pmdec || photTrack.plx)) {
+    const p = apparent(grid.ra, grid.dec, photTrack.pmra, photTrack.pmdec, photTrack.plx, photTrack.refYear, mjd);
     pra = p.ra; pdec = p.dec;
   }
   const [tx, ty] = wcs.worldToPix(pra, pdec);

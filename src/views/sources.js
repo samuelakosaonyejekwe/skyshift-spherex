@@ -2,7 +2,7 @@
 // (directly where CORS allows, otherwise through the allow-listed relay) and shows
 // what SkyShift takes from each, how fresh it is, and whether it answered.
 
-import { h, icon } from '../ui/dom.js';
+import { h, icon, masonry } from '../ui/dom.js';
 import { smartFetch } from '../lib/net.js';
 import { latestSpherex, latestNeossat, loadBundled } from '../lib/tap.js';
 import { mjdToISO } from '../lib/coords.js';
@@ -83,7 +83,7 @@ async function pageInfo(url, re) {
 }
 
 export async function render(root, route, ctx, { embedded = false } = {}) {
-  const grid = h('div', { class: 'sources' });
+  const grid = h('div', { class: 'sources-m' });
   const stamp = h('span', { class: 'tiny' });
   const refreshBtn = h('button', { class: 'btn small', onclick: () => run() }, icon('refresh'), 'Check again');
   const bundle = await loadBundled();
@@ -103,6 +103,8 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
     cards.set(s.id, { status, body });
     grid.append(card);
   }
+  const cardEls = [...grid.children];
+  const relayout = masonry(grid, cardEls);
   let timer;
   async function run() {
     stamp.textContent = `Last checked ${new Date().toLocaleTimeString()}`;
@@ -121,12 +123,14 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
           r.lines?.length ? h('ul', {}, r.lines.slice(0, 6).map((l) => h('li', {}, l))) : null,
           r.error ? h('p', { class: 'notice warn' }, r.error) : null);
         await cache.set(`src:${s.id}`, { at: Date.now(), extra: r.extra || null, lines: r.lines || [] });
+        relayout();
       } catch (e) {
         const prev = await cache.get(`src:${s.id}`);
         c.status.className = 'src-status bad';
         c.status.textContent = navigator.onLine ? 'Not reachable now' : 'Offline';
         c.body.replaceChildren(h('p', { class: 'notice warn' }, `${e.message || e}`),
           prev ? h('p', {}, `Last good check ${new Date(prev.at).toLocaleString()}: ${prev.extra || (prev.lines || []).slice(0, 2).join(' · ')}`) : null);
+        relayout();
       }
     }));
   }

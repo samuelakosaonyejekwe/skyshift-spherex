@@ -5,6 +5,7 @@ import { h, toast, sheet, icon } from './ui/dom.js';
 import { loadConfig, onNetStatus, netStatus } from './lib/net.js';
 import { fromParams } from './state.js';
 import { getSettings, setSettings, applyTheme, DEFAULT_SETTINGS } from './settings.js';
+import { t, setLang } from './i18n/index.js';
 
 const ROUTES = {
   home: () => import('./views/home.js'),
@@ -47,6 +48,7 @@ export function go(hash, { replace = false } = {}) {
   route();
 }
 window.addEventListener('popstate', () => { route(); });
+window.addEventListener('hashchange', () => { if (history.state?.idx == null) route(); });
 navBack.addEventListener('click', () => history.back());
 navFwd.addEventListener('click', () => history.forward());
 document.addEventListener('keydown', (e) => {
@@ -77,7 +79,15 @@ export function parseHash() {
   return { name: ROUTES[name] ? name : 'home', sub: path.split('/').slice(1), params: new URLSearchParams(qs) };
 }
 
+let lastIdx = history.state?.idx ?? 0;
 async function route() {
+  // entries created by plain links (<a href="#/…">) have no index yet: give them the next one
+  if (history.state?.idx == null) {
+    const n = lastIdx + 1;
+    history.replaceState({ idx: n }, '');
+    maxIdx = n; sessionStorage.setItem('skyshift.maxIdx', String(maxIdx));
+  }
+  lastIdx = idx();
   syncArrows();
   if (applyPendingUpdate()) return; // reloads into the new version at the requested page
   const seq = ++renderSeq;
@@ -90,8 +100,12 @@ async function route() {
     const mod = await ROUTES[r.name]();
     if (seq !== renderSeq) return;
     current?.dispose?.();
-    main.replaceChildren();
-    const dispose = await mod.render(main, r, { go });
+    // each page renders into its own container: a slow page that finishes after the user has
+    // moved on writes into a detached container and can never leak into the next page
+    const view = h('div', { class: 'view', 'data-view': r.name });
+    main.replaceChildren(view);
+    const dispose = await mod.render(view, r, { go });
+    if (seq !== renderSeq) { try { dispose?.(); } catch { /* ignore */ } return; }
     current = { name: r.name, mod, dispose };
     const title = mod.title ? `${mod.title} · SkyShift` : 'SkyShift: A Time Machine for the SPHEREx Sky';
     document.title = title;
@@ -135,12 +149,12 @@ const pill = document.getElementById('netpill');
 function syncNet(s = netStatus) {
   const on = navigator.onLine;
   pill.classList.toggle('off', !on);
-  pill.textContent = on ? (s.relay === null && s.lastError ? 'Online · archive relay unavailable' : 'Online · live data') : 'Offline · saved data';
+  pill.textContent = on ? (s.relay === null && s.lastError ? t('net.relayDown') : t('net.online')) : t('net.offline');
   pill.title = on ? 'Fresh data is fetched live from the archives' : 'No connection: showing data saved on this device';
 }
 onNetStatus(syncNet);
-window.addEventListener('online', () => { syncNet(); toast({ title: 'Back online', text: 'Live SPHEREx data is available again. Views refresh automatically.', glyph: '🛰', timeout: 4000 }); window.dispatchEvent(new CustomEvent('skyshift:online')); });
-window.addEventListener('offline', () => { syncNet(); toast({ title: 'You are offline', text: 'SkyShift keeps working with the fields and data saved on this device.', glyph: '✈', timeout: 6000 }); });
+window.addEventListener('online', () => { syncNet(); toast({ title: t('toast.online.title'), text: t('toast.online.text'), glyph: '🛰', timeout: 4000 }); window.dispatchEvent(new CustomEvent('skyshift:online')); });
+window.addEventListener('offline', () => { syncNet(); toast({ title: t('toast.offline.title'), text: t('toast.offline.text'), glyph: '✈', timeout: 6000 }); });
 
 // ---------------- install (all platforms) ----------------
 const installBtn = document.getElementById('installBtn');
@@ -194,8 +208,15 @@ export function showInstallSheet() {
 }
 
 // ---------------- service worker: offline + update pop-up ----------------
-let pendingWorker = null;
-export function applyPendingUpdate() { if (pendingWorker) { pendingWorker.postMessage({ type: 'SKIP_WAITING' }); pendingWorker = null; return true; } return false; }
+let pendingWorker = null, updateRequested = false;
+/** Activate a waiting version and reload into it (view state lives in the URL, so nothing is lost). */
+function doUpdate(worker) {
+  updateRequested = true;
+  pendingWorker = null;
+  try { worker?.postMessage({ type: 'SKIP_WAITING' }); } catch { /* ignore */ }
+  setTimeout(() => location.reload(), 2500); // fallback if the browser is slow to switch
+}
+export function applyPendingUpdate() { if (pendingWorker) { doUpdate(pendingWorker); return true; } return false; }
 async function setupSW() {
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
   try {
@@ -204,9 +225,9 @@ async function setupSW() {
       pendingWorker = worker; // also applied automatically at the next page change (the view lives in the URL)
       toast({
         kind: 'update', glyph: '✨', timeout: 0,
-        title: 'A new version of SkyShift is ready',
-        text: 'Update now to get the latest features. Your current view is kept.',
-        actions: [{ label: 'Update now', primary: true, onClick: () => worker.postMessage({ type: 'SKIP_WAITING' }) }, { label: 'Later' }],
+        title: t('update.title'),
+        text: t('update.text'),
+        actions: [{ label: t('update.now'), primary: true, onClick: () => doUpdate(worker) }, { label: t('update.later') }],
       });
     };
     if (reg.waiting && navigator.serviceWorker.controller) promptUpdate(reg.waiting);
@@ -219,7 +240,7 @@ async function setupSW() {
     let reloading = false;
     const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloading || !hadController) return; // first install: nothing to refresh
+      if (reloading || (!hadController && !updateRequested)) return; // first install: nothing to refresh
       reloading = true;
       sessionStorage.setItem('skyshift.scroll', String(scrollY));
       location.reload(); // URL holds the full view state, so nothing is lost
@@ -251,6 +272,14 @@ async function checkNewData() {
     const { checkWatchlist } = await import('./views/saved.js');
     checkWatchlist(r.data);
   } catch { /* offline or archive down: silently retry later */ }
+}
+
+// ---------------- language (interface text from src/i18n) ----------------
+setLang(getSettings().lang || 'en');
+{
+  const keys = { home: 'nav.explore', view: 'nav.tm', chase: 'nav.chase', live: 'nav.live', mission: 'nav.mission', sky: 'nav.sky', saved: 'nav.saved', guide: 'nav.learn', about: 'nav.about' };
+  document.querySelectorAll('#mainnav a').forEach((a) => { const sp = a.querySelector('span'); if (sp && keys[a.dataset.route]) sp.textContent = t(keys[a.dataset.route]); });
+  document.querySelector('#installBtn span').textContent = t('top.install');
 }
 
 // ---------------- theme + settings ----------------
@@ -292,9 +321,14 @@ document.addEventListener('keydown', (e) => {
   document.body.classList.toggle('embedded', !!embed);
   await loadConfig();
   syncNet();
+  if (history.state?.idx == null) history.replaceState({ idx: 0 }, '');
+  lastIdx = idx();
   route();
   setupSW();
   setTimeout(checkNewData, 4000);
+  // warm up the other pages in the background so switching is instant
+  const idle = window.requestIdleCallback || ((f) => setTimeout(f, 1500));
+  idle(() => Object.values(ROUTES).forEach((load) => load().catch(() => {})));
   setInterval(checkNewData, 60 * 60 * 1000);
   window.addEventListener('skyshift:online', checkNewData);
 })();

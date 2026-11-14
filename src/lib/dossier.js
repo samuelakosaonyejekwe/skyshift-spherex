@@ -3,8 +3,8 @@
 // "Save as PDF"), and a ZIP bundle with figures (PNG + SVG), an animated PNG, data tables
 // (CSV + VOTable), FITS cutouts of the displayed frames and the SkyRequest JSON.
 
-import { formatRA, formatDec, mjdToISO, mjdToYear, propagate } from './coords.js';
-import { paint, paintDiff, paintRGB, limits, detectorBalanced, matchedDifference } from './render.js';
+import { formatRA, formatDec, mjdToISO, mjdToYear, propagate, apparent } from './coords.js';
+import { paint, paintDiff, paintRGB, limits, detectorBalanced, matchedDifference, tintName } from './render.js';
 import { decodeFlags, BAD_MASK, DETECTORS, uriToS3 } from './spherex.js';
 import { questionable, epochBrightness } from './discover.js';
 import { toParams, normalise } from '../state.js';
@@ -43,7 +43,7 @@ export function measureMotion(display, grid, req) {
   const N = grid.n, D2R = Math.PI / 180;
   const mid = (g) => g.reduce((a, e) => a + e.meta.mjd, 0) / g.length;
   const pred = (m) => {
-    const p = propagate(req.target.ra, req.target.dec, req.target.pmra || 0, req.target.pmdec || 0, req.target.refEpoch || 2016, mjdToYear(m));
+    const p = apparent(req.target.ra, req.target.dec, req.target.pmra || 0, req.target.pmdec || 0, req.target.plx || 0, req.target.refEpoch || 2016, m);
     const d0 = grid.dec * D2R, da = (p.ra - grid.ra) * D2R, d = p.dec * D2R;
     const cosc = Math.sin(d0) * Math.sin(d) + Math.cos(d0) * Math.cos(d) * Math.cos(da);
     const xi = (Math.cos(d) * Math.sin(da)) / cosc / D2R * 3600, eta = (Math.cos(d0) * Math.sin(d) - Math.sin(d0) * Math.cos(d) * Math.cos(da)) / cosc / D2R * 3600;
@@ -286,7 +286,7 @@ export async function buildDossier(snap) {
   const files = [];
   const figs = [];
   let figNo = 0;
-  const opts = { stretch: req.stretch, cmap: req.cmap, invert: req.invert };
+  const opts = { stretch: req.stretch, cmap: req.cmap === 'auto' ? tintName(req.dets) : req.cmap, invert: req.invert };
   const addFig = async (canvas, file, caption) => {
     const blob = await toPng(canvas);
     files.push({ name: `figures/${file}.png`, data: blob });

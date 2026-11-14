@@ -61,5 +61,13 @@ test('unknown columns ask for a mapping, and mapping is honoured', async () => {
 test('malformed and binary files fail clearly', async () => {
   await assert.rejects(parseUpload('x.json', enc('{bad json')), /JSON could not be read/);
   await assert.rejects(parseUpload('x.bin', new Uint8Array([0, 1, 2, 3, 0, 0, 7, 8, 9]).buffer), /binary file/);
-  await assert.rejects(parseUpload('x.pdf', enc('%PDF-1.7 ...')), /PDF files are not read yet/);
+  await assert.rejects(parseUpload('x.pdf', enc('%PDF-1.7 ...')), /No readable text/);
+});
+
+test('PDF with an uncompressed text stream', async () => {
+  const content = 'BT /F1 12 Tf 72 720 Td (WISE 0855 133.786245 -7.244372) Tj T* (RW Aur 76.95609 30.401128) Tj ET';
+  const pdf = `%PDF-1.4\n1 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n%%EOF`;
+  const r = await parseUpload('t.pdf', enc(pdf));
+  assert.equal(r.targets.length, 2);
+  assert.ok(Math.abs(r.targets[1].dec - 30.401128) < 1e-9);
 });

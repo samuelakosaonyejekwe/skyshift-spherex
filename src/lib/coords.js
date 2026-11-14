@@ -127,3 +127,26 @@ export function mjdToISO(mjd, withTime = true) {
   const s = mjdToDate(mjd).toISOString();
   return withTime ? s.slice(0, 16).replace('T', ' ') + ' UTC' : s.slice(0, 10);
 }
+
+/** Geocentric equatorial position of the Sun (AU), low-precision formula (accurate to ~0.01° in longitude). */
+export function sunXYZ(mjd) {
+  const n = mjd + 2400000.5 - 2451545.0, D = Math.PI / 180;
+  const L = 280.460 + 0.9856474 * n, g = (357.528 + 0.9856003 * n) * D;
+  const lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * D;
+  const R = 1.00014 - 0.01671 * Math.cos(g) - 0.00014 * Math.cos(2 * g);
+  const eps = (23.439 - 0.0000004 * n) * D;
+  return [R * Math.cos(lam), R * Math.cos(eps) * Math.sin(lam), R * Math.sin(eps) * Math.sin(lam)];
+}
+
+/**
+ * Apparent position at a date: proper motion plus annual parallax (observer at Earth's centre;
+ * SPHEREx's low orbit adds < 0.0001″ for stars). plx in mas.
+ */
+export function apparent(ra, dec, pmra, pmdec, plx, refYear, mjd) {
+  const p = propagate(ra, dec, pmra || 0, pmdec || 0, refYear, mjdToYear(mjd));
+  if (!plx) return p;
+  const [X, Y, Z] = sunXYZ(mjd), a = (p.ra * Math.PI) / 180, d = (p.dec * Math.PI) / 180;
+  const dra = plx * (X * Math.sin(a) - Y * Math.cos(a)); // mas, includes cos(dec)
+  const ddec = plx * (X * Math.cos(a) * Math.sin(d) + Y * Math.sin(a) * Math.sin(d) - Z * Math.cos(d));
+  return { ra: wrap360(p.ra + dra / 3.6e6 / (Math.cos(d) || 1e-9)), dec: p.dec + ddec / 3.6e6 };
+}

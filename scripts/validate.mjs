@@ -33,8 +33,8 @@ for (const t of T) {
   const step = Math.max(1, all.length / MAX);
   const list = all.length > MAX ? Array.from({ length: MAX }, (_, k) => all[Math.floor(k * step)]) : all;
   const grid = makeGrid(t.ra, t.dec, 6);
-  const target = { ra: t.ra, dec: t.dec, pmra: t.pmra || 0, pmdec: t.pmdec || 0, refEpoch: 2026.0 };
-  const pm = t.pmra || t.pmdec ? { pmra: t.pmra, pmdec: t.pmdec, refYear: 2026.0 } : null;
+  const target = { ra: t.ra, dec: t.dec, pmra: t.pmra || 0, pmdec: t.pmdec || 0, plx: t.parallax || 0, refEpoch: 2026.0 };
+  const pm = t.pmra || t.pmdec ? { pmra: t.pmra, pmdec: t.pmdec, plx: t.parallax || 0, refYear: 2026.0 } : null;
   const frames = [];
   let bytes = 0, failed = 0;
   await pool(list, 16, async (rec) => {

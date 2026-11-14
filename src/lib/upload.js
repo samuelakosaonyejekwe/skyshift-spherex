@@ -36,7 +36,11 @@ export async function parseUpload(name, buf, mapping = null) {
   }
   if (isTar(bytes)) return fromArchive(name, untar(bytes), mapping);
   if (ascii.startsWith('SIMPLE  =')) return parseFits(bytes, mapping);
-  if (ascii.startsWith('%PDF')) throw new Error('PDF files are not read yet. Copy the table into a text or CSV file, or type the coordinates.');
+  if (ascii.startsWith('%PDF')) {
+    const text = await pdfText(bytes);
+    if (!text.trim()) throw new Error('No readable text found in this PDF (it may be scanned images). Copy the table into a text file, or type the coordinates.');
+    return finish('PDF document (text extracted)', tableFromText(text), mapping, 'text');
+  }
   if (head[0] === 0x89 && ascii.slice(1, 4) === 'PNG' || (head[0] === 0xff && head[1] === 0xd8) || ascii.startsWith('RIFF') || ascii.startsWith('II*') || ascii.startsWith('MM\0*')) {
     return { format: 'picture', userImage: { kind: 'picture', bytes: bytes.length, note: 'Pictures are shown as user-supplied images only; they are placed on the sky only if they carry WCS (use FITS for that). Reading tables from screenshots (OCR) is not available yet.' }, targets: [], columns: [], preview: [], errors: [] };
   }
@@ -407,4 +411,36 @@ function findPositionInText(line) {
   const pos = parsePosition(`${m[1]} ${/^[+-−]/.test(m[2].trim()) ? m[2].replace('−', '-').replace(/\s+/g, '') : '+' + m[2].trim()}`);
   if (!pos) return null;
   return { ...pos, rest: s.replace(m[0], ' ').replace(/\s+/g, ' ').trim().slice(0, 80) };
+}
+
+// ------------------------------------------------------------------ PDF text (content streams; no scripts executed)
+async function pdfText(bytes) {
+  const raw = new TextDecoder('latin1').decode(bytes);
+  const out = [];
+  const re = /<<([^]*?)>>\s*stream\r?\n/g;
+  let m, n = 0;
+  while ((m = re.exec(raw)) && n < 400) {
+    n++;
+    const start = m.index + m[0].length;
+    const end = raw.indexOf('endstream', start);
+    if (end < 0) break;
+    let data = bytes.subarray(start, end);
+    if (/\/FlateDecode/.test(m[1])) {
+      try { data = await inflate(data, 'deflate'); } catch { continue; }
+    } else if (/\/Filter/.test(m[1])) continue; // images and other encodings are skipped
+    const s = new TextDecoder('latin1').decode(data);
+    if (!/T[jJ]|Tf/.test(s)) continue;
+    // text-showing operators: (..) Tj, [(..) n (..)] TJ, and line moves
+    const lines = [];
+    let line = '';
+    for (const t of s.matchAll(/\((?:\\.|[^\\)])*\)\s*Tj|\[(?:[^\]]*)\]\s*TJ|T\*|-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+T[dD]|ET/g)) {
+      const op = t[0];
+      if (/T\*|T[dD]$|^ET$/.test(op)) { if (line.trim()) lines.push(line.trim()); line = ''; continue; }
+      const parts = op.startsWith('[') ? [...op.matchAll(/\((?:\\.|[^\\)])*\)|-?\d+(?:\.\d+)?/g)].map((x) => (x[0].startsWith('(') ? x[0] : Number(x[0]) < -200 ? '( )' : '()')) : [op.slice(0, op.lastIndexOf(')') + 1)];
+      for (const p of parts) line += p.slice(1, -1).replace(/\\([nrtbf()\\])/g, (_, c) => ({ n: ' ', r: ' ', t: ' ', b: '', f: '' }[c] ?? c));
+    }
+    if (line.trim()) lines.push(line.trim());
+    out.push(...lines);
+  }
+  return out.join('\n');
 }

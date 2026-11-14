@@ -116,8 +116,12 @@ export function downlinkMbps() {
   return c && c.downlink ? c.downlink : null;
 }
 
-/** Turn a long article into a responsive grid of cards: every <h2> and what follows it becomes one card. */
-export function cardify(article, { keep = 0 } = {}) {
+/**
+ * Turn a long article into balanced card columns: every <h2> and what follows it becomes one card,
+ * and cards are placed in reading order into whichever column is currently shortest (masonry),
+ * re-balanced when the width changes. No empty gaps under short columns.
+ */
+export function cardify(article, { keep = 0, minWidth = 380 } = {}) {
   const kids = [...article.childNodes];
   const head = [], groups = [];
   let cur = null;
@@ -125,7 +129,66 @@ export function cardify(article, { keep = 0 } = {}) {
     if (n.nodeType === 1 && n.tagName === 'H2' && i >= keep) { cur = [n]; groups.push(cur); }
     else if (cur) cur.push(n); else head.push(n);
   });
-  const grid = h('div', { class: 'cards' }, groups.map((g) => h('section', { class: 'card' }, g)));
+  // long sections with sub-headings (h3) are split into one card per sub-heading
+  const cards = [];
+  for (const g of groups) {
+    const h3s = g.filter((n) => n.nodeType === 1 && n.tagName === 'H3');
+    if (h3s.length < 2) { cards.push(h('section', { class: 'card' }, g)); continue; }
+    const title = g[0].textContent;
+    let part = [], first = true;
+    const flush = () => { if (part.length) { cards.push(h('section', { class: 'card' }, first ? [g[0], ...part] : [h('p', { class: 'tiny card-kicker' }, title), ...part])); first = false; part = []; } };
+    for (const n of g.slice(1)) { if (n.nodeType === 1 && n.tagName === 'H3' && part.some((x) => x.nodeType === 1 && x.tagName === 'H3')) flush(); part.push(n); }
+    flush();
+  }
+  cards.forEach((c, i) => { c.dataset.order = String(i); });
+  const grid = h('div', { class: 'masonry' });
   article.replaceChildren(...head, grid);
+  let lastCols = 0;
+  const layout = () => {
+    const width = grid.clientWidth || article.clientWidth || window.innerWidth;
+    const cols = Math.max(1, Math.min(4, Math.floor((width + 14) / (minWidth + 14))));
+    if (cols === lastCols && grid.children.length) {
+      // heights may have changed (fonts, images): re-balance only if needed
+    }
+    lastCols = cols;
+    const colEls = Array.from({ length: cols }, () => h('div', { class: 'masonry-col' }));
+    grid.replaceChildren(...colEls);
+    // measure, then place largest first into the shortest column (balanced), keeping reading order inside each column
+    const meas = h('div', { style: { position: 'absolute', visibility: 'hidden', width: `${(width - 14 * (cols - 1)) / cols}px` } });
+    document.body.appendChild(meas);
+    const sized = cards.map((c) => { meas.appendChild(c); const hgt = c.offsetHeight; return { c, hgt }; });
+    meas.remove();
+    const heights = new Array(cols).fill(0), buckets = Array.from({ length: cols }, () => []);
+    for (const it of [...sized].sort((a, b) => b.hgt - a.hgt)) {
+      let k = 0; for (let j = 1; j < cols; j++) if (heights[j] < heights[k]) k = j;
+      buckets[k].push(it.c); heights[k] += it.hgt + 14;
+    }
+    buckets.forEach((b, k) => b.sort((x, y) => x.dataset.order - y.dataset.order).forEach((c) => colEls[k].appendChild(c)));
+  };
+  requestAnimationFrame(layout);
+  let t = 0;
+  const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(layout, 120); });
+  ro.observe(article);
+  if (document.fonts?.ready) document.fonts.ready.then(layout);
   return article;
+}
+
+/** Balanced masonry for an existing set of card elements inside a container (re-balances on resize). */
+export function masonry(container, cards, minWidth = 320) {
+  const lay = () => {
+    const width = container.clientWidth || window.innerWidth;
+    const cols = Math.max(1, Math.min(4, Math.floor((width + 14) / (minWidth + 14))));
+    const colEls = Array.from({ length: cols }, () => h('div', { class: 'masonry-col' }));
+    const heights = new Array(cols).fill(0);
+    cards.forEach((c, i) => { c.dataset.order = String(i); });
+    const sized = cards.map((c) => ({ c, hgt: c.offsetHeight || 200 }));
+    const buckets = Array.from({ length: cols }, () => []);
+    for (const it of [...sized].sort((a, b) => b.hgt - a.hgt)) { let k = 0; for (let j = 1; j < cols; j++) if (heights[j] < heights[k]) k = j; buckets[k].push(it.c); heights[k] += it.hgt + 14; }
+    buckets.forEach((b, k) => b.sort((x, y) => x.dataset.order - y.dataset.order).forEach((c) => colEls[k].appendChild(c)));
+    container.classList.add('masonry');
+    container.replaceChildren(...colEls);
+  };
+  lay();
+  let t = 0; const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(lay, 150); }); ro.observe(container);
+  return lay;
 }

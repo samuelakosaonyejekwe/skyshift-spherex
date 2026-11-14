@@ -248,8 +248,8 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .chart .chart-pt { cursor: pointer; }
 .chart .chart-pt:hover, .chart .chart-pt:focus { stroke-width: 3; }
 .chart-tip { position: absolute; z-index: 5; background: #05061aee; border: 1px solid var(--line-2); padding: 6px 9px; border-radius: 8px; font: 12px/1.35 var(--mono); white-space: pre; pointer-events: none; color: var(--text); }
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 10px; overflow-x: auto; scrollbar-width: none; }
-.tabs button { border: 0; background: none; color: var(--text-2); padding: 10px 12px; font: 600 .9rem var(--font); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.tabs button { border: 0; background: none; color: var(--text-2); padding: 8px 9px; font: 600 .9rem var(--font); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
 .tabs button[aria-selected="true"] { color: #fff; border-bottom-color: var(--accent-2); }
 .flaglist { display: flex; flex-wrap: wrap; gap: 5px; }
 .explist { max-height: 260px; overflow: auto; font-size: .8rem; border: 1px solid var(--line); border-radius: 10px; }
@@ -262,7 +262,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .suggestion .btn { flex: none; }
 .embedded .topbar, .embedded .footer, .embedded .vside .hide-embed { display: none !important; }
 .embedded body, body.embedded { padding-top: 0; }
-@media (max-width: 1100px) { .viewer { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .viewer { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- sky atlas ---------- */
 .aladin-host { width: 100%; height: max(360px, calc(100dvh - var(--top) - 190px)); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line-2); background: #05061a; }
@@ -277,8 +277,9 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 @keyframes pulse { 50% { opacity: .3; } }
 .prose { max-width: none; }
 .prose > p, .prose > ul, .prose > ol { max-width: 110ch; }
-.cards { column-width: 380px; column-gap: 14px; }
-.cards > .card { break-inside: avoid; display: inline-block; width: 100%; margin: 0 0 14px; }
+.masonry { display: flex; gap: 14px; align-items: flex-start; }
+.masonry-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.masonry-col > .card h2:first-child { margin-top: 0; }
 .cards > .card h2:first-child, .cards > .card h3:first-child { margin-top: 0; }
 .prose h2 { margin-top: 1.4em; }
 .prose li { margin-bottom: .35em; }
@@ -408,3 +409,27 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; }
 .chase-card { display: grid; gap: 8px; align-content: start; }
 .period-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
 .period-grid .card { padding: 10px 12px; }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.thumb-fig { margin: 0; }
+.thumb { width: 100%; aspect-ratio: 1; border-radius: 8px; cursor: pointer; border: 2px solid transparent; background: #05061a; }
+.thumb.cur { border-color: var(--warm); }
+
+/* text never escapes its box */
+.card, .notice, .sheet, .toast, td, th, dd, li, p, figcaption { overflow-wrap: anywhere; }
+pre, code, kbd { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
+pre { overflow-x: auto; }
+table { max-width: 100%; }
+main, main * { min-width: 0; }
+img, svg, canvas, video { max-width: 100%; }
+.card-kicker { margin: 0 0 4px; text-transform: uppercase; letter-spacing: .06em; }
+blockquote { margin: 8px 0; }
+.ticks { overflow: hidden; }
+.timeline { min-width: 0; flex: 1 1 160px; }
+.transport select { flex: 0 0 auto; }
+.vhead > div:first-child { min-width: 0; }
+.chase-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.chase-grid > .card form { margin-bottom: 8px; }
+.chase-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.saved-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 14px; align-items: start; margin-bottom: 14px; }
+.empty.compact { padding: 12px 8px; text-align: left; }
+@media (max-width: 900px) { .chase-grid { grid-template-columns: minmax(0, 1fr); } }

@@ -16,7 +16,7 @@ export const DEFAULTS = Object.freeze({
   mode: 'movie', // 'movie' | 'blink' | 'diff' | 'stack' | 'color'
   diff: 'mean', // 'mean' | 'first' | 'prev'
   blink: null, // [a, b] frame indices; null = first & last
-  stretch: 'asinh', lo: 1, hi: 99.5, invert: false, cmap: 'gray',
+  stretch: 'asinh', lo: 1, hi: 99.5, invert: false, cmap: 'auto', // 'auto' = tinted by wavelength
   speed: 600, // ms per frame
   track: false,
   ov: ['track', 'compass'], // overlays: gaia, wise, flags, track, compass, grid
@@ -29,7 +29,7 @@ export const DEFAULTS = Object.freeze({
 export const MODES = ['movie', 'blink', 'diff', 'stack', 'color', 'expr'];
 export const GROUPS = ['exposure', 'day', 'survey'];
 export const STRETCHES = ['asinh', 'linear', 'log', 'sqrt'];
-export const CMAPS = ['gray', 'heat', 'ice', 'viridis'];
+export const CMAPS = ['auto', 'gray', 'heat', 'ice', 'viridis'];
 export const OVERLAYS = ['gaia', 'wise', 'flags', 'track', 'compass', 'grid'];
 export const FOV_STEPS = [2, 4, 6, 10, 15, 20, 30, 45, 60];
 
@@ -82,6 +82,7 @@ export function fromParams(params) {
       if (p('pmra') != null && p('pmra') !== '') out.target.pmra = Number(p('pmra')) || 0;
       if (p('pmdec') != null && p('pmdec') !== '') out.target.pmdec = Number(p('pmdec')) || 0;
       if (p('epoch')) out.target.refEpoch = Number(p('epoch'));
+      if (p('plx')) out.target.plx = Number(p('plx')) || 0;
     }
   }
   if (p('target')) out.preset = String(p('target')).slice(0, 40);
@@ -125,6 +126,7 @@ export function toParams(r) {
     if (r.target.id) q.set('id', r.target.id);
     if (r.target.pmra || r.target.pmdec) { q.set('pmra', String(r.target.pmra || 0)); q.set('pmdec', String(r.target.pmdec || 0)); }
     if (r.target.refEpoch) q.set('epoch', String(r.target.refEpoch));
+    if (r.target.plx) q.set('plx', String(r.target.plx));
   }
   const d = DEFAULTS;
   if (r.fov !== d.fov) q.set('fov', String(+r.fov.toFixed(2)));

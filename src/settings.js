@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   mask: true, // remove bad pixels using SPHEREx quality flags in photometry
   reduceMotion: false, // no auto-play
   theme: null, // 'dark' | 'light' | null (follow system)
+  lang: 'en', // interface language (src/i18n)
 });
 export function getSettings() {
   try { return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULT_SETTINGS }; }

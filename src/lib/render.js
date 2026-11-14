@@ -132,10 +132,23 @@ const CMAP_STOPS = {
   ice: [[0, 0, 0], [20, 40, 110], [40, 140, 210], [150, 230, 255], [255, 255, 255]],
   viridis: [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]],
 };
+// Okabe–Ito colours of the six detector arrays (same as the legend), used for the wavelength tint.
+const DET_RGB = { 1: [86, 180, 233], 2: [0, 158, 115], 3: [240, 228, 66], 4: [230, 159, 0], 5: [213, 94, 0], 6: [204, 121, 167] };
+/** Colour map name for the "by wavelength" tint of the given detectors: black -> mean detector colour -> white. */
+export function tintName(dets) {
+  const ds = (dets || []).filter((d) => DET_RGB[d]);
+  if (!ds.length) return 'gray';
+  const c = [0, 1, 2].map((k) => Math.round(ds.reduce((a, d) => a + DET_RGB[d][k], 0) / ds.length));
+  return `tint:${c.join(',')}`;
+}
 const LUTS = {};
 export function lut(name) {
   if (LUTS[name]) return LUTS[name];
-  const stops = CMAP_STOPS[name] || CMAP_STOPS.gray;
+  let stops = CMAP_STOPS[name] || CMAP_STOPS.gray;
+  if (String(name).startsWith('tint:')) {
+    const c = name.slice(5).split(',').map(Number);
+    stops = [[0, 0, 0], c.map((v) => v * 0.55), c, c.map((v) => v + (255 - v) * 0.6), [255, 255, 255]];
+  }
   const l = new Uint8ClampedArray(256 * 3);
   for (let i = 0; i < 256; i++) { const c = lerpStops(stops, i / 255); l[i * 3] = c[0]; l[i * 3 + 1] = c[1]; l[i * 3 + 2] = c[2]; }
   return (LUTS[name] = l);

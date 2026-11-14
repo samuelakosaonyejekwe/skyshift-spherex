@@ -34,8 +34,9 @@ export async function render(root, route, { go }) {
   root.append(
     h('h1', {}, 'Chase a moving star'),
     h('p', { class: 'muted prose' }, 'Nearby stars and brown dwarfs creep across the sky as they orbit the Galaxy. Pick one to watch it move between SPHEREx’s six-monthly surveys, or follow it so it stays centred while the background drifts. Motions come from the Gaia DR3 catalogue.'),
-    h('h2', {}, 'Challenge targets that move'),
-    h('div', { class: 'presets' }, list.map(card)),
+    h('div', { class: 'chase-grid' },
+    h('section', {}, h('h2', {}, 'Challenge targets that move'), h('div', { class: 'chase-cards' }, list.map(card))),
+    h('section', { class: 'card' },
     h('h2', {}, 'Follow any Gaia DR3 star'),
     h('form', { class: 'row', onsubmit: async (e) => {
       e.preventDefault();
@@ -62,11 +63,11 @@ ORDER BY phot_g_mean_mag`, { timeout: 60000 });
         if (!rows.length) { findOut.replaceChildren(h('p', { class: 'notice' }, 'No Gaia DR3 stars that fast in this area. Try a larger radius or a lower speed.')); return; }
         rows.sort((a, b) => Math.hypot(b.pmra, b.pmdec) - Math.hypot(a.pmra, a.pmdec));
         findOut.replaceChildren(h('p', { class: 'tiny' }, `${rows.length} stars from Gaia DR3 (IRSA), fastest first.`),
-          h('div', { class: 'presets' }, rows.slice(0, 12).map((g) => card({ name: `Gaia DR3 ${g.source_id}`, kind: `G = ${g.phot_g_mean_mag?.toFixed(1)}`, pmra: g.pmra, pmdec: g.pmdec, parallax: g.parallax > 0 ? g.parallax : null,
+          h('div', { class: 'chase-cards' }, rows.slice(0, 12).map((g) => card({ name: `Gaia DR3 ${g.source_id}`, kind: `G = ${g.phot_g_mean_mag?.toFixed(1)}`, pmra: g.pmra, pmdec: g.pmdec, parallax: g.parallax > 0 ? g.parallax : null,
             target: { ra: g.ra, dec: g.dec, pmra: g.pmra, pmdec: g.pmdec, refEpoch: g.ref_epoch || 2016, name: `Gaia DR3 ${g.source_id}`, id: String(g.source_id), source: 'gaia' } }))));
       } catch (err) { findOut.replaceChildren(h('p', { class: 'notice bad' }, `Gaia search unavailable right now (${err.message}).`)); }
     } }, posIn, radSel, minSel, h('button', { class: 'btn primary', type: 'submit' }, 'Find')),
-    findOut,
+    findOut)),
     h('p', { class: 'tiny', style: { marginTop: '16px' } }, 'Asteroids and comets are not listed here: their paths need an orbit service that is not part of the challenge’s resources. You can still spot them with Time Machine → Discover.'));
   return () => {};
 }

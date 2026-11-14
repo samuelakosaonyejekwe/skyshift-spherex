@@ -6,9 +6,9 @@ import { h, icon, toast, sheet, copyText, download, fmtBytes, fmtDur, downlinkMb
 import { normalise, fromParams, toParams, MODES, GROUPS, FOV_STEPS, DEFAULTS } from '../state.js';
 import { searchSpherex, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossatCone } from '../lib/tap.js';
 import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE } from '../lib/engine.js';
-import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA } from '../lib/render.js';
+import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName } from '../lib/render.js';
 import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
-import { formatRA, formatDec, propagate, mjdToYear, mjdToISO, separation, toGalactic } from '../lib/coords.js';
+import { formatRA, formatDec, propagate, apparent, mjdToYear, mjdToISO, separation, toGalactic } from '../lib/coords.js';
 import { presetById, suggestFor, describePosition } from '../targets.js';
 import { scatterChart, svgString } from '../ui/charts.js';
 import { pushRecent } from './home.js';
@@ -115,6 +115,7 @@ export async function render(root, route, { go }) {
         h('button', { class: 'btn small', type: 'button', 'aria-pressed': 'false', title: 'Ruler: drag to measure angular distance', onclick: (e) => { S.tool = S.tool === 'ruler' ? null : 'ruler'; e.currentTarget.setAttribute('aria-pressed', String(S.tool === 'ruler')); stage.style.cursor = S.tool ? 'crosshair' : ''; } }, icon('ruler'), 'Ruler'),
         h('button', { class: 'btn small', type: 'button', 'aria-pressed': String(localStorage.getItem('skyshift.rawPixels') === '1'), title: 'Show the exact SPHEREx pixels (6.15″ squares) instead of the smooth view', onclick: (e) => { S.rawPixels = !S.rawPixels; localStorage.setItem('skyshift.rawPixels', S.rawPixels ? '1' : '0'); e.currentTarget.setAttribute('aria-pressed', String(S.rawPixels)); draw(); } }, 'Raw pixels'),
         h('button', { class: 'btn small', type: 'button', title: 'Download this frame as PNG', onclick: () => exportPNG() }, icon('download'), 'PNG'),
+        h('button', { class: 'btn small', type: 'button', title: 'Save the animation as an animated GIF', onclick: () => exportGIF() }, icon('download'), 'GIF'),
         h('button', { class: 'btn small', type: 'button', title: 'Record the animation as a video file', onclick: () => exportVideo() }, icon('video'), 'Video')),
       statusLine),
     vside));
@@ -223,7 +224,7 @@ export async function render(root, route, { go }) {
     rebuild();
     if (!todo.length) { loading.hidden = true; renderSide(); return; }
     if (!S.frames.size) setLoad(`Streaming ${todo.length} exposures straight from the IRSA cloud archive…`, 0.05);
-    const pm = req.target.pmra || req.target.pmdec ? { pmra: req.target.pmra || 0, pmdec: req.target.pmdec || 0, refYear: req.target.refEpoch || 2016 } : null;
+    const pm = req.target.pmra || req.target.pmdec || req.target.plx ? { pmra: req.target.pmra || 0, pmdec: req.target.pmdec || 0, plx: req.target.plx || 0, refYear: req.target.refEpoch || 2016 } : null;
     const w = getWorker();
     let lastBuild = 0;
     const done0 = wanted.length - todo.length;
@@ -419,7 +420,7 @@ export async function render(root, route, { go }) {
     const fr = D.frames[i];
     if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch });
     else if (D.kind === 'diff') paintDiff(fr.data, im.data, D.lims, { invert: req.invert });
-    else paint(fr.data, im.data, D.lims, { stretch: req.stretch, cmap: req.cmap, invert: req.invert });
+    else paint(fr.data, im.data, D.lims, { stretch: req.stretch, cmap: cmapFor(fr), invert: req.invert });
     if (req.ov.includes('flags')) tintFlags(fr.group, im.data, N);
     const k = W / N;
     if (S.rawPixels) {
@@ -442,6 +443,11 @@ export async function render(root, route, { go }) {
     updateHud();
     updateLabel();
   }
+  /** 'auto' colour map: tint each frame by the detector arrays (wavelengths) it contains. */
+  function cmapFor(fr) {
+    if (req.cmap !== 'auto') return req.cmap;
+    return tintName(fr?.group ? [...new Set(fr.group.map((e) => e.meta.detector))] : req.dets);
+  }
   function tintFlags(group, px, N) {
     const or = new Int32Array(N * N);
     for (const e of group) if (e.flags) for (let k = 0; k < or.length; k++) or[k] |= e.flags[k];
@@ -460,7 +466,7 @@ export async function render(root, route, { go }) {
   }
   function frameCenter(i = currentIndex()) {
     if (!req.track || !(req.target.pmra || req.target.pmdec)) return [req.target.ra, req.target.dec];
-    const p = propagate(req.target.ra, req.target.dec, req.target.pmra, req.target.pmdec, req.target.refEpoch || 2016, mjdToYear(frameMjd(i)));
+    const p = apparent(req.target.ra, req.target.dec, req.target.pmra, req.target.pmdec, req.target.plx, req.target.refEpoch || 2016, frameMjd(i));
     return [p.ra, p.dec];
   }
   function drawOverlay() {
@@ -477,12 +483,20 @@ export async function render(root, route, { go }) {
     ctx.lineWidth = 1.5 * dpr;
     // Gaia DR3 (propagated to the frame epoch)
     if (req.ov.includes('gaia') && S.cats.gaia) {
-      ctx.strokeStyle = '#5ec8ffcc'; ctx.fillStyle = '#5ec8ff';
+      // only the brightest stars in view (more as you zoom in), drawn thin so the SPHEREx image stays visible
+      const limit = Math.round(120 * S.view.s);
+      const visible = [];
       for (const s of S.cats.gaia.rows) {
-        const p = propagate(s.ra, s.dec, s.pmra || 0, s.pmdec || 0, s.ref_epoch || 2016, yr);
+        const p = apparent(s.ra, s.dec, s.pmra || 0, s.pmdec || 0, s.parallax > 0 ? s.parallax : 0, s.ref_epoch || 2016, mjd || 61000);
         const [x, y] = G(p.ra, p.dec);
-        if (x < -20 || y < -20 || x > W + 20 || y > W + 20) continue;
-        const r = Math.max(3, 11 - (s.phot_g_mean_mag || 18) * 0.45) * dpr * Math.sqrt(S.view.s);
+        if (x < 0 || y < 0 || x > W || y > W) continue;
+        visible.push({ s, p, x, y, important: !!s.label || Math.hypot(s.pmra || 0, s.pmdec || 0) > 300 });
+      }
+      visible.sort((a, b) => (b.important - a.important) || ((a.s.phot_g_mean_mag ?? 99) - (b.s.phot_g_mean_mag ?? 99)));
+      ctx.lineWidth = 1 * dpr;
+      for (const { s, p, x, y, important } of visible.slice(0, limit)) {
+        ctx.strokeStyle = important ? '#5ec8ff' : '#5ec8ff8c'; ctx.fillStyle = '#9fe0ff';
+        const r = Math.max(2.5, 8 - (s.phot_g_mean_mag || 18) * 0.32) * dpr * Math.sqrt(S.view.s);
         ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
         const pm = Math.hypot(s.pmra || 0, s.pmdec || 0);
         if (pm > 100) { // draw the motion over 5 years as an arrow
@@ -505,10 +519,10 @@ export async function render(root, route, { go }) {
       }
     }
     // predicted target track from its proper motion
-    if (req.ov.includes('track') && (req.target.pmra || req.target.pmdec) && S.display?.frames.length) {
+    if (req.ov.includes('track') && (req.target.pmra || req.target.pmdec || req.target.plx) && S.display?.frames.length) {
       const ms = S.display.frames.map((_, i) => frameMjd(i)).filter(Boolean);
       const t0 = Math.min(...ms), t1 = Math.max(...ms);
-      const P = (m) => propagate(req.target.ra, req.target.dec, req.target.pmra, req.target.pmdec, req.target.refEpoch || 2016, mjdToYear(m));
+      const P = (m) => apparent(req.target.ra, req.target.dec, req.target.pmra, req.target.pmdec, req.target.plx, req.target.refEpoch || 2016, m);
       ctx.strokeStyle = '#ffcf7a'; ctx.setLineDash([5 * dpr, 4 * dpr]);
       ctx.beginPath();
       for (let k = 0; k <= 20; k++) { const p = P(t0 + ((t1 - t0) * k) / 20); const [x, y] = G(p.ra, p.dec); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
@@ -756,7 +770,7 @@ export async function render(root, route, { go }) {
   }
 
   // ------------------------------------------------------------------ side panel
-  const TABS = [['display', 'Display'], ['spectrum', 'Spectrum'], ['lightcurve', 'Light curve'], ['frame', 'Frame & flags'], ['context', 'Gaia · WISE · NEOSSat'], ['object', 'Object'], ['discover', 'Discover']];
+  const TABS = [['display', 'Display'], ['spectrum', 'Spectrum'], ['lightcurve', 'Light curve'], ['frames', 'Frames'], ['frame', 'Flags'], ['context', 'Catalogues'], ['object', 'Object'], ['discover', 'Discover']];
   S.tab = 'display';
   function renderTabs() {
     tabsBar.replaceChildren(...TABS.map(([id, label]) => h('button', { role: 'tab', 'aria-selected': String(S.tab === id), id: `tab-${id}`, onclick: () => { S.tab = id; renderTabs(); renderSide(); } }, label)));
@@ -765,7 +779,7 @@ export async function render(root, route, { go }) {
     tabBody.replaceChildren();
     tabBody.setAttribute('role', 'tabpanel');
     tabBody.setAttribute('aria-labelledby', `tab-${S.tab}`);
-    ({ display: sideDisplay, spectrum: sideSpectrum, lightcurve: sideLight, frame: sideFrame, context: sideContext, object: sideObject, discover: sideDiscover }[S.tab])();
+    ({ display: sideDisplay, frames: sideFrames, spectrum: sideSpectrum, lightcurve: sideLight, frame: sideFrame, context: sideContext, object: sideObject, discover: sideDiscover }[S.tab])();
   }
 
   function sideDisplay() {
@@ -808,7 +822,7 @@ export async function render(root, route, { go }) {
         h('label', { class: 'field', style: { flex: 1 } }, `Black point ${req.lo}%`, h('input', { type: 'range', min: 0, max: 30, step: 0.5, value: req.lo, oninput: (e) => commit({ lo: Number(e.target.value) }) })),
         h('label', { class: 'field', style: { flex: 1 } }, `White point ${req.hi}%`, h('input', { type: 'range', min: 80, max: 100, step: 0.1, value: req.hi, oninput: (e) => commit({ hi: Number(e.target.value) }) }))),
       h('div', { class: 'row' },
-        h('label', { class: 'field' }, 'Colours', h('select', { onchange: (e) => commit({ cmap: e.target.value }) }, [['gray', 'Grey'], ['viridis', 'Viridis (colour-blind safe)'], ['heat', 'Heat'], ['ice', 'Ice']].map(([v, l]) => h('option', { value: v, selected: req.cmap === v }, l)))),
+        h('label', { class: 'field' }, 'Colours', h('select', { onchange: (e) => commit({ cmap: e.target.value }) }, [['auto', 'By wavelength (tint of the detectors shown)'], ['gray', 'Grey (classic blink look)'], ['viridis', 'Viridis (colour-blind safe)'], ['heat', 'Heat'], ['ice', 'Ice']].map(([v, l]) => h('option', { value: v, selected: req.cmap === v }, l)))),
         h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: req.invert, onchange: (e) => commit({ invert: e.target.checked }) }), 'Invert (black stars on white)')),
       h('div', { class: 'panel' }, h('b', {}, 'Overlays'),
         h('div', { class: 'row' }, [['gaia', 'Gaia DR3 stars', 'Positions moved to each frame’s date using Gaia proper motions'], ['wise', 'WISE (CatWISE2020)', 'Infrared sources from WISE'], ['flags', 'Contamination flags', 'Tint pixels flagged as bad'], ['track', 'Predicted track', 'Where the target should be at each date'], ['compass', 'Compass & scale', 'North/East arrows and a scale bar']]
@@ -1010,6 +1024,25 @@ export async function render(root, route, { go }) {
     if (i >= 0) { stopPlay(); S.frame = i; slider.value = i; draw(); S.tab = 'frame'; renderTabs(); renderSide(); }
   }
 
+  function sideFrames() {
+    const D = S.display;
+    if (!D?.frames.length) { tabBody.append(h('p', { class: 'empty' }, 'Frames appear as images load.')); return; }
+    const N = n();
+    const grid = h('div', { class: 'thumbs' });
+    D.frames.slice(0, 400).forEach((fr, i) => {
+      const c = h('canvas', { width: N, height: N, class: 'thumb' + (i === currentIndex() ? ' cur' : ''), title: `${i + 1}: ${mjdToISO(frameMjd(i), false)}`, tabindex: 0, role: 'button', 'aria-label': `Frame ${i + 1}, ${mjdToISO(frameMjd(i), false)}` });
+      const im = new ImageData(N, N);
+      if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch });
+      else if (D.kind === 'diff') paintDiff(fr.data, im.data, D.lims, { invert: req.invert });
+      else paint(fr.data, im.data, D.lims, { stretch: req.stretch, cmap: cmapFor(fr), invert: req.invert });
+      c.getContext('2d').putImageData(im, 0, 0);
+      const pick = () => { stopPlay(); if (req.mode === 'blink') commit({ mode: 'movie' }); S.frame = i; slider.value = i; draw(); renderSide(); };
+      c.addEventListener('click', pick); c.addEventListener('keydown', (e) => { if (e.key === 'Enter') pick(); });
+      grid.append(h('figure', { class: 'thumb-fig' }, c, h('figcaption', { class: 'tiny' }, `${i + 1} · ${mjdToISO(frameMjd(i), false)}`)));
+    });
+    tabBody.append(h('p', { class: 'tiny' }, `${D.frames.length} frames with the shared stretch. Click one to show it.`), grid);
+  }
+
   function sideFrame() {
     const D = S.display, i = currentIndex();
     if (!D || i < 0) { tabBody.append(h('p', { class: 'empty' }, 'Frame details appear once images load.')); return; }
@@ -1086,10 +1119,52 @@ export async function render(root, route, { go }) {
         o && sel.cat === 'wise' ? [h('dt', {}, 'W1, W2'), h('dd', {}, `${o.w1mpro ?? '–'}, ${o.w2mpro ?? '–'} mag`), h('dt', {}, 'W1−W2'), h('dd', {}, o.w1mpro != null && o.w2mpro != null ? (o.w1mpro - o.w2mpro).toFixed(2) : '–')] : null),
       o && sel.cat === 'wise' && o.w1mpro - o.w2mpro > 1.5 ? h('p', { class: 'notice warn' }, 'Very red in WISE (W1−W2 > 1.5): typical of cold brown dwarfs or dusty objects.') : null,
       h('div', { class: 'row' }, specBtn,
-        o && sel.cat === 'gaia' && (o.pmra || o.pmdec) ? h('button', { class: 'btn small', onclick: () => { commit({ target: { ra: o.ra, dec: o.dec, pmra: o.pmra, pmdec: o.pmdec, refEpoch: o.ref_epoch || 2016, name: o.label || `Gaia DR3 ${o.source_id}`, id: String(o.source_id), source: 'gaia' }, track: false }, { reload: true, push: true }); } }, 'Make this the target') : null,
+        o && sel.cat === 'gaia' && (o.pmra || o.pmdec) ? h('button', { class: 'btn small', onclick: () => { commit({ target: { ra: o.ra, dec: o.dec, pmra: o.pmra, pmdec: o.pmdec, plx: o.parallax > 0 ? o.parallax : 0, refEpoch: o.ref_epoch || 2016, name: o.label || `Gaia DR3 ${o.source_id}`, id: String(o.source_id), source: 'gaia' }, track: false }, { reload: true, push: true }); } }, 'Make this the target') : null,
+        h('button', { class: 'btn small', title: 'Measure the light-weighted centre of the object in the current frame', onclick: (e) => {
+          const c = centroidAt(sel.ra, sel.dec);
+          const out = e.currentTarget.parentElement.nextElementSibling;
+          if (!c) { out.textContent = 'No clear object to centroid here in this frame.'; return; }
+          S.selected = { ...sel, ra: c.ra, dec: c.dec }; drawOverlay();
+          out.textContent = `Centroid: ${formatRA(c.ra)} ${formatDec(c.dec)} (${c.ra.toFixed(6)}, ${c.dec.toFixed(6)}); moved ${c.shift.toFixed(2)}″ from the click; peak S/N ${c.snr.toFixed(1)}; typical precision ±${c.err.toFixed(1)}″.`;
+        } }, icon('target'), 'Centroid'),
         h('button', { class: 'btn small', onclick: () => markCandidate(sel) }, icon('star'), 'Mark candidate'),
         h('a', { class: 'btn small', href: `#/view?${toParams(normalise({ ...req, target: { ra: sel.ra, dec: sel.dec, source: 'coords' }, t: 0 }))}` }, 'Centre here')),
+      h('p', { class: 'tiny', 'aria-live': 'polite' }),
     );
+  }
+
+  /** Iterative Gaussian-weighted centroid in the current frame near (ra, dec). */
+  function centroidAt(ra, dec) {
+    const D = S.display, i = currentIndex();
+    if (!D || i < 0) return null;
+    const fr = D.frames[i]; const img = fr.data || (fr.rgb && detectorBalanced(D.dmaps[i], n()));
+    if (!img) return null;
+    const N = n(), [cra, cdec] = frameCenter(i);
+    let [x, y] = worldToGrid(S.grid, ra, dec, cra, cdec);
+    const ring = [];
+    for (let j = Math.round(y) - 9; j <= Math.round(y) + 9; j++) for (let k = Math.round(x) - 9; k <= Math.round(x) + 9; k++) { const d = Math.hypot(k - x, j - y), v = img[j * N + k]; if (d > 5 && d < 9 && Number.isFinite(v)) ring.push(v); }
+    if (ring.length < 10) return null;
+    ring.sort((a, b) => a - b);
+    const bg = ring[ring.length >> 1], noise = 1.4826 * ring.map((v) => Math.abs(v - bg)).sort((a, b) => a - b)[ring.length >> 1] || 1e-6;
+    const sig = 1.2 * (NATIVE_SCALE / S.grid.scale);
+    let peak = 0;
+    for (let it = 0; it < 10; it++) {
+      let sx = 0, sy = 0, sw = 0; peak = 0;
+      for (let j = Math.round(y) - 4; j <= Math.round(y) + 4; j++) for (let k = Math.round(x) - 4; k <= Math.round(x) + 4; k++) {
+        if (k < 0 || j < 0 || k >= N || j >= N) continue;
+        const v = img[j * N + k]; if (!Number.isFinite(v)) continue;
+        const w = Math.exp(-((k - x) ** 2 + (j - y) ** 2) / (2 * sig * sig)) * Math.max(0, v - bg);
+        peak = Math.max(peak, v - bg); sx += w * k; sy += w * j; sw += w;
+      }
+      if (sw <= 0) return null;
+      const nx = sx / sw, ny = sy / sw;
+      if (Math.hypot(nx - x, ny - y) < 1e-3) { x = nx; y = ny; break; }
+      x = nx; y = ny;
+    }
+    const snr = peak / noise;
+    if (snr < 3) return null;
+    const [r2, d2] = gridToWorld(S.grid, x, y, cra, cdec);
+    return { ra: r2, dec: d2, snr, shift: separation(ra, dec, r2, d2) * 3600, err: Math.max(0.3, (sig * 1.2 * S.grid.scale) / snr) };
   }
 
   function spectrumAt(ra, dec) {
@@ -1237,6 +1312,28 @@ export async function render(root, route, { go }) {
     return c;
   }
   function exportPNG() { composite().toBlob((b) => b && download(`skyshift-${fileStem()}-frame${currentIndex() + 1}.png`, b, 'image/png')); }
+  async function exportGIF() {
+    const D = S.display;
+    if (!D?.frames.length) return;
+    stopPlay();
+    const { encodeGIF } = await import('../lib/gif.js');
+    const keep = S.frame, phase = S.blinkPhase;
+    const N = req.mode === 'blink' ? 2 : Math.min(D.frames.length, 60);
+    const shots = [];
+    for (let k = 0; k < N; k++) {
+      if (req.mode === 'blink') S.blinkPhase = k; else S.frame = k;
+      draw();
+      const c = composite();
+      const small = document.createElement('canvas');
+      const sc = Math.min(1, 520 / c.width);
+      small.width = Math.round(c.width * sc); small.height = Math.round(c.height * sc);
+      small.getContext('2d').drawImage(c, 0, 0, small.width, small.height);
+      shots.push(small);
+    }
+    S.frame = keep; S.blinkPhase = phase; draw();
+    download(`skyshift-${fileStem()}.gif`, encodeGIF(shots, req.speed));
+  }
+
   async function exportVideo() {
     const D = S.display;
     if (!D?.frames.length || !window.MediaRecorder) { toast({ title: 'Video export is not supported in this browser', glyph: '🎞', timeout: 3000 }); return; }

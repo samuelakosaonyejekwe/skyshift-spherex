@@ -1,0 +1,8 @@
+# Independent relay + second scheduler on Cloudflare Workers (deploy with: npx wrangler deploy).
+# The Worker forwards only to the challenge resources (relay/core.mjs) and, on its cron trigger,
+# can be pointed at a Cloudflare Pages deploy hook so data refreshes even if GitHub is down.
+name = "skyshift-relay"
+main = "relay/worker.mjs"
+compatibility_date = "2026-11-01"
+[triggers]
+crons = ["47 */6 * * *"]
