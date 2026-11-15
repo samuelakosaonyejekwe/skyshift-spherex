@@ -3,21 +3,106 @@
 // motions), the usual way to measure brightness for discovery reports; a zero point in the header is used when the
 // field has too few Gaia stars. Everything runs on the device.
 
-import { parseHeader, dataSize, BLOCK } from './fits.js';
+import { parseHeader, dataSize, BLOCK, riceDecode } from './fits.js';
 import { CelestialWCS } from './wcs.js';
 import { fromGalactic, propagate, mjdToYear } from './coords.js';
 
-const MAX_PIXELS = 40e6;
+const MAX_PIXELS = 64e6;
+
+/** Older WCS spellings (PC001001…, CDELT + CROTA2) → PCi_j / CD matrix, so every image gets the same sky solution. */
+export function normaliseWcs(h) {
+  const out = { ...h };
+  for (const [i, j] of [[1, 1], [1, 2], [2, 1], [2, 2]]) {
+    const old = h[`PC00${i}00${j}`];
+    if (old !== undefined && out[`PC${i}_${j}`] === undefined) out[`PC${i}_${j}`] = old;
+  }
+  if (out.CD1_1 === undefined && out.PC1_1 === undefined && Number.isFinite(h.CROTA2) && h.CROTA2) {
+    const r = (h.CROTA2 * Math.PI) / 180, c1 = h.CDELT1 ?? 1, c2 = h.CDELT2 ?? 1;
+    out.CD1_1 = c1 * Math.cos(r); out.CD1_2 = -c2 * Math.sin(r); out.CD2_1 = c1 * Math.sin(r); out.CD2_2 = c2 * Math.cos(r);
+  }
+  return out;
+}
+
+// CFITSIO's random sequence for subtractive dithering of quantized floating-point tiles
+let RAND = null;
+function randTable() {
+  if (RAND) return RAND;
+  RAND = new Float64Array(10000);
+  let seed = 1;
+  for (let i = 0; i < 10000; i++) { const t = 16807 * seed; seed = t - 2147483647 * Math.floor(t / 2147483647); RAND[i] = seed / 2147483647; }
+  return RAND;
+}
+
+/** A RICE_1 tile-compressed image HDU (fpack) → Float32Array of the full image (row 0 = FITS row 1). */
+function readTileCompressed(bytes, h, dataStart) {
+  if (String(h.ZCMPTYPE).trim() !== 'RICE_1') throw new Error(`This FITS image uses ${String(h.ZCMPTYPE).trim()} compression; RICE_1 (the fpack default) is supported. Save it uncompressed to inspect it.`);
+  const W = h.ZNAXIS1, H = h.ZNAXIS2, tw = h.ZTILE1 ?? W, th = h.ZTILE2 ?? 1;
+  if (W * H > MAX_PIXELS) throw new Error(`The image has ${(W * H / 1e6).toFixed(0)} million pixels; up to ${MAX_PIXELS / 1e6} million can be inspected.`);
+  const zval = (name, dflt) => { for (let k = 1; k <= 9; k++) if (String(h[`ZNAME${k}`] || '').trim() === name) return h[`ZVAL${k}`]; return dflt; };
+  const nblock = zval('BLOCKSIZE', 32), bytepix = zval('BYTEPIX', Math.abs(h.ZBITPIX) === 16 ? 2 : Math.abs(h.ZBITPIX) === 8 ? 1 : 4);
+  // binary table columns: COMPRESSED_DATA (variable-length, P or Q descriptor), optional ZSCALE / ZZERO / ZBLANK
+  const cols = []; let o = 0;
+  for (let k = 1; k <= h.TFIELDS; k++) {
+    const f = String(h[`TFORM${k}`]).trim(), m = f.match(/^(\d*)([A-Z])/);
+    const rep = m[1] ? Number(m[1]) : 1, t = m[2];
+    const size = { L: 1, B: 1, I: 2, J: 4, K: 8, E: 4, D: 8, P: 8, Q: 16, A: 1 }[t] * rep;
+    cols.push({ name: String(h[`TTYPE${k}`] || '').trim(), t, off: o, desc: /^\d*[PQ]/.test(f) ? (f.match(/^\d*([PQ])/)[1]) : null }); o += size;
+  }
+  const col = (n) => cols.find((c) => c.name === n);
+  const cd = col('COMPRESSED_DATA');
+  if (!cd || !cd.desc) throw new Error('This compressed FITS image has no compressed data column that can be read.');
+  const zs = col('ZSCALE'), zz = col('ZZERO');
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const rowBytes = h.NAXIS1, heap = dataStart + (h.THEAP ?? h.NAXIS1 * h.NAXIS2);
+  const bscale = h.BSCALE ?? 1, bzero = h.BZERO ?? 0, blank = h.ZBLANK ?? h.BLANK;
+  const float = h.ZBITPIX < 0, dither = String(h.ZQUANTIZ || '').trim();
+  const tiles1 = Math.ceil(W / tw), out = new Float32Array(W * H);
+  const R = float && /SUBTRACTIVE_DITHER/.test(dither) ? randTable() : null;
+  for (let row = 0; row < h.NAXIS2; row++) {
+    const r0 = dataStart + row * rowBytes;
+    const n = cd.desc === 'Q' ? Number(dv.getBigInt64(r0 + cd.off, false)) : dv.getInt32(r0 + cd.off, false);
+    const off = cd.desc === 'Q' ? Number(dv.getBigInt64(r0 + cd.off + 8, false)) : dv.getInt32(r0 + cd.off + 4, false);
+    const tx = row % tiles1, ty = Math.floor(row / tiles1);
+    const x0 = tx * tw, y0 = ty * th, w = Math.min(tw, W - x0), hh = Math.min(th, H - y0);
+    const vals = riceDecode(bytes.subarray(heap + off, heap + off + n), w * hh, nblock, bytepix);
+    const scale = zs ? dv.getFloat64(r0 + zs.off, false) : bscale, zero = zz ? dv.getFloat64(r0 + zz.off, false) : bzero;
+    let iseed = 0, next = 0;
+    if (R) { iseed = (row + (h.ZDITHER0 ?? 1) - 1) % 10000; next = Math.floor(R[iseed] * 500); }
+    // tile rows straight into place (no per-pixel division); the common integer case without dithering is the fast path
+    for (let r = 0, k = 0; r < hh; r++) {
+      const base = (y0 + r) * W + x0;
+      if (!float) {
+        for (let c = 0; c < w; c++, k++) { const v = vals[k]; out[base + c] = v === blank ? NaN : v * scale + zero; }
+      } else {
+        for (let c = 0; c < w; c++, k++) {
+          const v = vals[k];
+          let fv;
+          if (v === -2147483647) fv = NaN; // NULL_VALUE
+          else if (dither === 'SUBTRACTIVE_DITHER_2' && v === -2147483646) fv = 0; // ZERO_VALUE
+          else fv = R ? (v - R[next] + 0.5) * scale + zero : v * scale + zero;
+          if (R) { next++; if (next === 10000) { iseed = (iseed + 1) % 10000; next = Math.floor(R[iseed] * 500); } }
+          out[base + c] = fv;
+        }
+      }
+    }
+  }
+  return { width: W, height: H, data: out };
+}
 
 /** First image HDU with a celestial WCS → { width, height, data (Float32Array, row 0 = FITS row 1), header, wcs, galactic }. */
 export function readFitsImage(buf) {
-  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  // a plain byte view (a Node Buffer or other subclass would slow every read)
+  const bytes = buf instanceof Uint8Array ? new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) : new Uint8Array(buf);
   let off = 0;
   for (let hdu = 0; off + BLOCK <= bytes.length && hdu < 30; hdu++) {
     const p = parseHeader(bytes, off);
     if (!p) break;
     const h = p.header;
-    if (h.ZIMAGE) throw new Error('This FITS image is tile-compressed: save it uncompressed (for example with funpack) to inspect it here.');
+    if (h.ZIMAGE && /RA-|GLON/.test(h.CTYPE1 || '')) {
+      const t = readTileCompressed(bytes, h, p.end);
+      const hw = normaliseWcs({ ...h, NAXIS: h.ZNAXIS, NAXIS1: t.width, NAXIS2: t.height, BITPIX: h.ZBITPIX });
+      return { ...t, header: hw, wcs: new CelestialWCS(hw), galactic: /^GLON/.test(h.CTYPE1 || ''), compressed: true };
+    }
     const w = h.NAXIS1, hh = h.NAXIS2;
     if (h.NAXIS >= 2 && w > 0 && hh > 0 && /RA-|GLON/.test(h.CTYPE1 || '') && h.XTENSION !== 'BINTABLE') {
       if (w * hh > MAX_PIXELS) throw new Error(`The image has ${(w * hh / 1e6).toFixed(0)} million pixels; up to ${MAX_PIXELS / 1e6} million can be inspected.`);
@@ -36,7 +121,8 @@ export function readFitsImage(buf) {
         else throw new Error(`BITPIX ${bp} is not supported.`);
         data[i] = bp > 0 && blank !== undefined && v === blank ? NaN : v * bs + bz;
       }
-      return { width: w, height: hh, data, header: h, wcs: new CelestialWCS(h), galactic: /^GLON/.test(h.CTYPE1 || '') };
+      const hw = normaliseWcs(h);
+      return { width: w, height: hh, data, header: hw, wcs: new CelestialWCS(hw), galactic: /^GLON/.test(h.CTYPE1 || '') };
     }
     off = p.end + dataSize(h);
   }

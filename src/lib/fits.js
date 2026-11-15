@@ -227,12 +227,18 @@ const bitLen = (b) => (b < 4294967296 ? 32 - Math.clz32(b) : Math.floor(Math.log
  * compression convention; same bitstream as CFITSIO's fits_rdecomp).
  * Uses Number arithmetic for the bit buffer so no 32-bit overflow can occur.
  */
-export function riceDecode32(bytes, nx, nblock = 32) {
-  const fsbits = 5, fsmax = 25, bbits = 32;
+export function riceDecode32(bytes, nx, nblock = 32) { return riceDecode(bytes, nx, nblock, 4); }
+
+/** Reference (floating-point) RICE decoder kept for tests. */
+export function riceDecodeReference(bytes, nx, nblock = 32, bytepix = 4) {
+  const [fsbits, fsmax, bbits] = bytepix === 1 ? [3, 6, 8] : bytepix === 2 ? [4, 14, 16] : [5, 25, 32];
+  const wrap = bytepix === 1 ? (v) => v & 0xff : bytepix === 2 ? (v) => (v << 16) >> 16 : (v) => v | 0;
   const out = new Int32Array(nx);
   let c = 0;
-  let lastpix = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) | 0;
-  c = 4;
+  let lastpix = 0;
+  for (let k = 0; k < bytepix; k++) lastpix = lastpix * 256 + bytes[k];
+  lastpix = wrap(lastpix);
+  c = bytepix;
   let b = bytes[c++];
   let nbits = 8;
   const P = (n) => 2 ** n;
@@ -254,9 +260,9 @@ export function riceDecode32(bytes, nx, nblock = 32) {
           diff += Math.floor(b / P(-k));
           b = b % P(nbits);
         } else b = 0;
-        diff = diff % 4294967296;
+        diff = diff % (2 ** bbits);
         const d = diff % 2 === 1 ? -(diff + 1) / 2 : diff / 2;
-        lastpix = (lastpix + d) | 0;
+        lastpix = wrap(lastpix + d);
         out[i] = lastpix;
       }
     } else {
@@ -270,7 +276,60 @@ export function riceDecode32(bytes, nx, nblock = 32) {
         const diff = nzero * P(fs) + Math.floor(b / P(nbits));
         b = b % P(nbits);
         const d = diff % 2 === 1 ? -(diff + 1) / 2 : diff / 2;
-        lastpix = (lastpix + d) | 0;
+        lastpix = wrap(lastpix + d);
+        out[i] = lastpix;
+      }
+    }
+    if (c > bytes.length + 1) throw new Error('Rice decode overrun');
+  }
+  return out;
+}
+
+
+/**
+ * RICE_1 decompression (FITS tile compression, as in CFITSIO rdecomp / rdecomp_short / rdecomp_byte) for 1-, 2- or
+ * 4-byte integers; returns the values as an Int32Array (16- and 8-bit values wrap as signed / unsigned like CFITSIO).
+ */
+export function riceDecode(bytes, nx, nblock = 32, bytepix = 4) {
+  // integer port of CFITSIO's rdecomp: 32-bit unsigned bit buffer, zigzag-coded differences
+  const fsbits = bytepix === 1 ? 3 : bytepix === 2 ? 4 : 5, fsmax = bytepix === 1 ? 6 : bytepix === 2 ? 14 : 25, bbits = 8 * bytepix;
+  const out = new Int32Array(nx);
+  let lastpix = 0;
+  for (let k = 0; k < bytepix; k++) lastpix = (lastpix << 8) | bytes[k];
+  if (bytepix === 2) lastpix = (lastpix << 16) >> 16; else if (bytepix === 1) lastpix &= 0xff; else lastpix |= 0;
+  let c = bytepix, b = bytes[c++], nbits = 8;
+  const sh = bytepix === 2 ? 16 : 0; // 16-bit values wrap as signed shorts; 8-bit as unsigned bytes
+  for (let i = 0; i < nx;) {
+    nbits -= fsbits;
+    while (nbits < 0) { b = ((b << 8) | bytes[c++]) >>> 0; nbits += 8; }
+    const fs = (b >>> nbits) - 1;
+    b = nbits ? (b & ((1 << nbits) - 1)) >>> 0 : 0;
+    const imax = Math.min(i + nblock, nx);
+    if (fs < 0) {
+      for (; i < imax; i++) out[i] = lastpix;
+    } else if (fs === fsmax) {
+      for (; i < imax; i++) {
+        let k = bbits - nbits;
+        let diff = k >= 32 ? 0 : (b << k) >>> 0;
+        for (k -= 8; k >= 0; k -= 8) { b = bytes[c++]; diff = (diff | (b << k)) >>> 0; }
+        if (nbits > 0) { b = bytes[c++]; diff = (diff | (b >>> -k)) >>> 0; b = (b & ((1 << nbits) - 1)) >>> 0; } else b = 0;
+        if (bbits < 32) diff &= (1 << bbits) - 1;
+        const d = (diff & 1) === 0 ? diff >>> 1 : ~(diff >>> 1);
+        lastpix = bytepix === 1 ? (lastpix + d) & 0xff : (((lastpix + d) << sh) >> sh);
+        out[i] = lastpix;
+      }
+    } else {
+      for (; i < imax; i++) {
+        while (b === 0) { nbits += 8; b = bytes[c++]; }
+        const nzero = nbits - (32 - Math.clz32(b));
+        nbits -= nzero + 1;
+        b = (b ^ (1 << nbits)) >>> 0;
+        nbits -= fs;
+        while (nbits < 0) { b = ((b << 8) | bytes[c++]) >>> 0; nbits += 8; }
+        const diff = ((nzero << fs) | (b >>> nbits)) >>> 0;
+        b = nbits ? (b & ((1 << nbits) - 1)) >>> 0 : 0;
+        const d = (diff & 1) === 0 ? diff >>> 1 : ~(diff >>> 1);
+        lastpix = bytepix === 1 ? (lastpix + d) & 0xff : (((lastpix + d) << sh) >> sh);
         out[i] = lastpix;
       }
     }

@@ -55,7 +55,7 @@ export async function render(root, route, { go }) {
   // ------------------------------------------------------------------ state
   const S = {
     search: null, exposures: [], frames: new Map(), grid: null, display: null, frame: Math.min(req.t, 999),
-    playing: false, timer: 0, blinkPhase: 0, loadId: 0, jobId: 0, bytes: 0, t0: 0, skipped: 0,
+    playing: false, timer: 0, blinkPhase: 0, userMode: 'off', userPhase: true, userTimer: 0, loadId: 0, jobId: 0, bytes: 0, t0: 0, skipped: 0,
     view: { s: 1, tx: 0, ty: 0 }, hover: null, tool: null, ruler: null, selected: null,
     cats: { gaia: null, wise: null, neossat: null }, rawPixels: localStorage.getItem('skyshift.rawPixels') === '1', movers: null, variables: null, clickSpec: null,
   };
@@ -68,7 +68,7 @@ export async function render(root, route, { go }) {
   const hud = h('div', { class: 'hud' });
   const readout = h('div', { class: 'readout', hidden: true });
   const loading = h('div', { class: 'loading' }, h('div', {}, h('div', { class: 'boot-orbit', style: { margin: '0 auto 12px' } }, h('span')), h('p', { id: 'loadmsg' }, 'Finding every SPHEREx image of this patch…'), h('div', { class: 'progress', style: { width: '240px', margin: '0 auto' } }, h('i', { id: 'loadbar' }))));
-  const stage = h('div', { class: 'stage', tabindex: '0', role: 'img', 'aria-label': `SPHEREx images around ${name}` }, imgCanvas, ovCanvas, hud, readout, loading);
+  const stage = h('div', { class: 'stage', tabindex: '0', role: 'img', 'aria-label': `SPHEREx images around ${name}` }, imgCanvas, ovCanvas, readout, loading);
   const playBtn = h('button', { class: 'btn primary play', type: 'button', 'aria-label': 'Play', title: 'Play / pause (Space)' }, icon('play'));
   const slider = h('input', { type: 'range', min: 0, max: 0, value: 0, 'aria-label': 'Frame' });
   const ticks = h('div', { class: 'ticks', 'aria-hidden': 'true' });
@@ -77,11 +77,15 @@ export async function render(root, route, { go }) {
   const progressBar = h('i');
   const statusLine = h('div', { class: 'tiny', 'aria-live': 'polite' });
   const modeSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Display mode' });
-  const negBtn = h('button', { type: 'button', class: 'btn small neg-btn', 'aria-pressed': 'false', onclick: () => {
-    const on = !(req.invert && (req.cmap === 'gray' || req.mode === 'color' || req.mode === 'diff'));
+  // Negative view: dark objects on a white sky (black and white, except Colour, which shows complementary colours)
+  const setNegative = (on) => {
     if (on) { S.cmapBeforeNeg = req.cmap; commit({ invert: true, cmap: req.mode === 'color' ? req.cmap : 'gray' }); }
     else commit({ invert: false, cmap: S.cmapBeforeNeg && S.cmapBeforeNeg !== 'gray' ? S.cmapBeforeNeg : 'auto' });
-  } }, 'Negative');
+  };
+  // your own image of the same field (sent from the image inspector): off → shown → blinking with the SPHEREx frame
+  const userBtn = h('button', { type: 'button', class: 'btn small user-btn', hidden: true, 'aria-pressed': 'false', onclick: () => setUserMode(S.userMode === 'off' ? 'show' : S.userMode === 'show' ? 'blink' : 'off') }, 'Your image');
+  const negBtn = h('button', { type: 'button', class: 'btn small neg-btn', 'aria-pressed': 'false', onclick: () => setNegative(!req.invert) },
+    h('span', { class: 'neg-ico', 'aria-hidden': 'true' }), h('span', { class: 'neg-lbl' }, 'Negative'));
   const suggestionBox = h('div');
   const explainBox = h('div', { class: 'notice', hidden: true });
   const tabsBar = h('div', { class: 'tabs', role: 'tablist' });
@@ -112,7 +116,8 @@ export async function render(root, route, { go }) {
         h('div', { class: 'spacer' }),
         h('div', { class: 'row' }, explainBtn, shareBtn, watchBtn, dossierBtn, skyLink, wiseLink, tourBtn, openFull)),
       queueBar(), suggestionBox, explainBox,
-      h('div', { class: 'stage-wrap' }, stage),
+      // frame details sit in a strip above the image, never on top of it
+      h('div', { class: 'stage-wrap' }, hud, stage),
       h('div', { class: 'progress', 'aria-hidden': 'true' }, progressBar),
       h('div', { class: 'transport' },
         h('button', { class: 'btn icon', type: 'button', 'aria-label': 'Previous frame', title: 'Previous frame (←)', onclick: () => step(-1) }, icon('prev')),
@@ -120,7 +125,7 @@ export async function render(root, route, { go }) {
         h('button', { class: 'btn icon', type: 'button', 'aria-label': 'Next frame', title: 'Next frame (→)', onclick: () => step(1) }, icon('next')),
         h('div', { class: 'timeline' }, slider, ticks), speedSel),
       frameLabel,
-      h('div', { class: 'row', style: { marginTop: '8px' } }, modeSeg, negBtn, h('div', { class: 'spacer' }),
+      h('div', { class: 'row', style: { marginTop: '8px' } }, modeSeg, negBtn, userBtn, h('div', { class: 'spacer' }),
         h('button', { class: 'btn small', type: 'button', title: 'Zoom in (+)', 'aria-label': 'Zoom in', onclick: () => zoom(1.4) }, '+'),
         h('button', { class: 'btn small', type: 'button', title: 'Zoom out (−)', 'aria-label': 'Zoom out', onclick: () => zoom(1 / 1.4) }, '−'),
         h('button', { class: 'btn small', type: 'button', title: 'Reset view (R)', onclick: () => { S.view = { s: 1, tx: 0, ty: 0 }; draw(); } }, 'Reset'),
@@ -169,11 +174,24 @@ export async function render(root, route, { go }) {
     color: ['Colour', 'False colour: blue = 0.75–1.6 µm (D1–D2), green = 1.6–3.8 µm (D3–D4), red = 3.8–5 µm (D5–D6)'],
     expr: ['Equation', 'Your own image arithmetic, e.g. (D5 + D6)/2 − epoch(1)'],
   };
+  function setUserMode(m) {
+    S.userMode = S.userLayer ? m : 'off';
+    clearInterval(S.userTimer); S.userPhase = true;
+    if (S.userMode === 'blink') S.userTimer = setInterval(() => { S.userPhase = !S.userPhase; draw(); }, Math.max(300, req.speed));
+    userBtn.hidden = !S.userLayer;
+    userBtn.setAttribute('aria-pressed', String(S.userMode !== 'off'));
+    userBtn.textContent = S.userMode === 'show' ? 'Your image: shown' : S.userMode === 'blink' ? 'Blinking with your image' : 'Your image';
+    userBtn.title = 'Your own image of this field, resampled onto the same grid: click to show it, again to blink it with the SPHEREx frame, again to hide it';
+    draw();
+  }
+  const userShown = () => S.userLayer && S.userLayer.n === n() && (S.userMode === 'show' || (S.userMode === 'blink' && S.userPhase));
+
   function renderModes() {
     modeSeg.replaceChildren(...MODES.filter((m) => m !== 'expr' || req.expr).map((m, i) => h('button', { type: 'button', 'aria-pressed': String(req.mode === m), title: `${MODE_INFO[m][1]} (key ${i + 1})`, onclick: () => commit({ mode: m }) }, MODE_INFO[m][0])));
     // Negative: black-and-white, dark objects on a white sky, where faint tails, comas and moving objects show best
-    const neg = req.invert && (req.cmap === 'gray' || req.mode === 'color' || req.mode === 'diff');
+    const neg = !!req.invert;
     negBtn.setAttribute('aria-pressed', String(neg));
+    negBtn.querySelector('.neg-lbl').textContent = neg ? 'Negative on' : 'Negative';
     negBtn.title = neg ? 'Back to the normal view (key i)' : 'Negative: black and white, dark objects on a white sky; faint tails, comas and moving objects show best (key i)';
   }
 
@@ -182,6 +200,9 @@ export async function render(root, route, { go }) {
     const id = ++S.loadId;
     stopPlay();
     S.grid = makeGrid(req.target.ra, req.target.dec, req.fov);
+    S.userLayer = !req.track ? globalThis.__skyshiftUserLayers?.get(`${req.target.ra.toFixed(6)},${req.target.dec.toFixed(6)},${req.fov}`) || null : null;
+    if (S.userLayer) S.userLims = limits([S.userLayer.data], 0.5, 99.5);
+    setUserMode(S.userLayer ? (S.userMode && S.userMode !== 'off' ? S.userMode : 'blink') : 'off');
     const key = loadKey();
     if (!session.has(key)) session.set(key, { frames: new Map() });
     // keep only the 3 most recently used fields in memory (pixels stay cached on disk in IndexedDB)
@@ -303,7 +324,8 @@ export async function render(root, route, { go }) {
         loading.hidden = true;
         autoplay();
         const now = performance.now();
-        if (now - lastBuild > 700) { lastBuild = now; rebuild(); if (['spectrum', 'lightcurve'].includes(S.tab) && !S.clickSpec) renderSide(); }
+        // rebuild at most every 0.7 s, and less often when a rebuild is slow (large fields), so the page stays responsive
+        if (now - lastBuild > Math.max(700, (S.rebuildMs || 0) * 4)) { lastBuild = now; const t0r = performance.now(); rebuild(); S.rebuildMs = performance.now() - t0r; if (['spectrum', 'lightcurve'].includes(S.tab) && !S.clickSpec) renderSide(); }
       } else if (m.type === 'skip') {
         S.skipped++;
         if (m.reason !== 'outside') console.warn('Exposure skipped:', todo[m.index]?.uri, m.reason);
@@ -497,7 +519,8 @@ export async function render(root, route, { go }) {
     const octx = off.getContext('2d');
     const im = new ImageData(N, N);
     const fr = D.frames[i];
-    if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch, invert: req.invert });
+    if (userShown()) paint(S.userLayer.data, im.data, S.userLims, { stretch: req.stretch, cmap: 'gray', invert: req.invert });
+    else if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch, invert: req.invert });
     else if (D.kind === 'diff') paintDiff(fr.data, im.data, D.lims, { invert: req.invert });
     else paint(fr.data, im.data, D.lims, { stretch: req.stretch, cmap: cmapFor(fr), invert: req.invert });
     if (req.ov.includes('flags')) tintFlags(fr.group, im.data, N);
@@ -668,6 +691,10 @@ export async function render(root, route, { go }) {
   function updateHud() {
     const D = S.display, i = currentIndex();
     hud.replaceChildren();
+    if (userShown()) {
+      hud.append(h('span', { class: 'chip good' }, 'Your image'), h('span', { class: 'chip' }, S.userLayer.label), S.userLayer.mjd ? h('span', { class: 'chip' }, niceDate(S.userLayer.mjd)) : null, h('span', { class: 'chip' }, 'not SPHEREx data'));
+      return;
+    }
     if (!D || i < 0) return;
     const fr = D.frames[i];
     const dets = [...new Set(fr.group.map((e) => e.meta.detector))].sort();
@@ -941,7 +968,7 @@ export async function render(root, route, { go }) {
         slider2('lo', 'Black point', 0, 30, 0.5), slider2('hi', 'White point', 80, 100, 0.1)),
       h('div', { class: 'row' },
         h('label', { class: 'field' }, 'Colours', h('select', { onchange: (e) => commit({ cmap: e.target.value }) }, [['auto', 'By wavelength (tint of the detectors shown)'], ['gray', 'Grey (classic blink look)'], ['viridis', 'Viridis (colour-blind safe)'], ['heat', 'Heat'], ['ice', 'Ice']].map(([v, l]) => h('option', { value: v, selected: req.cmap === v }, l)))),
-        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: req.invert, onchange: (e) => commit({ invert: e.target.checked }) }), 'Invert (black stars on white)')),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: req.invert, onchange: (e) => setNegative(e.target.checked) }), 'Negative (black stars on white)')),
       h('div', { class: 'panel' }, h('b', {}, 'Overlays'),
         h('div', { class: 'row' }, [['gaia', 'Gaia DR3 stars', 'Positions moved to each frame’s date using Gaia proper motions'], ['wise', 'WISE (CatWISE2020)', 'Infrared sources from WISE'], ['flags', 'Contamination flags', 'Tint pixels flagged as bad'], ['track', 'Predicted track', 'Where the target should be at each date'], ['compass', 'Compass & scale', 'North/East arrows and a scale bar']]
           .map(([o, l, t]) => h('label', { class: 'check', title: t }, h('input', { type: 'checkbox', checked: req.ov.includes(o), onchange: () => toggleOv(o) }), l)))),
@@ -1647,7 +1674,7 @@ export async function render(root, route, { go }) {
     // results still on their way (searches, frames) belong to a page that is gone: make every check against the
     // current load or job fail, so nothing starts streaming after leaving
     S.loadId++; S.jobId++;
-    stopPlay(); ro.disconnect();
+    stopPlay(); ro.disconnect(); clearInterval(S.userTimer);
     clearTimeout(S.tourTimer); S.endTour?.();
     if (worker && S.streamListener) worker.removeEventListener('message', S.streamListener);
     if (worker && S.specHandler) worker.removeEventListener('message', S.specHandler);

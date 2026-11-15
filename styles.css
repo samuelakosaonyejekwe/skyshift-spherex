@@ -196,16 +196,16 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; f
 @media (max-width: 1100px) { .vside { max-height: none; position: static; } }
 .vhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .vhead h1 { font-size: clamp(1.15rem, 2.2vw, 1.5rem); margin: 0; }
-.stage-wrap { position: relative; display: flex; justify-content: center; }
+.stage-wrap { position: relative; display: flex; flex-direction: column; align-items: center; }
 /* the square image always fits the visible screen height (laptops, tablets, phones in any orientation) */
-.stage { position: relative; width: min(100%, max(260px, calc(100dvh - var(--top) - 270px))); aspect-ratio: 1; background: #05061a; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line-2); touch-action: none; user-select: none; -webkit-user-select: none; }
+.stage { position: relative; width: min(100%, max(260px, calc(100dvh - var(--top) - 306px))); aspect-ratio: 1; background: #05061a; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line-2); touch-action: none; user-select: none; -webkit-user-select: none; }
 /* the image area is always dark: give it dark-theme text colours in both themes */
 .stage { --text: #eef0ff; --text-2: #b9bee6; --text-3: #8d93c4; color: var(--text); }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .stage canvas.pix { image-rendering: pixelated; image-rendering: crisp-edges; }
 .stage canvas.smooth { image-rendering: auto; }
-.stage .hud { position: absolute; left: 10px; top: 10px; right: 10px; display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none; }
-.stage .hud .chip { background: #05061acc; backdrop-filter: blur(6px); color: #eef0ff; } /* always on the dark image */
+.stage-wrap .hud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; min-height: 30px; margin: 0 auto 6px; max-width: 100%; }
+.stage-wrap .hud .chip { font-size: .78rem; padding: 3px 9px; } /* frame details above the image, never covering it */
 .stage .readout { position: absolute; left: 10px; bottom: 10px; font: 12px var(--mono); background: #05061acc; padding: 5px 9px; border-radius: 8px; pointer-events: none; color: #b9bee6; max-width: calc(100% - 20px); } /* fixed dark panel: fixed light text */
 .stage .loading { position: absolute; inset: 0; display: grid; place-items: center; background: #05061a99; text-align: center; padding: 20px; }
 .progress { height: 6px; border-radius: 3px; background: #ffffff14; overflow: hidden; margin-top: 8px; }
@@ -331,7 +331,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; f
   .vhead h1 { font-size: 1.1rem; }
   .suggestion { font-size: .82rem; padding: 8px 10px; }
   main { padding-top: 10px; }
-  .stage { width: min(100%, max(240px, calc(100dvh - var(--top) - 200px))); }
+  .stage { width: min(100%, max(240px, calc(100dvh - var(--top) - 236px))); }
 }
 
 /* ---------- home (clean, ordered) ---------- */
@@ -452,4 +452,7 @@ blockquote { margin: 8px 0; }
 [data-theme="light"] .tour-ring { box-shadow: 0 0 0 4px var(--warm), 0 0 0 9999px #1a1f4d66; }
 [data-theme="light"] .mainnav a:hover, [data-theme="light"] .seg button:hover:not([aria-pressed="true"]) { background: #1a1f4d10; }
 /* Negative view toggle beside the display modes: shown as white-on-black when on */
-.neg-btn[aria-pressed="true"] { background: #ffffff; color: #111111; border-color: #111111; box-shadow: 0 0 0 2px #11111122; }
+.neg-btn { gap: 7px; }
+.neg-btn .neg-ico { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid currentColor; background: linear-gradient(90deg, currentColor 50%, transparent 50%); flex: none; }
+.neg-btn[aria-pressed="true"] { background: linear-gradient(135deg, #4a3fd0, #2367b8); color: #fff; border-color: transparent; }
+.neg-btn[aria-pressed="true"] .neg-ico { background: linear-gradient(90deg, transparent 50%, currentColor 50%); }

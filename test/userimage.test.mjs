@@ -61,3 +61,11 @@ test('calibration on catalogue stars recovers the zero point; magnitudes follow'
   assert.ok(Math.abs(cal.zp - (25 - 2.5 * Math.log10(0.96))) < 0.08, `zp ${cal.zp}`);
   assert.ok(Math.abs(cal.fwhm - 3) < 0.6, `fwhm ${cal.fwhm}`);
 });
+
+test('older WCS spellings (PC001001…, CROTA2) give the same sky solution as PCi_j / CD', async () => {
+  const { normaliseWcs } = await import('../src/lib/userimage.js');
+  const a = normaliseWcs({ PC001001: -1, PC001002: 0, PC002001: 0, PC002002: 1, CDELT1: 1e-4 });
+  assert.equal(a.PC1_1, -1); assert.equal(a.PC2_2, 1);
+  const b = normaliseWcs({ CDELT1: -2e-4, CDELT2: 2e-4, CROTA2: 90 });
+  assert.ok(Math.abs(b.CD1_1) < 1e-12 && Math.abs(b.CD1_2 + 2e-4) < 1e-12 && Math.abs(b.CD2_1 + 2e-4) < 1e-12);
+});

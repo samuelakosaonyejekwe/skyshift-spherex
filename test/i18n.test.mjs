@@ -34,7 +34,7 @@ test('every interface text in the code is translated', async () => {
   const { readFileSync, readdirSync } = await import('node:fs');
   const { UI } = await import('../src/i18n/ui.js');
   const en = (await import('../src/i18n/en.js')).default;
-  const exempt = new Set(['Enter', 'Escape', 'Tab', 'Gaia at MAST', 'List saved', 'Exposure skipped:']);
+  const exempt = new Set(['Enter', 'Escape', 'Tab', 'Gaia at MAST', 'List saved', 'Exposure skipped:', 'Viridis']); // Viridis: proper name of a colour map
   const files = ['src/app.js', 'src/targets.js', 'src/state.js', ...readdirSync('src/views').map((f) => 'src/views/' + f), ...readdirSync('src/ui').map((f) => 'src/ui/' + f)];
   for (const [code, pages] of Object.entries({ el, es, fr })) {
     const known = new Set([...Object.keys(pages), ...Object.keys(UI[code].phrases), ...Object.values(en)].map((k) => k.trim()));

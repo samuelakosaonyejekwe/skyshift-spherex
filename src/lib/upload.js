@@ -6,6 +6,7 @@ import { parseHeader, BLOCK, dataSize } from './fits.js';
 import { CelestialWCS } from './wcs.js';
 import { parsePosition, parseAngle, wrap360, fromGalactic } from './coords.js';
 import { ephemerisFromTable, ephemerisFromText } from './ephem.js';
+import { normaliseWcs } from './userimage.js';
 
 export const LIMITS = { fileBytes: 30 * 1024 * 1024, unzipBytes: 120 * 1024 * 1024, zipEntries: 200, rows: 20000, ratio: 200 };
 
@@ -249,7 +250,7 @@ function parseFits(bytes, mapping) {
     // a tile-compressed image (ZIMAGE) stores its real size in ZNAXISn; NAXISn there is the table layout
     const n1 = h.ZIMAGE ? h.ZNAXIS1 : h.NAXIS1, n2 = h.ZIMAGE ? h.ZNAXIS2 : h.NAXIS2;
     if ((h.NAXIS >= 2 || h.ZNAXIS >= 2) && /RA-|GLON/.test(h.CTYPE1 || '') && !(h.XTENSION === 'BINTABLE' && !h.ZIMAGE)) {
-      const wcs = new CelestialWCS(h);
+      const wcs = new CelestialWCS(normaliseWcs(h)); // older keyword spellings (PC001001, CROTA2) too
       let [ra, dec] = wcs.pixToWorld((n1 + 1) / 2, (n2 + 1) / 2);
       // an image in galactic coordinates gives (l, b): convert to ICRS like every other position
       if (/^GLON/.test(h.CTYPE1 || '') && Number.isFinite(ra)) ({ ra, dec } = fromGalactic(ra, dec));
