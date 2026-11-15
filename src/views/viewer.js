@@ -1276,7 +1276,7 @@ export async function render(root, route, { go }) {
       h('dl', { class: 'kv' },
         h('dt', {}, 'RA, Dec'), h('dd', {}, `${formatRA(sel.ra)} ${formatDec(sel.dec)}`),
         h('dt', {}, 'Decimal'), h('dd', {}, `${sel.ra.toFixed(6)}, ${sel.dec.toFixed(6)}`),
-        h('dt', {}, 'From target'), h('dd', {}, `${(separation(sel.ra, sel.dec, req.target.ra, req.target.dec) * 3600).toFixed(1)}″`),
+        req.target.eph ? null : [h('dt', {}, 'From target'), h('dd', {}, `${(separation(sel.ra, sel.dec, req.target.ra, req.target.dec) * 3600).toFixed(1)}″`)],
         ...positionRows(sel, o),
         o && sel.cat === 'gaia' ? [h('dt', {}, 'G mag'), h('dd', {}, o.phot_g_mean_mag?.toFixed(3) ?? '–'), h('dt', {}, 'BP−RP'), h('dd', {}, o.bp_rp?.toFixed(3) ?? '–'),
           h('dt', {}, 'Proper motion'), h('dd', {}, o.pmra != null ? `${o.pmra.toFixed(1)}, ${o.pmdec.toFixed(1)} mas/yr (${(Math.hypot(o.pmra, o.pmdec) / 1000).toFixed(3)}″/yr)` : '–'),
@@ -1320,7 +1320,7 @@ export async function render(root, route, { go }) {
     if (!rows.length) return null;
     return h('div', {},
       h('h4', {}, S.display?.stackMaps ? `Brightness in the stack of ${S.display.frames[currentIndex()]?.stackCount ?? ''} exposures up to ${niceDate(frameMjd())}` : `Brightness on ${niceDate(frameMjd())}`),
-      h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}, 'Band'), h('th', {}, 'λ (µm)'), h('th', {}, 'AB mag'), h('th', {}, 'Flux (µJy)'))),
+      h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ['Band', 'λ (µm)', 'AB mag', 'Flux (µJy)'].map((t) => h('th', { style: { whiteSpace: 'nowrap' } }, t)))),
         h('tbody', {}, rows.map((r) => h('tr', {}, h('td', {}, `D${r.det}`), h('td', {}, r.wl ? (r.wl[1] - r.wl[0] < 0.005 ? r.wl[0].toFixed(3) : `${r.wl[0].toFixed(2)}–${r.wl[1].toFixed(2)}`) : '–'),
           h('td', {}, r.ab && r.bad ? `≤ ${r.ab.mag.toFixed(2)} (${r.bad} of ${r.nap} pixels saturated or masked: brighter than this)` : r.flux != null && r.err > 0 && r.flux < 3 * r.err ? `not detected (S/N ${(r.flux / r.err).toFixed(1)}): fainter than ${abMag(3 * r.err).mag.toFixed(2)} (3σ)` : r.ab && r.passes?.length >= 2 && r.passes.filter((v) => v >= 1).length < r.passes.length ? `not confirmed: ${r.ab.mag.toFixed(2)} in the stack but seen in only ${r.passes.filter((v) => v >= 1).length} of ${r.passes.length} passes` : r.ab && r.passes?.length >= 2 ? `${r.ab.mag.toFixed(2)} ± ${r.ab.err == null ? '–' : r.ab.err < 0.005 ? '<0.01' : r.ab.err.toFixed(2)} (seen in all ${r.passes.length} passes)` : r.ab ? `${r.ab.mag.toFixed(2)} ± ${r.ab.err == null ? '–' : r.ab.err < 0.005 ? '<0.01' : r.ab.err.toFixed(2)}` : r.flux != null ? `fainter than ${abMag(Math.max(3 * r.err, 1e-3))?.mag.toFixed(1) ?? '–'} (3σ)` : '–'),
           h('td', {}, r.flux != null ? `${r.flux.toFixed(1)} ± ${r.err.toFixed(1)}${r.empirical ? '*' : ''}` : 'no clean measurement'))))),
