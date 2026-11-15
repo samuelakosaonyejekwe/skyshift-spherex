@@ -185,7 +185,7 @@ export function paintDiff(data, out, [a, b], { invert = false } = {}) {
 }
 
 /** False-colour composite from three channels (each with own limits). */
-export function paintRGB(chs, out, lims, { stretch = 'asinh' } = {}) {
+export function paintRGB(chs, out, lims, { stretch = 'asinh', invert = false } = {}) {
   const fn = STRETCH[stretch] || STRETCH.asinh;
   const n = chs[0].length;
   for (let k = 0; k < n; k++) {
@@ -198,7 +198,7 @@ export function paintRGB(chs, out, lims, { stretch = 'asinh' } = {}) {
       const [a, b] = lims[c];
       let t = (v - a) / (b - a);
       t = t <= 0 ? 0 : t >= 1 ? 1 : fn(t);
-      out[o + c] = t * 255;
+      out[o + c] = (invert ? 1 - t : t) * 255;
     }
     if (!any) { out[o] = NAN_RGB[0]; out[o + 1] = NAN_RGB[1]; out[o + 2] = NAN_RGB[2]; }
     out[o + 3] = 255;

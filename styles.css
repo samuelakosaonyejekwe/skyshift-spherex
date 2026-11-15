@@ -451,3 +451,5 @@ blockquote { margin: 8px 0; }
 [data-theme="light"] .tour { background: linear-gradient(150deg, #ffffff, #e9edff); color: var(--text); border-color: #8b7bff66; }
 [data-theme="light"] .tour-ring { box-shadow: 0 0 0 4px var(--warm), 0 0 0 9999px #1a1f4d66; }
 [data-theme="light"] .mainnav a:hover, [data-theme="light"] .seg button:hover:not([aria-pressed="true"]) { background: #1a1f4d10; }
+/* Negative view toggle beside the display modes: shown as white-on-black when on */
+.neg-btn[aria-pressed="true"] { background: #ffffff; color: #111111; border-color: #111111; box-shadow: 0 0 0 2px #11111122; }

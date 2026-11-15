@@ -3,6 +3,9 @@
 // rule to the start or end of a text. Values are carried over in order as $1, $2, … . Rules run in this order on
 // any text that is not an exact phrase, so a long sentence is matched before the shorter pieces inside it.
 export const R = [
+  ['^Negative$', 'Αρνητικό', 'Negativo', 'Négatif'],
+  ['^Negative: black and white, dark objects on a white sky; faint tails, comas and moving objects show best \(key i\)$', 'Αρνητικό: ασπρόμαυρο, σκοτεινά αντικείμενα σε λευκό ουρανό· οι αμυδρές ουρές, οι κόμες και τα κινούμενα αντικείμενα φαίνονται καλύτερα (πλήκτρο i)', 'Negativo: blanco y negro, objetos oscuros sobre cielo blanco; las colas débiles, las comas y los objetos en movimiento se ven mejor (tecla i)', 'Négatif : noir et blanc, objets sombres sur ciel blanc ; les queues faibles, les chevelures et les objets mobiles se voient le mieux (touche i)'],
+  ['^Back to the normal view \(key i\)$', 'Επιστροφή στην κανονική προβολή (πλήκτρο i)', 'Volver a la vista normal (tecla i)', 'Retour à la vue normale (touche i)'],
   ['^ICRS, aligned with the J2000.0 equator and equinox to about 0.02″$', 'ICRS, ευθυγραμμισμένο με τον ισημερινό και την ισημερία J2000.0 με ακρίβεια περίπου 0,02″', 'ICRS, alineado con el ecuador y el equinoccio J2000.0 con una precisión de unos 0,02″', 'ICRS, aligné sur l’équateur et l’équinoxe J2000.0 à environ 0,02″ près'],
   ['^FK5, equator and equinox J2000.0$', 'FK5, ισημερινός και ισημερία J2000.0', 'FK5, ecuador y equinoccio J2000.0', 'FK5, équateur et équinoxe J2000.0'],
   ['^FK4, equinox B1950.0$', 'FK4, ισημερία B1950.0', 'FK4, equinoccio B1950.0', 'FK4, équinoxe B1950.0'],

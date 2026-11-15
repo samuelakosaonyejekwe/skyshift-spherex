@@ -77,6 +77,11 @@ export async function render(root, route, { go }) {
   const progressBar = h('i');
   const statusLine = h('div', { class: 'tiny', 'aria-live': 'polite' });
   const modeSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Display mode' });
+  const negBtn = h('button', { type: 'button', class: 'btn small neg-btn', 'aria-pressed': 'false', onclick: () => {
+    const on = !(req.invert && (req.cmap === 'gray' || req.mode === 'color' || req.mode === 'diff'));
+    if (on) { S.cmapBeforeNeg = req.cmap; commit({ invert: true, cmap: req.mode === 'color' ? req.cmap : 'gray' }); }
+    else commit({ invert: false, cmap: S.cmapBeforeNeg && S.cmapBeforeNeg !== 'gray' ? S.cmapBeforeNeg : 'auto' });
+  } }, 'Negative');
   const suggestionBox = h('div');
   const explainBox = h('div', { class: 'notice', hidden: true });
   const tabsBar = h('div', { class: 'tabs', role: 'tablist' });
@@ -115,7 +120,7 @@ export async function render(root, route, { go }) {
         h('button', { class: 'btn icon', type: 'button', 'aria-label': 'Next frame', title: 'Next frame (→)', onclick: () => step(1) }, icon('next')),
         h('div', { class: 'timeline' }, slider, ticks), speedSel),
       frameLabel,
-      h('div', { class: 'row', style: { marginTop: '8px' } }, modeSeg, h('div', { class: 'spacer' }),
+      h('div', { class: 'row', style: { marginTop: '8px' } }, modeSeg, negBtn, h('div', { class: 'spacer' }),
         h('button', { class: 'btn small', type: 'button', title: 'Zoom in (+)', 'aria-label': 'Zoom in', onclick: () => zoom(1.4) }, '+'),
         h('button', { class: 'btn small', type: 'button', title: 'Zoom out (−)', 'aria-label': 'Zoom out', onclick: () => zoom(1 / 1.4) }, '−'),
         h('button', { class: 'btn small', type: 'button', title: 'Reset view (R)', onclick: () => { S.view = { s: 1, tx: 0, ty: 0 }; draw(); } }, 'Reset'),
@@ -166,6 +171,10 @@ export async function render(root, route, { go }) {
   };
   function renderModes() {
     modeSeg.replaceChildren(...MODES.filter((m) => m !== 'expr' || req.expr).map((m, i) => h('button', { type: 'button', 'aria-pressed': String(req.mode === m), title: `${MODE_INFO[m][1]} (key ${i + 1})`, onclick: () => commit({ mode: m }) }, MODE_INFO[m][0])));
+    // Negative: black-and-white, dark objects on a white sky, where faint tails, comas and moving objects show best
+    const neg = req.invert && (req.cmap === 'gray' || req.mode === 'color' || req.mode === 'diff');
+    negBtn.setAttribute('aria-pressed', String(neg));
+    negBtn.title = neg ? 'Back to the normal view (key i)' : 'Negative: black and white, dark objects on a white sky; faint tails, comas and moving objects show best (key i)';
   }
 
   // ------------------------------------------------------------------ loading
@@ -488,7 +497,7 @@ export async function render(root, route, { go }) {
     const octx = off.getContext('2d');
     const im = new ImageData(N, N);
     const fr = D.frames[i];
-    if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch });
+    if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch, invert: req.invert });
     else if (D.kind === 'diff') paintDiff(fr.data, im.data, D.lims, { invert: req.invert });
     else paint(fr.data, im.data, D.lims, { stretch: req.stretch, cmap: cmapFor(fr), invert: req.invert });
     if (req.ov.includes('flags')) tintFlags(fr.group, im.data, N);
@@ -541,6 +550,8 @@ export async function render(root, route, { go }) {
     return [p.ra, p.dec];
   }
   function drawOverlay() {
+    // on a negative (white) background the overlays use darker versions of the same colours
+    const ink = (light, dark) => (req.invert ? dark : light);
     const W = ovCanvas.width;
     const ctx = ovCanvas.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -566,20 +577,20 @@ export async function render(root, route, { go }) {
       visible.sort((a, b) => (b.important - a.important) || ((a.s.phot_g_mean_mag ?? 99) - (b.s.phot_g_mean_mag ?? 99)));
       ctx.lineWidth = 1 * dpr;
       for (const { s, p, x, y, important } of visible.slice(0, limit)) {
-        ctx.strokeStyle = important ? '#5ec8ff' : '#5ec8ff66'; ctx.fillStyle = '#9fe0ff';
+        ctx.strokeStyle = important ? ink('#5ec8ff', '#0069a8') : ink('#5ec8ff66', '#0069a8b0'); ctx.fillStyle = ink('#9fe0ff', '#00517f');
         const r = Math.max(2.5, 8 - (s.phot_g_mean_mag || 18) * 0.32) * dpr * Math.sqrt(S.view.s);
         ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
         const pm = Math.hypot(s.pmra || 0, s.pmdec || 0);
         if (pm > 100) { // draw the motion over 5 years as an arrow
           const q = propagate(p.ra, p.dec, s.pmra, s.pmdec, yr, yr + 5);
           const [x2, y2] = G(q.ra, q.dec);
-          arrow(ctx, x, y, x2, y2, '#5ec8ff', dpr);
+          arrow(ctx, x, y, x2, y2, ink('#5ec8ff', '#0069a8'), dpr);
         }
         if (s.label) { ctx.font = `${11 * dpr}px system-ui`; ctx.fillText(s.label, x + r + 3 * dpr, y - r); }
       }
     }
     if (req.ov.includes('wise') && S.cats.wise) {
-      ctx.strokeStyle = '#ffb547cc';
+      ctx.strokeStyle = ink('#ffb547cc', '#b85500cc');
       for (const s of S.cats.wise.rows) {
         const ep = s.meanobsmjd ? mjdToYear(s.meanobsmjd) : 2010.5;
         const p = propagate(s.ra, s.dec, (s.pmra || 0) * (s.meanobsmjd ? 1000 : 1), (s.pmdec || 0) * (s.meanobsmjd ? 1000 : 1), ep, yr);
@@ -594,47 +605,47 @@ export async function render(root, route, { go }) {
       const ms = S.display.frames.map((_, i) => frameMjd(i)).filter(Boolean);
       const t0 = Math.min(...ms), t1 = Math.max(...ms);
       const P = (m) => apparent(req.target.ra, req.target.dec, req.target.pmra, req.target.pmdec, req.target.plx, req.target.refEpoch || 2016, m);
-      ctx.strokeStyle = '#ffcf7a'; ctx.setLineDash([5 * dpr, 4 * dpr]);
+      ctx.strokeStyle = ink('#ffcf7a', '#a86b00'); ctx.setLineDash([5 * dpr, 4 * dpr]);
       ctx.beginPath();
       for (let k = 0; k <= 20; k++) { const p = P(t0 + ((t1 - t0) * k) / 20); const [x, y] = G(p.ra, p.dec); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
       ctx.stroke(); ctx.setLineDash([]);
-      for (const m of ms) { const p = P(m); const [x, y] = G(p.ra, p.dec); ctx.fillStyle = '#ffcf7a66'; ctx.beginPath(); ctx.arc(x, y, 2.2 * dpr, 0, 7); ctx.fill(); }
+      for (const m of ms) { const p = P(m); const [x, y] = G(p.ra, p.dec); ctx.fillStyle = ink('#ffcf7a66', '#a86b0066'); ctx.beginPath(); ctx.arc(x, y, 2.2 * dpr, 0, 7); ctx.fill(); }
       const p = P(mjd); const [x, y] = G(p.ra, p.dec);
-      crosshair(ctx, x, y, 9 * dpr * Math.sqrt(S.view.s), '#ffcf7a', dpr);
+      crosshair(ctx, x, y, 9 * dpr * Math.sqrt(S.view.s), ink('#ffcf7a', '#a86b00'), dpr);
     } else {
       const [x, y] = G(req.target.ra, req.target.dec);
-      crosshair(ctx, x, y, 9 * dpr * Math.sqrt(S.view.s), '#ffcf7a', dpr);
+      crosshair(ctx, x, y, 9 * dpr * Math.sqrt(S.view.s), ink('#ffcf7a', '#a86b00'), dpr);
     }
     // mover candidates
     if (S.movers?.length) {
       for (const m of S.movers) {
         const [x1, y1] = toCanvas(m.a[0], m.a[1], W), [x2, y2] = toCanvas(m.b[0], m.b[1], W);
-        arrow(ctx, x1, y1, x2, y2, '#ff6fb1', dpr);
+        arrow(ctx, x1, y1, x2, y2, ink('#ff6fb1', '#b3005e'), dpr);
       }
     }
     if (S.variables?.length) {
-      ctx.strokeStyle = '#3ddc97';
+      ctx.strokeStyle = ink('#3ddc97', '#0f7a4c');
       for (const v of S.variables) { const [x, y] = toCanvas(v.at[0], v.at[1], W); ctx.beginPath(); ctx.arc(x, y, 12 * dpr, 0, 7); ctx.stroke(); }
     }
     if (S.selected) {
       const [x, y] = G(S.selected.ra, S.selected.dec);
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(x, y, 14 * dpr, 0, 7); ctx.stroke();
+      ctx.strokeStyle = ink('#ffffff', '#111111'); ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(x, y, 14 * dpr, 0, 7); ctx.stroke();
     }
     // ruler
     if (S.ruler) {
       const { a, b } = S.ruler;
       const [x1, y1] = toCanvas(a[0], a[1], W), [x2, y2] = toCanvas(b[0], b[1], W);
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.strokeStyle = ink('#ffffff', '#111111'); ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
       const wa = gridToWorld(S.grid, a[0], a[1], cra, cdec), wb = gridToWorld(S.grid, b[0], b[1], cra, cdec);
       const d = separation(wa[0], wa[1], wb[0], wb[1]) * 3600;
-      ctx.font = `600 ${13 * dpr}px system-ui`; ctx.fillStyle = '#fff';
+      ctx.font = `600 ${13 * dpr}px system-ui`; ctx.fillStyle = ink('#fff', '#111');
       ctx.fillText(d >= 120 ? `${(d / 60).toFixed(2)}′` : `${d.toFixed(1)}″`, (x1 + x2) / 2 + 6 * dpr, (y1 + y2) / 2 - 6 * dpr);
     }
     // compass + scale bar
     if (req.ov.includes('compass')) {
       const x0 = W - 52 * dpr, y0 = W - 52 * dpr, L = 30 * dpr;
-      ctx.strokeStyle = '#fff'; ctx.fillStyle = '#fff'; ctx.lineWidth = 2 * dpr;
-      arrow(ctx, x0, y0, x0, y0 - L, '#ffffff', dpr); arrow(ctx, x0, y0, x0 - L, y0, '#ffffff', dpr);
+      ctx.strokeStyle = ink('#fff', '#111'); ctx.fillStyle = ink('#fff', '#111'); ctx.lineWidth = 2 * dpr;
+      arrow(ctx, x0, y0, x0, y0 - L, ink('#ffffff', '#111111'), dpr); arrow(ctx, x0, y0, x0 - L, y0, ink('#ffffff', '#111111'), dpr);
       ctx.font = `600 ${12 * dpr}px system-ui`; ctx.fillText('N', x0 - 4 * dpr, y0 - L - 6 * dpr); ctx.fillText('E', x0 - L - 14 * dpr, y0 + 4 * dpr);
       const arcsecPerPx = S.grid.scale / ((W / n()) * S.view.s);
       const targetArcsec = [10, 30, 60, 120, 300, 600, 1200].find((a) => a / arcsecPerPx > 50 * dpr) || 1200;
@@ -829,7 +840,7 @@ export async function render(root, route, { go }) {
     else if (k === 'f') toggleOv('flags');
     else if (k === 'g') toggleOv('gaia');
     else if (k === 'w') toggleOv('wise');
-    else if (k === 'i') commit({ invert: !req.invert });
+    else if (k === 'i') negBtn.click();
     else if (k === '+' || k === '=') zoom(1.4);
     else if (k === '-') zoom(1 / 1.4);
     else if (k === 'r') { S.view = { s: 1, tx: 0, ty: 0 }; draw(); }
@@ -1150,7 +1161,7 @@ export async function render(root, route, { go }) {
     D.frames.slice(0, 400).forEach((fr, i) => {
       const c = h('canvas', { width: N, height: N, class: 'thumb' + (i === currentIndex() ? ' cur' : ''), title: `${i + 1}: ${niceDate(frameMjd(i))}`, tabindex: 0, role: 'button', 'aria-label': `Frame ${i + 1}, ${niceDate(frameMjd(i))}` });
       const im = new ImageData(N, N);
-      if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch });
+      if (D.kind === 'rgb') paintRGB(fr.rgb, im.data, D.lims, { stretch: req.stretch, invert: req.invert });
       else if (D.kind === 'diff') paintDiff(fr.data, im.data, D.lims, { invert: req.invert });
       else paint(fr.data, im.data, D.lims, { stretch: req.stretch, cmap: cmapFor(fr), invert: req.invert });
       c.getContext('2d').putImageData(im, 0, 0);
