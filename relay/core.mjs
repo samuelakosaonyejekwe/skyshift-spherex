@@ -3,7 +3,10 @@
 // Netlify Edge, Vercel Edge and Deno Deploy. It only forwards to the data services
 // and pages of the challenge resources (and JPL Horizons for Solar System positions); it is not an open proxy.
 
-import { parseHeader, riceDecode32 } from '../src/lib/fits.js';
+import { parseHeader, riceDecode32, dataSize as dataSizeOf } from '../src/lib/fits.js';
+import { metaFromBytes, waveTableFromTail } from '../src/lib/spherex.js';
+import { CelestialWCS } from '../src/lib/wcs.js';
+import { exposureWindows } from '../src/lib/engine.js';
 
 export const ALLOW = [
   // IRSA (SPHEREx archive, TAP, SIA, IBE cutouts, docs)
@@ -175,10 +178,84 @@ async function flagWindow(q, fetchImpl) {
   }
 }
 
+// ------------------------------------------------------------------ bundle: everything one exposure contributes to a view
+// The relay reads the file's headers next to the archive, works out the view's pixel window with the app's own code
+// (src/lib/engine.js exposureWindows), then reads the image window, the flags around the target and the wavelength
+// table, and returns them together: one request per exposure from the browser instead of four, which saves the
+// round trips to the archive that set the time to the first frame. The browser stores the parts exactly as its own
+// readers would (SpherexImage.seed) and renders as usual.
+const num = (v) => { const x = Number(v); return Number.isFinite(x) ? x : null; };
+const motion = (v) => { if (!v) return null; const [pmra, pmdec, plx, refYear] = String(v).split(',').map(Number); return [pmra, pmdec, plx, refYear].every(Number.isFinite) ? { pmra, pmdec, plx, refYear } : null; };
+
+async function bundle(q, fetchImpl) {
+  const g = parseGather(q.get('bundle'), '0-0');
+  if (g.error) return json(400, { error: g.error });
+  const [ra, dec, n, scale] = String(q.get('g') || '').split(',').map(num);
+  if (![ra, dec, n, scale].every((x) => x != null) || n < 9 || n > 600 || scale <= 0) return json(400, { error: 'bundle: g=ra,dec,n,scale' });
+  const grid = { ra, dec, n, scale };
+  const opts = { withFlags: q.get('f') === 'target' ? 'target' : false, track: motion(q.get('t')), photTrack: motion(q.get('p')) };
+  const rec = { mjd: num(q.get('mjd')) };
+  const get = async (range) => {
+    const r = await fetchImpl(g.url, { headers: { Range: range, 'User-Agent': 'SkyShift-relay/1.0' } });
+    if (r.status !== 206) throw Object.assign(new Error(`archive answered ${r.status}`), { upstream: r.status });
+    return { buf: new Uint8Array(await r.arrayBuffer()), size: Number((r.headers.get('content-range') || '').match(/\/(\d+)$/)?.[1]) || null };
+  };
+  try {
+    // headers first (the window depends on the WCS), the wavelength table at the same time
+    const [head, tail] = await Promise.all([get('bytes=0-28799'), get('bytes=-17280')]);
+    let meta = metaFromBytes(head.buf, head.size);
+    if (!meta) meta = metaFromBytes((await get('bytes=0-57599')).buf, head.size);
+    if (!meta) throw new Error('FITS header not found');
+    const wcs = new CelestialWCS(meta.header);
+    const w = exposureWindows(meta, wcs, grid, rec, opts);
+    const wave = waveTableFromTail(tail.buf);
+    const W = meta.header.NAXIS1;
+    const parts = [];
+    let block = null, flag = null;
+    if (w) {
+      const bw = w.x1 - w.x0 + 1, bh = w.y1 - w.y0 + 1;
+      const a = meta.dataStart + ((w.y0 - 1) * W + (w.x0 - 1)) * 4, b = meta.dataStart + ((w.y1 - 1) * W + w.x1) * 4 - 1;
+      parts.push(get(`bytes=${a}-${b}`).then(({ buf }) => {
+        const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength), out = new Float32Array(bw * bh);
+        for (let r = 0; r < bh; r++) for (let c = 0; c < bw; c++) out[r * bw + c] = dv.getFloat32((r * W + c) * 4, false);
+        block = { x0: w.x0, x1: w.x1, y0: w.y0, y1: w.y1, data: out };
+      }));
+      if (w.flagWin) {
+        const off = meta.dataStart + dataSizeOf(meta.header);
+        const fq = new URLSearchParams({ flagwin: g.url, off: String(off), x0: String(w.flagWin.x0), x1: String(w.flagWin.x1), y0: String(w.flagWin.y0), y1: String(w.flagWin.y1) });
+        parts.push(flagWindow(fq, fetchImpl).then(async (r) => {
+          if (r.headers.get('x-relay-error')) return;
+          const [x0, x1, y0, y1] = (r.headers.get('x-flag-window') || '').split(',').map(Number);
+          flag = { x0, x1, y0, y1, bits: JSON.parse(decodeURIComponent(r.headers.get('x-flag-bits') || '%7B%7D')), data: new Int32Array(await r.arrayBuffer()) };
+        }));
+      }
+    }
+    await Promise.all(parts);
+    const head2 = new TextEncoder().encode(JSON.stringify({ v: 1, meta, wave, inside: !!w,
+      block: block && { x0: block.x0, x1: block.x1, y0: block.y0, y1: block.y1 }, flag: flag && { x0: flag.x0, x1: flag.x1, y0: flag.y0, y1: flag.y1, bits: flag.bits } }));
+    const start = Math.ceil((4 + head2.length) / 4) * 4;
+    const bl = block ? block.data.byteLength : 0, fl = flag ? flag.data.byteLength : 0;
+    const out = new Uint8Array(start + bl + fl);
+    new DataView(out.buffer).setUint32(0, head2.length, true);
+    out.set(head2, 4);
+    if (block) out.set(new Uint8Array(block.data.buffer), start);
+    if (flag) out.set(new Uint8Array(flag.data.buffer), start + bl);
+    return new Response(out, { status: 200, headers: { ...CORS, 'Content-Type': 'application/octet-stream', 'Cache-Control': 'public, max-age=604800, immutable',
+      'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Content-Disposition': 'attachment', 'X-Relay-Upstream-Status': '206' } });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'bundle failed', detail: String(e?.message || e).slice(0, 200) }),
+      { status: 200, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Relay-Error': 'bundle-failed', 'X-Relay-Upstream-Status': String(e?.upstream || 0) } });
+  }
+}
+
 export async function handle(request, { clientIp = 'anon', fetchImpl = fetch } = {}) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (!['GET', 'HEAD', 'POST'].includes(request.method)) return json(405, { error: 'method not allowed' });
   const self = new URL(request.url);
+  if (self.searchParams.has('bundle') && request.method === 'GET') {
+    if (limited(`g:${clientIp}`, 3000)) return json(429, { error: 'rate limited' });
+    return bundle(self.searchParams, fetchImpl);
+  }
   if (self.searchParams.has('flagwin') && request.method === 'GET') {
     if (limited(`g:${clientIp}`, 3000)) return json(429, { error: 'rate limited' });
     return flagWindow(self.searchParams, fetchImpl);

@@ -56,6 +56,10 @@ automatically.
   (limits: 600 ranges, 6 MB asked, 8 reads of at most 24 MB; only files of the public SPHEREx bucket).
 - **Flag windows**: `?flagwin=<SPHEREx file>&off=…&x0=…&x1=…&y0=…&y1=…` decodes the quality flags around a target next to the
   archive and returns only that window (at most 256 × 64 pixels), instead of about 100 kB of compressed full-width rows.
+- **Bundles**: `?bundle=<SPHEREx file>&g=ra,dec,n,scale&p=…&f=target&mjd=…` reads the file's headers next to the archive,
+  works out the view's pixel window with the app's own code (`exposureWindows` in `src/lib/engine.js`) and returns the
+  headers, image window, flag window and wavelength table together: one request per exposure from the browser (about
+  40 kB) instead of four. Verified identical to the browser's own reads, with zero further requests to render.
 - **NASA JPL Horizons** is on the allow-list (`/api/horizons.api`) for asteroid and comet positions by name.
 - **Smart Placement** is on (Cloudflare dashboard → Workers & Pages → skyshift-spherex → Settings → Runtime → Placement →
   Smart, turned on by the author on 2026-11-15): the relay runs next to IRSA's bucket; a gather answers in about 0.4 s.

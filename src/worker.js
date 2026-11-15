@@ -4,7 +4,7 @@
 import { SpherexImage } from './lib/spherex.js';
 import { renderExposure, photAt } from './lib/engine.js';
 import { cache } from './lib/store.js';
-import { setGatherRelays } from './lib/fits.js';
+import { setGatherRelays, relayGet } from './lib/fits.js';
 
 let current = null; // { id, ctl }
 const images = new Map(); // small LRU of SpherexImage objects (keeps parsed headers in memory)
@@ -24,6 +24,31 @@ function getImage(uri, signal, kind = 'frames') {
   return img;
 }
 let currentPhot = null;
+
+/**
+ * One relay request per exposure (relay/core.mjs bundle): the relay returns the headers, the view's image window,
+ * the flags around the target and the wavelength table, which are stored as if read here; rendering then needs no
+ * further requests. Used for column-precise reads without motion tables; any failure leaves the normal reads.
+ */
+async function prefetchBundle(img, grid, rec, opts) {
+  if (await cache.get(`meta|${img.url}`)) return; // seen before: the stored parts are used as they are
+  const mot = (t) => (t && !t.eph && (t.pmra || t.pmdec || t.plx) ? [t.pmra || 0, t.pmdec || 0, t.plx || 0, t.refYear || 2016].join(',') : '');
+  const q = new URLSearchParams({ bundle: img.url, g: [grid.ra, grid.dec, grid.n, grid.scale].map(String).join(','), f: opts.withFlags === 'target' ? 'target' : '0', mjd: String(rec.mjd ?? '') });
+  if (mot(opts.track)) q.set('t', mot(opts.track));
+  if (mot(opts.photTrack)) q.set('p', mot(opts.photTrack));
+  const r = await relayGet(q.toString(), { signal: img.src.signal, onBytes: (n) => { bytes += n; } });
+  if (!r) return;
+  const buf = new Uint8Array(r.buf);
+  const len = new DataView(r.buf).getUint32(0, true);
+  const head = JSON.parse(new TextDecoder().decode(buf.subarray(4, 4 + len)));
+  if (head.v !== 1 || !head.meta) return;
+  const start = Math.ceil((4 + len) / 4) * 4;
+  let o = start;
+  const take = (w, Arr) => { if (!w) return null; const n = (w.x1 - w.x0 + 1) * (w.y1 - w.y0 + 1); const a = new Arr(r.buf.slice(o, o + n * 4)); o += n * 4; return a; };
+  const block = head.block ? { ...head.block, data: take(head.block, Float32Array) } : null;
+  const flag = head.flag ? { ...head.flag, data: take(head.flag, Int32Array) } : null;
+  await img.seed({ meta: head.meta, wave: head.wave, block, flag });
+}
 
 async function pool(items, limit, fn, signal, { first = limit } = {}) {
   let i = 0;
@@ -62,6 +87,9 @@ self.onmessage = async (e) => {
         // 'auto': the first few exposures as whole rows (appear fastest), the rest column-precise (far less data)
         // with a gathering relay, column-precise reads cost one request each: use them throughout (far less data)
         const readMode = opts.readMode === 'fast' ? 'fast' : opts.readMode === 'saver' || opts.gather?.length ? 'saver' : (k < 6 ? 'fast' : 'saver');
+        if (opts.gather?.length && readMode === 'saver' && opts.withFlags !== 'field' && opts.withFlags !== true && !opts.track?.eph && !opts.photTrack?.eph) {
+          await prefetchBundle(img, grid, rec, opts).catch(() => {});
+        }
         const r = await renderExposure(img, grid, rec, { ...opts, readMode });
         if (ctl.signal.aborted) return;
         if (!r) { self.postMessage({ type: 'skip', id: msg.id, index: k, reason: 'outside' }); return; }

@@ -72,6 +72,26 @@ export function decodeFlags(v) { return FLAG_BITS.filter(([b]) => v & (1 << b)).
 
 const memo = new Map(); // in-flight request de-duplication
 
+/** Primary and IMAGE headers from the first bytes of a SPHEREx file, or null if more bytes are needed. */
+export function metaFromBytes(bytes, size = null) {
+  const p = parseHeader(bytes, 0);
+  const im = p && parseHeader(bytes, p.end);
+  return p && im ? { primary: p.header, header: im.header, dataStart: im.end, size } : null;
+}
+
+/** The WCS-WAVE table ({ X, Y, VALUES }) from the last bytes of a SPHEREx file, or null. */
+export function waveTableFromTail(bytes) {
+  for (let off = 0; off + 2880 <= bytes.length; off += 2880) {
+    if (bytes[off] !== 88 /* X */) continue;
+    const p = parseHeader(bytes, off);
+    if (p && p.header.EXTNAME === 'WCS-WAVE') {
+      const row = parseBinTableRow(p.header, bytes.subarray(p.end, p.end + p.header.NAXIS1));
+      return { X: Array.from(row.X), Y: Array.from(row.Y), VALUES: Array.from(row.VALUES) };
+    }
+  }
+  return null;
+}
+
 export class SpherexImage {
   /**
    * @param {string} uri IBE path or S3 URL
@@ -97,6 +117,18 @@ export class SpherexImage {
     return p;
   }
 
+  /**
+   * Store what a relay bundle already holds (headers, wavelength table, image block, flag window), exactly as the
+   * readers below would store it, so rendering the exposure needs no further requests.
+   */
+  async seed({ meta, wave, block, flag }) {
+    const put = async (key, v) => { const k = `${key}|${this.url}`; memo.set(k, Promise.resolve(v)); setTimeout(() => memo.delete(k), 60000); if (this.cache) await this.cache.set(k, v); };
+    if (meta) { await put('meta', meta); this._meta = meta; this.wcs = new CelestialWCS(meta.header); }
+    if (wave) { await put('wave', wave); this._wave = new SpectralWCS(wave); }
+    if (block) await put(`blk${block.x0},${block.x1},${block.y0},${block.y1}`, block.data);
+    if (flag) await put(`fw${flag.x0},${flag.x1},${flag.y0},${flag.y1}`, { data: flag.data, win: [flag.x0, flag.x1, flag.y0, flag.y1], bits: flag.bits || {} });
+  }
+
   /** Primary + IMAGE headers and IMAGE data offset. */
   async meta() {
     if (this._meta) return this._meta;
@@ -104,9 +136,8 @@ export class SpherexImage {
       let n = 2880 * 10; // IMAGE header ends near 26 kB in DR1/QR3 files; grows automatically if needed
       for (;;) {
         const bytes = await this.src.get(0, n - 1);
-        const p = parseHeader(bytes, 0);
-        const im = p && parseHeader(bytes, p.end);
-        if (p && im) return { primary: p.header, header: im.header, dataStart: im.end, size: this.src.size };
+        const got = metaFromBytes(bytes, this.src.size);
+        if (got) return got;
         if (bytes.length < n) throw new Error('FITS header not found');
         n *= 2;
       }
@@ -122,15 +153,9 @@ export class SpherexImage {
     const t = await this._cached('wave', async () => {
       const n = 2880 * 6;
       const bytes = await this.src.tail(n);
-      for (let off = 0; off + 2880 <= bytes.length; off += 2880) {
-        if (bytes[off] !== 88 /* X */) continue;
-        const p = parseHeader(bytes, off);
-        if (p && p.header.EXTNAME === 'WCS-WAVE') {
-          const row = parseBinTableRow(p.header, bytes.subarray(p.end, p.end + p.header.NAXIS1));
-          return { X: Array.from(row.X), Y: Array.from(row.Y), VALUES: Array.from(row.VALUES) };
-        }
-      }
-      throw new Error('WCS-WAVE not found');
+      const t = waveTableFromTail(bytes);
+      if (!t) throw new Error('WCS-WAVE not found');
+      return t;
     });
     this._wave = new SpectralWCS(t);
     return this._wave;

@@ -145,15 +145,18 @@ export function photometry(rows, flags, x, y, omegaArcsec2, { rAp = 2.5, rIn = 5
  * Render one exposure onto the grid.
  * @returns {Promise<null | {data, flags, meta, phot}>}
  */
-export async function renderExposure(img, grid, rec, opts = {}) {
-  const { withFlags = true, track = null, phot = true, photTrack = null, readMode = 'fast' } = opts;
-  const m = await img.meta();
-  const wcs = img.wcs;
+/**
+ * Which pixels an exposure contributes to a view: the field's sky position at this exposure's time (motion tracking),
+ * the target's pixel for photometry, the image window (x0..x1, y0..y1, 1-based) and the flag window around the target.
+ * Shared by renderExposure and the relay's bundle mode (relay/core.mjs), so both ask for exactly the same pixels.
+ * Returns null when the exposure does not cover the field.
+ */
+export function exposureWindows(m, wcs, grid, rec, opts = {}) {
+  const { withFlags = true, track = null, photTrack = null } = opts;
   const H = m.header.NAXIS2, W = m.header.NAXIS1;
   const mjd = m.header['MJD-AVG'] ?? rec.mjd;
   let cra = grid.ra, cdec = grid.dec;
   if (track?.eph) {
-    // a Solar System object: its position at this exposure's time, from the user's table (outside it: skipped)
     const p = interpEph(track.eph, mjd);
     if (!p) return null;
     cra = p.ra; cdec = p.dec;
@@ -163,7 +166,6 @@ export async function renderExposure(img, grid, rec, opts = {}) {
   }
   const map = buildMapping(grid, wcs, cra, cdec);
   const [xmin, xmax, ymin, ymax] = map.bbox;
-  // photometry follows the target's predicted position (proper motion) when known
   let pra = cra, pdec = cdec;
   if (photTrack?.eph) {
     const p = interpEph(photTrack.eph, mjd);
@@ -176,15 +178,26 @@ export async function renderExposure(img, grid, rec, opts = {}) {
   if (!(xmax >= 1 && xmin <= W && ymax >= 1 && ymin <= H)) return null;
   const pad = 11;
   const y0 = Math.max(1, Math.floor(Math.min(ymin, ty) - pad)), y1 = Math.min(H, Math.ceil(Math.max(ymax, ty) + pad));
-  // withFlags: 'field' (map flags over the whole cutout) | 'target' (only rows needed for photometry) | false
+  const x0 = Math.max(1, Math.floor(Math.min(xmin, tx) - pad)), x1 = Math.min(W, Math.ceil(Math.max(xmax, tx) + pad));
   const flagMode = withFlags === true ? 'field' : withFlags;
   const fy0 = flagMode === 'target' ? Math.max(1, Math.floor(ty) - 8) : y0;
   const fy1 = flagMode === 'target' ? Math.min(H, Math.ceil(ty) + 8) : y1;
-  const x0 = Math.max(1, Math.floor(Math.min(xmin, tx) - pad)), x1 = Math.min(W, Math.ceil(Math.max(xmax, tx) + pad));
+  const flagWin = flagMode === 'target' && Number.isFinite(ty) && fy1 >= fy0 ? { x0: Math.max(1, Math.floor(tx) - 12), x1: Math.min(W, Math.ceil(tx) + 12), y0: fy0, y1: fy1 } : null;
+  return { W, H, mjd, cra, cdec, pra, pdec, tx, ty, map, x0, x1, y0, y1, fy0, fy1, flagMode, flagWin };
+}
+
+export async function renderExposure(img, grid, rec, opts = {}) {
+  const { withFlags = true, track = null, phot = true, photTrack = null, readMode = 'fast' } = opts;
+  const m = await img.meta();
+  const wcs = img.wcs;
+  const H = m.header.NAXIS2, W = m.header.NAXIS1;
+  const win = exposureWindows(m, wcs, grid, rec, opts);
+  if (!win) return null;
+  const { mjd, cra, cdec, pra, pdec, tx, ty, map, x0, x1, y0, y1, fy0, fy1, flagMode, flagWin } = win;
   const [rows, flagsRaw, wave] = await Promise.all([
     readMode === 'saver' ? img.block(x0, x1, y0, y1) : img.rows(y0, y1),
     // photometry needs only the flags around the target: a small window (decoded by the relay when there is one)
-    flagMode && Number.isFinite(ty) && fy1 >= fy0 ? (flagMode === 'target' && img.flagWindow ? img.flagWindow(Math.floor(tx) - 12, Math.ceil(tx) + 12, fy0, fy1) : img.flagRows(fy0, fy1)).catch(() => null) : Promise.resolve(null),
+    flagMode && Number.isFinite(ty) && fy1 >= fy0 ? (flagWin && img.flagWindow ? img.flagWindow(flagWin.x0, flagWin.x1, flagWin.y0, flagWin.y1) : img.flagRows(fy0, fy1)).catch(() => null) : Promise.resolve(null),
     img.wave().catch(() => null),
   ]);
   const flags = flagsRaw ? { ...flagsRaw, partial: flagMode === 'target' } : null;
