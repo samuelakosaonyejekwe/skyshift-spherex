@@ -71,9 +71,11 @@
   .mini div { background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 14px; padding: 18px 20px; font-size: 27px; color: var(--muted); line-height: 1.25; }
   .mini b { display: block; font-size: 54px; color: var(--warm); line-height: 1.1; }
   .links { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 24px; }
-  .links div { display: flex; align-items: baseline; gap: 24px; background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 16px; padding: 12px 26px; }
+  .links a { color: inherit; text-decoration: none; display: flex; align-items: baseline; gap: 24px; background: #ffffff0d; border: 1px solid #ffffff22; border-radius: 16px; padding: 12px 26px; }
   .links span { flex: 0 0 110px; font-size: 26px; color: var(--muted); }
   .links b { font-size: 32px; color: #9fe0ff; overflow-wrap: anywhere; }
+  .links a:hover, .links a:focus-visible { background: #ffffff1c; border-color: #9fe0ff88; outline: none; } .links a:hover b, .links a:focus-visible b { text-decoration: underline; text-underline-offset: 6px; }
+  a.ref { color: #9fe0ff; text-decoration: underline; text-underline-offset: 4px; }
   body.presenting .foot { position: absolute; left: 80px; right: 80px; bottom: 28px; display: flex; justify-content: space-between; align-items: center; font-size: 17px; color: var(--muted); z-index: 2; }
   .nav { display: flex; gap: 12px; }
   .nav button { width: 46px; height: 46px; border-radius: 50%; border: 1px solid #ffffff44; background: #1d2263; color: #fff; font-size: 22px; cursor: pointer; }
@@ -182,7 +184,7 @@
     <div class="stat"><div class="num">8 / 8</div><span>challenge resources used and checked live</span></div>
   </div>
   <table class="val"><colgroup><col style="width:29%"><col style="width:37%"><col style="width:34%"></colgroup><tr><th>Target</th><th>Motion vs Gaia DR3</th><th>Verdict</th></tr><tr><td>Barnard’s Star</td><td>10,219 vs 10,393 mas/yr</td><td>agrees (2%)</td></tr><tr><td>RW Aurigae</td><td>residual 432 ± 433</td><td>agrees (1σ)</td></tr><tr><td>Epsilon Indi B</td><td>4,718 vs 4,684 mas/yr</td><td>speed 1%; 17° off</td></tr><tr><td>R Dra · WISE 0855</td><td>saturated · too faint</td><td>not reliable</td></tr><tr><td>Asteroid (500) Selinur</td><td>257 exposures stacked</td><td>found in all 6 bands</td></tr></table>
-  <p class="muted" style="margin:22px 0 0;font-size:30px">RW Aurigae changed by 20% ± 8% between passes (2.7σ; candidates need 3σ). Report: docs/VALIDATION.md</p>
+  <p class="muted" style="margin:22px 0 0;font-size:30px">RW Aurigae changed by 20% ± 8% between passes (2.7σ; candidates need 3σ). Report: <a class="ref" href="https://github.com/samuelakosaonyejekwe/skyshift-spherex/blob/main/docs/VALIDATION.md" target="_blank" rel="noopener">docs/VALIDATION.md</a></p>
 </section>
 
 <section aria-label="Impact and next steps">
@@ -207,9 +209,9 @@
     </div>
   </div>
   <div class="links">
-    <div><span>Try it</span><b>samuelakosaonyejekwe.github.io/skyshift-spherex</b></div>
-    <div><span>Code</span><b>github.com/samuelakosaonyejekwe/skyshift-spherex</b></div>
-    <div><span>Backup</span><b>skyshift-spherex.pages.dev</b></div>
+    <a href="https://samuelakosaonyejekwe.github.io/skyshift-spherex/" target="_blank" rel="noopener"><span>Try it</span><b>samuelakosaonyejekwe.github.io/skyshift-spherex</b></a>
+    <a href="https://github.com/samuelakosaonyejekwe/skyshift-spherex" target="_blank" rel="noopener"><span>Code</span><b>github.com/samuelakosaonyejekwe/skyshift-spherex</b></a>
+    <a href="https://skyshift-spherex.pages.dev/" target="_blank" rel="noopener"><span>Backup</span><b>skyshift-spherex.pages.dev</b></a>
   </div>
 </section>
 
