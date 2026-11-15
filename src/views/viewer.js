@@ -77,12 +77,10 @@ export async function render(root, route, { go }) {
   const progressBar = h('i');
   const statusLine = h('div', { class: 'tiny', 'aria-live': 'polite' });
   const modeSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Display mode' });
-  // Inverted view (WiseView, DS9 and JS9 call it "invert"): dark objects on a white sky; black and white, except
-  // Colour, which shows complementary colours
-  const setNegative = (on) => {
-    if (on) { S.cmapBeforeNeg = req.cmap; commit({ invert: true, cmap: req.mode === 'color' ? req.cmap : 'gray' }); }
-    else commit({ invert: false, cmap: S.cmapBeforeNeg && S.cmapBeforeNeg !== 'gray' ? S.cmapBeforeNeg : 'auto' });
-  };
+  // Inverted view (WiseView, DS9 and JS9 call it "invert"): dark objects on a white sky. Black and white in Movie,
+  // Blink, Stack and Difference (unless a colour map was chosen by hand); Colour keeps each object's hue. Decided at
+  // drawing time (cmapFor, paintRGB), so it is the same whichever mode Invert was switched on in.
+  const setNegative = (on) => commit({ invert: !!on });
   // your own image of the same field (sent from the image inspector): off → shown → blinking with the SPHEREx frame
   const userBtn = h('button', { type: 'button', class: 'btn small user-btn', hidden: true, 'aria-pressed': 'false', onclick: () => setUserMode(S.userMode === 'off' ? 'show' : S.userMode === 'show' ? 'blink' : 'off') }, 'Your image');
   const negBtn = h('button', { type: 'button', class: 'btn small neg-btn', 'aria-pressed': 'false', onclick: () => setNegative(!req.invert) },
@@ -102,7 +100,7 @@ export async function render(root, route, { go }) {
   const guardWise = (a) => { a.addEventListener('click', (e) => { e.preventDefault(); openWiseView(a.href); }); return a; };
   guardWise(wiseLink);
   const skyLink = h('a', { class: 'btn small hide-embed', href: `#/sky?${toParams(req)}`, 'aria-label': 'Sky atlas' }, icon('sky'), h('span', { class: 'lbl' }, 'Sky atlas'));
-  const explainBtn = h('button', { class: 'btn small', type: 'button', 'aria-expanded': 'false', onclick: () => { explainBox.hidden = !explainBox.hidden; explainBtn.setAttribute('aria-expanded', String(!explainBox.hidden)); explain(); }, 'aria-label': 'Explain this view' }, icon('help'), h('span', { class: 'lbl' }, 'Explain this view'));
+  const explainBtn = h('button', { class: 'btn small', type: 'button', 'aria-expanded': 'false', onclick: () => { explainBox.hidden = !explainBox.hidden; explainBtn.setAttribute('aria-expanded', String(!explainBox.hidden)); explain(); requestAnimationFrame(fitStage); }, 'aria-label': 'Explain this view' }, icon('help'), h('span', { class: 'lbl' }, 'Explain this view'));
   const dossierBtn = h('button', { class: 'btn small hide-embed', type: 'button', title: 'Generate a reproducible report with figures, tables and FITS cutouts', onclick: () => makeDossier(), 'aria-label': 'Generate dossier' }, icon('download'), h('span', { class: 'lbl' }, 'Dossier'));
   const tourBtn = h('button', { class: 'btn small ghost hide-embed', type: 'button', onclick: () => tour() }, 'Tour');
   const openFull = req.embed ? h('a', { class: 'btn small primary', href: location.href.replace(/([?&])embed=1&?/, '$1'), target: '_blank', rel: 'noopener' }, 'Open in SkyShift') : null;
@@ -119,6 +117,8 @@ export async function render(root, route, { go }) {
       queueBar(), suggestionBox, explainBox,
       // frame details sit in a strip above the image, never on top of it
       h('div', { class: 'stage-wrap' }, hud, stage),
+      // the player controls: transport, frame label, modes and tools, kept together so fitStage can size the image to leave room
+      h('div', { class: 'player-bar' },
       h('div', { class: 'progress', 'aria-hidden': 'true' }, progressBar),
       h('div', { class: 'transport' },
         h('button', { class: 'btn icon', type: 'button', 'aria-label': 'Previous frame', title: 'Previous frame (←)', onclick: () => step(-1) }, icon('prev')),
@@ -126,7 +126,7 @@ export async function render(root, route, { go }) {
         h('button', { class: 'btn icon', type: 'button', 'aria-label': 'Next frame', title: 'Next frame (→)', onclick: () => step(1) }, icon('next')),
         h('div', { class: 'timeline' }, slider, ticks), speedSel),
       frameLabel,
-      h('div', { class: 'row', style: { marginTop: '8px' } }, modeSeg, negBtn, userBtn, h('div', { class: 'spacer' }),
+      h('div', { class: 'row tools-row', style: { marginTop: '8px' } }, modeSeg, negBtn, userBtn, h('div', { class: 'spacer' }),
         h('button', { class: 'btn small', type: 'button', title: 'Zoom in (+)', 'aria-label': 'Zoom in', onclick: () => zoom(1.4) }, '+'),
         h('button', { class: 'btn small', type: 'button', title: 'Zoom out (−)', 'aria-label': 'Zoom out', onclick: () => zoom(1 / 1.4) }, '−'),
         h('button', { class: 'btn small', type: 'button', title: 'Reset view (R)', onclick: () => { S.view = { s: 1, tx: 0, ty: 0 }; draw(); } }, 'Reset'),
@@ -134,7 +134,7 @@ export async function render(root, route, { go }) {
         h('button', { class: 'btn small', type: 'button', 'aria-pressed': String(localStorage.getItem('skyshift.rawPixels') === '1'), title: 'Show the exact SPHEREx pixels (6.15″ squares) instead of the smooth view', onclick: (e) => { S.rawPixels = !S.rawPixels; localStorage.setItem('skyshift.rawPixels', S.rawPixels ? '1' : '0'); e.currentTarget.setAttribute('aria-pressed', String(S.rawPixels)); draw(); } }, 'Raw pixels'),
         h('button', { class: 'btn small', type: 'button', title: 'Download this frame as PNG', onclick: () => exportPNG() }, icon('download'), 'PNG'),
         h('button', { class: 'btn small', type: 'button', title: 'Save the animation as an animated GIF', onclick: () => exportGIF() }, icon('download'), 'GIF'),
-        h('button', { class: 'btn small', type: 'button', title: 'Record the animation as a video file', onclick: () => exportVideo() }, icon('video'), 'Video')),
+        h('button', { class: 'btn small', type: 'button', title: 'Record the animation as a video file', onclick: () => exportVideo() }, icon('video'), 'Video'))),
       statusLine),
     vside));
 
@@ -490,6 +490,7 @@ export async function render(root, route, { go }) {
     }
     updateTimeline();
     draw();
+    if (!fitScrolled) requestAnimationFrame(fitStage);
   }
 
   // ------------------------------------------------------------------ drawing
@@ -499,6 +500,27 @@ export async function render(root, route, { go }) {
     if (!D?.frames.length) return -1;
     if (req.mode === 'blink' && D.blink) return D.blink[S.blinkPhase % 2];
     return Math.max(0, Math.min(D.frames.length - 1, S.frame));
+  }
+  // the image, its labels and the whole player bar (transport, modes, tools) always fit together in the window below the
+  // fixed header: the image shrinks to the space left (never below 230 px; 180 px on phones, 150 px on the narrowest), and on short screens the page scrolls once,
+  // on opening, so the player starts at the top with nothing cut off below it
+  let fitScrolled = false, fitStart = 0;
+  function fitStage() {
+    const bar = root.querySelector('.player-bar'), wrap = root.querySelector('.stage-wrap'), hud = wrap?.querySelector('.hud');
+    if (!bar || !wrap || !stage.isConnected) return;
+    stage.style.width = '';
+    const natural = stage.getBoundingClientRect().width;
+    const header = document.querySelector('.topbar')?.getBoundingClientRect().height || 0;
+    const free = innerHeight - header - (hud?.getBoundingClientRect().height || 0) - bar.getBoundingClientRect().height - 20;
+    if (free < natural) stage.style.width = `${Math.max(innerWidth < 360 ? 150 : innerWidth < 420 ? 180 : 230, Math.floor(free))}px`;
+    // checked for the first few seconds after the first frame, while hints and notices above the image settle;
+    // never once the visitor has scrolled
+    if (!fitScrolled && S.display?.frames?.length) {
+      fitStart ||= performance.now();
+      if (scrollY >= 40 || performance.now() - fitStart > 5000) fitScrolled = true;
+      else if (bar.getBoundingClientRect().bottom > innerHeight) { fitScrolled = true; wrap.scrollIntoView({ block: 'start' }); }
+      else setTimeout(() => requestAnimationFrame(fitStage), 700);
+    }
   }
   let stageWidth = 0; // measured on resize only: reading layout on every frame is slow on phones
   function sizeCanvases() {
@@ -549,6 +571,7 @@ export async function render(root, route, { go }) {
   /** 'auto' colour map: tint each frame by the detector arrays (wavelengths) it contains. */
   function cmapFor(fr) {
     if (req.cmap !== 'auto') return req.cmap;
+    if (req.invert) return 'gray';
     return tintName(fr?.group ? [...new Set(fr.group.map((e) => e.meta.detector))] : req.dets);
   }
   function tintFlags(group, px, N) {
@@ -1474,6 +1497,7 @@ export async function render(root, route, { go }) {
     if (preset?.id === 'epsindib' && req.fov < 15) btns.push(h('button', { class: 'btn small', onclick: () => commit({ fov: 15, ov: [...new Set([...req.ov, 'gaia'])] }) }, 'Show the host star (15′ field)'));
     if ((preset?.id === 'rwaur' || preset?.id === 'rdra') && S.tab !== 'lightcurve') btns.push(h('button', { class: 'btn small', onclick: () => { S.tab = 'lightcurve'; renderTabs(); renderSide(); } }, 'Open light curve'));
     suggestionBox.append(h('div', { class: 'suggestion', style: { marginBottom: '10px' } }, h('span', { 'aria-hidden': 'true' }, '💡'), h('span', { style: { flex: 1 } }, text), btns));
+    requestAnimationFrame(fitStage);
   }
   /** Shift-and-stack for a followed object: load every exposure, stack them all, select the object, measure it. */
   function shiftAndStack() {
@@ -1650,6 +1674,9 @@ export async function render(root, route, { go }) {
   // ------------------------------------------------------------------ lifecycle
   const ro = new ResizeObserver(() => { stageWidth = stage.getBoundingClientRect().width; draw(); });
   ro.observe(stage);
+  const onResize = () => requestAnimationFrame(fitStage);
+  window.addEventListener('resize', onResize);
+  requestAnimationFrame(fitStage);
   const onNewData = () => { if (S.search) { S.search = null; load(); } };
   window.addEventListener('skyshift:newdata', onNewData);
   window.addEventListener('skyshift:online', onNewData);
@@ -1675,7 +1702,7 @@ export async function render(root, route, { go }) {
     // results still on their way (searches, frames) belong to a page that is gone: make every check against the
     // current load or job fail, so nothing starts streaming after leaving
     S.loadId++; S.jobId++;
-    stopPlay(); ro.disconnect(); clearInterval(S.userTimer);
+    stopPlay(); ro.disconnect(); clearInterval(S.userTimer); window.removeEventListener('resize', onResize);
     clearTimeout(S.tourTimer); S.endTour?.();
     if (worker && S.streamListener) worker.removeEventListener('message', S.streamListener);
     if (worker && S.specHandler) worker.removeEventListener('message', S.specHandler);

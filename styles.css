@@ -456,3 +456,23 @@ blockquote { margin: 8px 0; }
 .neg-btn .neg-ico { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid currentColor; background: linear-gradient(90deg, currentColor 50%, transparent 50%); flex: none; }
 .neg-btn[aria-pressed="true"] { background: linear-gradient(135deg, #4a3fd0, #2367b8); color: #fff; border-color: transparent; }
 .neg-btn[aria-pressed="true"] .neg-ico { background: linear-gradient(90deg, transparent 50%, currentColor 50%); }
+
+/* player controls: stick to the bottom of the window when they would fall below it, on a solid background */
+.player-bar { padding: 2px 0 6px; margin-top: 2px; }
+
+/* phones: the player bar stays compact so the image and every control fit on the screen together */
+@media (max-width: 600px) {
+  .player-bar .transport { flex-wrap: nowrap; gap: 6px; margin-top: 6px; }
+  .player-bar .transport .btn.icon { width: 40px; height: 40px; min-width: 40px; padding: 0; }
+  .player-bar .transport .play { width: 44px; height: 44px; }
+  .player-bar .transport .timeline { flex: 1 1 auto; min-width: 60px; }
+  .player-bar .transport select { min-width: 0; width: 86px; padding-left: 8px; padding-right: 4px; font-size: .82rem; }
+  .player-bar .framelabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .78rem; }
+  .player-bar .tools-row { gap: 6px; margin-top: 6px !important; }
+  .player-bar .tools-row .seg { flex: 1 1 100%; flex-wrap: nowrap; }
+  .player-bar .tools-row .seg button { flex: 1 1 auto; padding: 6px 4px; font-size: .8rem; min-height: 34px; }
+  .player-bar .tools-row > .spacer { display: none; }
+  .player-bar .tools-row .btn.small { padding: 6px 9px; min-height: 34px; font-size: .8rem; }
+  .stage-wrap .hud { gap: 4px; }
+  .stage-wrap .hud .chip { font-size: .7rem; padding: 2px 7px; }
+}

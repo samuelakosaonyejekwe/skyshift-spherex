@@ -22,7 +22,7 @@ and the images still work.
 
 | Page | What it does |
 |---|---|
-| **Explore** | Search by name (challenge targets, Gaia DR3 IDs) or coordinates (decimal, sexagesimal, galactic). Interactive all-sky map made from real SPHEREx DR1 data with coverage glow (times observed / most recent), grid, ecliptic, galactic plane, target markers, zoom; hover shows RA/Dec and how many SPHEREx images cover the spot; click to play it. An Invert button (black and white, dark objects on a white sky, as in WiseView) beside the display modes for faint tails and movers. Typed requests and equations; file uploads, including your own FITS image (also tile-compressed survey images such as Pan-STARRS): scale, zscale, colour maps, invert, magnifier, J2000.0/galactic/ecliptic coordinates and a pixel table; click an object for its centroid, J2000.0 and equinox-of-date coordinates, a magnitude calibrated on the Gaia DR3 stars in the image and the nearest Gaia star, export the measurements (CSV), and compare the image with SPHEREx in the Time Machine (shown or blinked). |
+| **Explore** | Search by name (challenge targets, Gaia DR3 IDs) or coordinates (decimal, sexagesimal, galactic). Interactive all-sky map made from real SPHEREx DR1 data with coverage glow (times observed / most recent), grid, ecliptic, galactic plane, target markers, zoom; hover shows RA/Dec and how many SPHEREx images cover the spot; click to play it. An Invert button (dark objects on a white sky, as in WiseView: black and white in every mode, true colours kept in Colour) beside the display modes for faint tails and movers. The image and the whole player (modes, Invert, zoom, ruler, exports) always fit on the screen together, on laptops and phones. Typed requests and equations; file uploads, including your own FITS image (also tile-compressed survey images such as Pan-STARRS): scale, zscale, colour maps, invert, magnifier, J2000.0/galactic/ecliptic coordinates and a pixel table; click an object for its centroid, J2000.0 and equinox-of-date coordinates, a magnitude calibrated on the Gaia DR3 stars in the image and the nearest Gaia star, export the measurements (CSV), and compare the image with SPHEREx in the Time Machine (shown or blinked). |
 | **Time Machine** | Every SPHEREx image of a spot, aligned on the sky. Movie, Blink, Difference (wavelength-matched), Stack, false Colour, and your own image Equations. Detector picker (6 arrays, 102 bands), wavelength windows, line shortcuts, field of view 2′–1° with live data-cost estimate, stretch/colour maps, proper-motion tracking, Gaia/WISE overlays, contamination-flag map, spectrum and light curve on the fly, frame metadata, Discover helpers (movers, brightness changes), candidates, share/embed, PNG/video export, reproducible dossier (HTML/PDF/ZIP with FITS). |
 | **Chase** | Follow fast-moving stars and brown dwarfs with Gaia DR3 motions; find fast movers near any position; follow an asteroid or comet by name (positions from NASA JPL Horizons) or along your own table of times and positions (CSV or an ephemeris service's text table). |
 | **Live** | What is arriving in the SPHEREx archive now (read straight from IRSA's cloud bucket), with a quick-look "Develop" of the newest frames. |
@@ -39,7 +39,7 @@ and the images still work.
 | Creativity | Sky as a film; wavelength-true colours across 102 bands; user image equations; coverage-glow sky map; all processing in the browser | Time Machine, Explore |
 | Validity | Real data only from the challenge's resources; Astropy-level maths; motions checked against Gaia; limits stated; 24 unit tests, 24 browser checks | [docs/VALIDATION.md](docs/VALIDATION.md), `test/` |
 | Relevance | Every point of the challenge statement mapped to a feature | [docs/CHALLENGE_TRACEABILITY.md](docs/CHALLENGE_TRACEABILITY.md) |
-| Presentation | 7-slide deck per the Space Apps checklist (the demo), with a silent 28-second screen recording of the app; every page and tab in English, Greek, Spanish and French | [Presentation](https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/) |
+| Presentation | 7-slide deck per the Space Apps checklist (the demo), with a silent 29.5-second screen recording of the app; every page and tab in English, Greek, Spanish and French | [Presentation](https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/) |
 
 ## Install and offline use
 
@@ -111,7 +111,7 @@ Watch online (slides with the silent screen recording of the app): https://samue
 
 Slide deck as PDF (7 slides): [docs/presentation/SkyShift-slides.pdf](docs/presentation/SkyShift-slides.pdf)
 
-Files in `docs/presentation/`: silent 28-second screen recording of the app (`skyshift-demo-barnard.mp4`, plays everywhere including GitHub; `skyshift-demo-barnard.webm` as a smaller alternative), 7-slide deck (`slides.html` for the browser,
+Files in `docs/presentation/`: silent 29.5-second screen recording of the app (`skyshift-demo-barnard.mp4`, plays everywhere including GitHub; `skyshift-demo-barnard.webm` as an alternative), 7-slide deck (`slides.html` for the browser,
 `SkyShift-slides.pdf` for submission) and the slide images.
 
 ## Copyright

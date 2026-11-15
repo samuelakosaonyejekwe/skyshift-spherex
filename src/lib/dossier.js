@@ -297,7 +297,7 @@ export async function buildDossier(snap) {
   const files = [];
   const figs = [];
   let figNo = 0;
-  const opts = { stretch: req.stretch, cmap: req.cmap === 'auto' ? tintName(req.dets) : req.cmap, invert: req.invert };
+  const opts = { stretch: req.stretch, cmap: req.cmap === 'auto' ? (req.invert ? 'gray' : tintName(req.dets)) : req.cmap, invert: req.invert };
   const addFig = async (canvas, file, caption) => {
     const blob = await toPng(canvas);
     files.push({ name: `figures/${file}.png`, data: blob });

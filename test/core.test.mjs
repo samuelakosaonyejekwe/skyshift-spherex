@@ -59,3 +59,18 @@ test('parallax displacement matches Astropy', async () => {
     assert.ok(Math.abs(dx - ex) < 8 && Math.abs(dy - ey) < 8, `MJD ${mjd}: ${dx.toFixed(0)}, ${dy.toFixed(0)} vs ${ex}, ${ey}`);
   }
 });
+
+test('inverted false colour keeps each hue: white sky, red stays red, white turns black', async () => {
+  const { paintRGB } = await import('../src/lib/render.js');
+  const L = [[0, 1], [0, 1], [0, 1]];
+  // pixels: empty sky, a pure red source, a white core, a dim blue source
+  const chs = [new Float32Array([0, 1, 1, 0.1]), new Float32Array([0, 0, 1, 0.2]), new Float32Array([0, 0, 1, 0.6])];
+  const out = new Uint8ClampedArray(16);
+  paintRGB(chs, out, L, { stretch: 'linear', invert: true });
+  assert.deepEqual([...out.slice(0, 3)], [255, 255, 255]); // sky white
+  assert.deepEqual([...out.slice(4, 7)], [255, 0, 0]); // red stays red (not cyan)
+  assert.deepEqual([...out.slice(8, 11)], [0, 0, 0]); // white core turns black
+  const [r, g, b] = out.slice(12, 15);
+  assert.ok(b > g && g > r, `blue source keeps its hue: ${r},${g},${b}`);
+  assert.ok((Math.max(r, g, b) + Math.min(r, g, b)) / 2 > 255 / 2, 'dim source becomes light');
+});

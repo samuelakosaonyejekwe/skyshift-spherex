@@ -184,23 +184,33 @@ export function paintDiff(data, out, [a, b], { invert = false } = {}) {
   }
 }
 
-/** False-colour composite from three channels (each with own limits). */
+/**
+ * False-colour composite from three channels (each with own limits).
+ * Inverted, the lightness is flipped but each pixel keeps its hue (HSL L -> 1 - L, by adding 1 - max - min to every
+ * channel): the sky turns white, bright objects dark, and a red (long-wavelength) source stays red instead of turning
+ * cyan as a channel-by-channel negative would make it.
+ */
 export function paintRGB(chs, out, lims, { stretch = 'asinh', invert = false } = {}) {
   const fn = STRETCH[stretch] || STRETCH.asinh;
   const n = chs[0].length;
+  const t = [0, 0, 0];
   for (let k = 0; k < n; k++) {
     const o = k * 4;
     let any = false;
     for (let c = 0; c < 3; c++) {
       const v = chs[c][k];
-      if (!Number.isFinite(v)) { out[o + c] = 0; continue; }
+      if (!Number.isFinite(v)) { t[c] = 0; continue; }
       any = true;
       const [a, b] = lims[c];
-      let t = (v - a) / (b - a);
-      t = t <= 0 ? 0 : t >= 1 ? 1 : fn(t);
-      out[o + c] = (invert ? 1 - t : t) * 255;
+      const u = (v - a) / (b - a);
+      t[c] = u <= 0 ? 0 : u >= 1 ? 1 : fn(u);
     }
-    if (!any) { out[o] = NAN_RGB[0]; out[o + 1] = NAN_RGB[1]; out[o + 2] = NAN_RGB[2]; }
+    if (!any) { out[o] = NAN_RGB[0]; out[o + 1] = NAN_RGB[1]; out[o + 2] = NAN_RGB[2]; out[o + 3] = 255; continue; }
+    if (invert) {
+      const shift = 1 - Math.max(t[0], t[1], t[2]) - Math.min(t[0], t[1], t[2]);
+      for (let c = 0; c < 3; c++) t[c] = Math.min(1, Math.max(0, t[c] + shift));
+    }
+    out[o] = t[0] * 255; out[o + 1] = t[1] * 255; out[o + 2] = t[2] * 255;
     out[o + 3] = 255;
   }
 }

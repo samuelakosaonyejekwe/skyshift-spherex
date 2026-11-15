@@ -37,7 +37,7 @@ Submission Guide (13 November 2026), as transcribed by the author. How SkyShift 
 | Cite every source used | `docs/DATA_SOURCES.md`, About page, `NOTICE`, submission form links |
 | No personal data beyond names; nothing of persons under 18; no commercial promotion | Only the author's name; no images of people; no adverts |
 | Demo and slides hosted on a public site without login | GitHub repository and GitHub Pages |
-| Videos: the participant's own recording, no third-party copyright | The silent 28-second video in the slides is a screen recording of SkyShift itself (no voice or music) |
+| Videos: the participant's own recording, no third-party copyright | The silent 29.5-second video in the slides is a screen recording of SkyShift itself (no voice or music) |
 | Indicate SI use (text and metadata for code; watermark only for SI-generated media) | One sentence in `README.md` and `NOTICE`; `siUse` in `package.json`; CITATION.cff abstract. No SI-generated media |
 
 Gaia DR3 values in `data/targets.json` are distributed under ESA's CC BY-NC 3.0 IGO licence (non-commercial); ESA is a Space
