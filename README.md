@@ -37,7 +37,7 @@ and the images still work.
 |---|---|---|
 | Impact | Free, instant SPHEREx exploration on any device; candidates export as MPC ADES; classroom-ready targets; two hosts and offline use | Live app, [docs/HOSTING.md](docs/HOSTING.md) |
 | Creativity | Sky as a film; wavelength-true colours across 102 bands; user image equations; coverage-glow sky map; images decoded, aligned and measured in the visitor's browser (the relay only gathers the needed bytes and unpacks the small quality-flag window) | Time Machine, Explore |
-| Validity | Real data only, from the challenge's resources plus NASA JPL Horizons for asteroid and comet positions; Astropy-level maths; motions checked against Gaia; limits stated; 50 unit tests, 25 browser checks | [docs/VALIDATION.md](docs/VALIDATION.md), `test/` |
+| Validity | Real data only, from the challenge's resources plus NASA JPL Horizons for asteroid and comet positions; Astropy-level maths; motions checked against Gaia; limits stated; 51 unit tests, 25 browser checks | [docs/VALIDATION.md](docs/VALIDATION.md), `test/` |
 | Relevance | Every point of the challenge statement mapped to a feature | [docs/CHALLENGE_TRACEABILITY.md](docs/CHALLENGE_TRACEABILITY.md) |
 | Presentation | 7-slide deck per the Space Apps checklist (the demo), with a silent 29.5-second screen recording of the app; every page and tab in English, Greek, Spanish and French | [Presentation](https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/) |
 
