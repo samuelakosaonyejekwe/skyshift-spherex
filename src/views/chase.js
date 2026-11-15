@@ -131,7 +131,7 @@ ORDER BY phot_g_mean_mag`, { timeout: 60000 });
           h('li', {}, 'Open an ephemeris service, for example NASA JPL Horizons (the same source SkyShift uses for names).'),
           h('li', {}, 'Choose the object by name or number, for example “4 Vesta” or “67P”.'),
           h('li', {}, 'Set the observer to Earth (geocentric) and the dates from 1 May 2025, when SPHEREx images begin, to today, one position per day.'),
-          h('li', {}, 'Ask for astrometric RA and Dec (ICRF/J2000) with the date and time in UT.'),
+          h('li', {}, 'Ask for astrometric RA and Dec (ICRF, J2000.0) with the date and time in UT.'),
           h('li', {}, 'Copy the table (or save it as CSV or text), paste it above or choose the file, and press “Read the table”.')),
         h('p', { class: 'tiny' }, 'Both of these formats are understood (dates may also be JD or MJD; RA and Dec may be in degrees):'),
         h('p', { class: 'tiny', style: { margin: '4px 0 0' } }, 'Plain text, one position per line:'),

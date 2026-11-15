@@ -106,7 +106,7 @@ export function uploadPanel({ go }) {
         res.userImage.kind === 'fits' ? `${res.userImage.width}×${res.userImage.height} px, ${res.userImage.pixelScale.toFixed(2)}″/px, centre ${formatRA(res.userImage.center[0])} ${formatDec(res.userImage.center[1])}${res.userImage.telescope ? `, ${res.userImage.telescope}` : ''}${res.userImage.dateObs ? `, ${res.userImage.dateObs}` : ''}. SkyShift can open SPHEREx images of the same field.` : res.userImage.note,
         res.userImage.kind === 'fits' ? h('div', { class: 'row', style: { marginTop: '6px' } },
           h('button', { class: 'btn primary small', type: 'button', onclick: async () => { const { inspectImage } = await import('./image-inspector.js'); inspectImage(item.buf.slice(0), file.name); } }, 'Inspect: coordinates and magnitudes'),
-          h('span', { class: 'tiny' }, 'Hover for J2000 coordinates; click an object for its position, magnitude (calibrated on Gaia DR3 stars) and nearest catalogued star.')) : null) : null,
+          h('span', { class: 'tiny' }, 'Hover for J2000.0 coordinates; click an object for its position, magnitude (calibrated on Gaia DR3 stars) and nearest catalogued star.')) : null) : null,
       res.files ? h('ul', { class: 'tiny' }, res.files.map((f) => h('li', {}, `${f.path}: ${f.error || `${f.format}, ${f.targets} targets`}`))) : null,
       cols.length > 1 ? h('div', { class: 'row' }, sel('ra', 'RA column'), sel('dec', 'Dec column'), sel('name', 'Name column'), sel('pmra', 'pm RA (mas/yr)'), sel('pmdec', 'pm Dec (mas/yr)')) : null,
       res.preview?.length ? h('div', { class: 'explist' }, h('table', {}, cols.length ? h('tr', {}, cols.map((c) => h('th', {}, c))) : null, res.preview.map((r) => h('tr', {}, r.map((v) => h('td', {}, String(v).slice(0, 40))))))) : null,
@@ -136,7 +136,7 @@ export function ephemerisCard(e, defaultName, go) {
   return h('div', { class: 'notice' },
     h('b', {}, `Understood: the path of a moving object, ${e.points.length} positions from ${niceDate(e.from)} to ${niceDate(e.to)}`),
     e.skipped ? h('p', { class: 'tiny' }, `${e.skipped} lines without a time and position were skipped.`) : null,
-    h('p', { class: 'tiny' }, 'SkyShift will look for SPHEREx images along this path and centre every exposure on the object at its own time. Positions are taken from your table as ICRS (J2000) coordinates; the table stays on this device.'),
+    h('p', { class: 'tiny' }, 'SkyShift will look for SPHEREx images along this path and centre every exposure on the object at its own time. Positions are taken from your table as ICRS (J2000.0) coordinates; the table stays on this device.'),
     h('div', { class: 'row', style: { marginTop: '6px' } }, nameIn,
       h('button', { class: 'btn primary small', onclick: () => go(ephemerisHref(nameIn.value.trim(), e.points)) }, 'Follow it in SPHEREx images')));
 }

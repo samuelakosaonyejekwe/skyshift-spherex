@@ -778,7 +778,7 @@ export async function render(root, route, { go }) {
     readout.hidden = false;
     const best = S.display.dmaps?.[i] ? bandsAt(ra, dec).filter((b) => b.ab && !b.bad && b.ab.err != null && b.ab.err < 0.3) : [];
     const mag = best.length ? `  ${best.map((b) => `D${b.det} ${b.ab.mag.toFixed(1)}`).join(' ')} AB` : '';
-    readout.textContent = `${formatRA(ra)} ${formatDec(dec)} (J2000)  ${val}${mag}${fl}`;
+    readout.textContent = `${formatRA(ra)} ${formatDec(dec)} (J2000.0)  ${val}${mag}${fl}`;
   }
 
   function onClick([gi, gj]) {

@@ -1,11 +1,26 @@
 // Inspector for the user's own FITS image: hover for coordinates and pixel values, click to measure an object
-// (centroid, J2000 and equinox-of-date coordinates, magnitude calibrated on Gaia DR3 stars, nearest Gaia star) and
+// (centroid, J2000.0 and equinox-of-date coordinates, magnitude calibrated on Gaia DR3 stars, nearest Gaia star) and
 // export the measurements. Runs on the device; Gaia DR3 comes from MAST (or IRSA) through the archive layer.
 
 import { h, sheet, toast, download } from './dom.js';
 import { formatRA, formatDec, precessFromJ2000, niceDateTime, propagate, mjdToYear, separation } from '../lib/coords.js';
 import { readFitsImage, pixelToSky, imageMjd, imageStats, centroid, aperture, calibrate, headerZeroPoint } from '../lib/userimage.js';
 import { gaiaCone } from '../lib/tap.js';
+
+/** The image's declared coordinate frame (FITS RADESYS / EQUINOX), as shown to the user. */
+function frameName(h) {
+  const sys = String(h.RADESYS || h.RADECSYS || '').trim().toUpperCase();
+  const eq = Number(h.EQUINOX ?? h.EPOCH);
+  if (sys === 'ICRS' || (!sys && !Number.isFinite(eq))) return 'ICRS, aligned with the J2000.0 equator and equinox to about 0.02″';
+  if (sys === 'FK5' || (!sys && eq === 2000)) return 'FK5, equator and equinox J2000.0';
+  if (sys === 'FK4' || eq === 1950) return 'FK4, equinox B1950.0';
+  return `${sys || 'unstated'}${Number.isFinite(eq) ? `, equinox ${eq}` : ''}`;
+}
+/** A warning when the image is not in a J2000.0-based frame (positions are then not converted). */
+function frameNote(h) {
+  const sys = String(h.RADESYS || h.RADECSYS || '').trim().toUpperCase(), eq = Number(h.EQUINOX ?? h.EPOCH);
+  return sys === 'FK4' || eq === 1950 ? 'This image uses the old B1950.0 (FK4) frame: the positions shown are in that frame, not J2000.0. Re-solve the image in J2000.0 for reports.' : null;
+}
 
 /** Open the inspector for a FITS file (ArrayBuffer, gzip allowed). */
 export async function inspectImage(buf, name) {
@@ -77,7 +92,7 @@ export async function inspectImage(buf, name) {
     }
     if (p.x < 0 || p.y < 0 || p.x >= img.width || p.y >= img.height) return;
     const s = pixelToSky(img, p.x, p.y), v = img.data[Math.floor(p.y) * img.width + Math.floor(p.x)];
-    readout.textContent = `${formatRA(s.ra)} ${formatDec(s.dec)} (J2000) · ${s.ra.toFixed(6)}, ${s.dec.toFixed(6)} · pixel ${(p.x + 1).toFixed(1)}, ${(p.y + 1).toFixed(1)} · ${Number.isFinite(v) ? v.toPrecision(5) : 'no data'}${H.BUNIT ? ' ' + H.BUNIT : ''}`;
+    readout.textContent = `${formatRA(s.ra)} ${formatDec(s.dec)} (J2000.0) · ${s.ra.toFixed(6)}, ${s.dec.toFixed(6)} · pixel ${(p.x + 1).toFixed(1)}, ${(p.y + 1).toFixed(1)} · ${Number.isFinite(v) ? v.toPrecision(5) : 'no data'}${H.BUNIT ? ' ' + H.BUNIT : ''}`;
   });
   canvas.addEventListener('pointerup', (e) => { const d = drag; drag = null; if (d && !d.moved) measure(toPixel(e)); });
   canvas.addEventListener('wheel', (e) => { e.preventDefault(); const p = toPixel(e); zoomAt(e.deltaY < 0 ? 1.4 : 1 / 1.4, p.x, p.y); }, { passive: false });
@@ -112,7 +127,7 @@ export async function inspectImage(buf, name) {
     results.prepend(h('div', { class: 'card', style: { padding: '10px', marginTop: '8px' } },
       h('b', {}, `Measurement ${m.n}${match ? ` · Gaia DR3 ${match.g.source_id}` : ''}`),
       h('dl', { class: 'kv' },
-        h('dt', {}, 'RA, Dec (J2000)'), h('dd', {}, `${formatRA(s.ra)} ${formatDec(s.dec)}`, h('br'), `${s.ra.toFixed(6)}, ${s.dec.toFixed(6)}`, h('span', { class: 'note' }, m.centred ? `light-weighted centre (pixel ${(c.x + 1).toFixed(2)}, ${(c.y + 1).toFixed(2)})` : 'where you clicked (no clear peak to centre on)')),
+        h('dt', {}, 'RA, Dec (J2000.0)'), h('dd', {}, `${formatRA(s.ra)} ${formatDec(s.dec)}`, h('br'), `${s.ra.toFixed(6)}, ${s.dec.toFixed(6)}`, h('span', { class: 'note' }, m.centred ? `light-weighted centre (pixel ${(c.x + 1).toFixed(2)}, ${(c.y + 1).toFixed(2)})` : 'where you clicked (no clear peak to centre on)')),
         date ? [h('dt', {}, 'Equinox of date'), h('dd', {}, `${formatRA(date.ra)} ${formatDec(date.dec)}`, h('span', { class: 'note' }, `mean equinox of ${niceDateTime(new Date((mjd - 40587) * 86400000))}`))] : null,
         h('dt', {}, 'Magnitude'), h('dd', {}, mg.text, mg.z ? h('span', { class: 'note' }, mg.z.label) : h('span', { class: 'note' }, 'no calibration: too few Gaia stars and no zero point in the header')),
         h('dt', {}, 'Flux'), h('dd', {}, a ? `${a.flux.toPrecision(5)} ± ${a.err.toPrecision(3)} (S/N ${a.snr.toFixed(1)})` : 'no clean measurement', h('span', { class: 'note' }, `aperture ${rAp.toFixed(1)} px, background ring ${rIn.toFixed(1)}–${rOut.toFixed(1)} px`)),
@@ -128,7 +143,8 @@ export async function inspectImage(buf, name) {
 
   sheet(h('div', { class: 'grid' },
     h('h2', {}, `Your image: ${name}`),
-    h('p', { class: 'tiny muted' }, `${img.width}×${img.height} pixels, ${img.wcs.pixelScaleArcsec.toFixed(2)}″ per pixel${mjd ? `, taken ${niceDateTime(new Date((mjd - 40587) * 86400000))}` : ', no date in the header'}${H.TELESCOP ? `, ${H.TELESCOP}` : ''}${H.FILTER ? `, filter ${H.FILTER}` : ''}. User-supplied image, not SPHEREx data. North is up.`),
+    frameNote(H) ? h('p', { class: 'notice warn tiny' }, frameNote(H)) : null,
+    h('p', { class: 'tiny muted' }, `Coordinates: ${frameName(H)}. ${img.width}×${img.height} pixels, ${img.wcs.pixelScaleArcsec.toFixed(2)}″ per pixel${mjd ? `, taken ${niceDateTime(new Date((mjd - 40587) * 86400000))}` : ', no date in the header'}${H.TELESCOP ? `, ${H.TELESCOP}` : ''}${H.FILTER ? `, filter ${H.FILTER}` : ''}. User-supplied image, not SPHEREx data. North is up.`),
     canvas, readout,
     h('div', { class: 'row' },
       h('button', { class: 'btn small', type: 'button', onclick: () => zoomAt(1.6) }, 'Zoom in'),
