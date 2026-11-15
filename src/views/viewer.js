@@ -6,10 +6,10 @@ import { h, icon, toast, sheet, copyText, download, fmtBytes, fmtDur, downlinkMb
 import { normalise, fromParams, toParams, MODES, GROUPS, FOV_STEPS } from '../state.js';
 import { loadPack } from '../lib/packs.js';
 import { searchSpherex, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossatCone } from '../lib/tap.js';
-import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE } from '../lib/engine.js';
+import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE, photometry } from '../lib/engine.js';
 import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName, SURVEY_GAP_DAYS, orderForLoading } from '../lib/render.js';
 import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
-import { formatRA, formatDec, propagate, apparent, mjdToYear, yearToMjd, mjdToISO, niceDate, niceDateTime, separation, toGalactic } from '../lib/coords.js';
+import { formatRA, formatDec, propagate, apparent, mjdToYear, yearToMjd, mjdToISO, niceDate, niceDateTime, separation, toGalactic, precessFromJ2000, abMag } from '../lib/coords.js';
 import { presetById, presetToTarget, suggestFor } from '../targets.js';
 import { scatterChart, svgString } from '../ui/charts.js';
 import { pushRecent } from './home.js';
@@ -729,11 +729,14 @@ export async function render(root, route, { go }) {
       fl = or ? `  flags: ${decodeFlags(or).join(', ')}` : '';
     }
     readout.hidden = false;
-    readout.textContent = `${formatRA(ra)} ${formatDec(dec)}  ${val}${fl}`;
+    const best = S.display.dmaps?.[i] ? bandsAt(ra, dec).filter((b) => b.ab && !b.bad && b.ab.err != null && b.ab.err < 0.3) : [];
+    const mag = best.length ? `  ${best.map((b) => `D${b.det} ${b.ab.mag.toFixed(1)}`).join(' ')} AB` : '';
+    readout.textContent = `${formatRA(ra)} ${formatDec(dec)} (J2000)  ${val}${mag}${fl}`;
   }
 
   function onClick([gi, gj]) {
     if (!S.grid) return;
+    stopPlay(); // the measurements in the Object tab describe the frame on screen, so it stays there
     const [cra, cdec] = frameCenter();
     const [ra, dec] = gridToWorld(S.grid, gi, gj, cra, cdec);
     // nearest catalogue object within 2 grid px
@@ -1170,6 +1173,23 @@ export async function render(root, route, { go }) {
     }).catch((e) => neo.replaceChildren(h('p', { class: 'notice bad' }, `NEOSSat search unavailable right now (${e.message}).`)));
   }
 
+  /** Aperture photometry at (ra, dec) in each detector's co-add of the frame on screen: flux (µJy), AB magnitude
+   * and the wavelengths the exposures saw at that spot. Same aperture as the light curves (2.5 native pixels). */
+  function bandsAt(ra, dec) {
+    const D = S.display, i = currentIndex();
+    const dm = D?.dmaps?.[i];
+    if (!dm) return [];
+    const N = n(), [cra, cdec] = frameCenter(i), k = NATIVE_SCALE / S.grid.scale;
+    const [x, y] = worldToGrid(S.grid, ra, dec, cra, cdec);
+    const out = [];
+    for (const det of [...dm.keys()].sort()) {
+      const p = photometry({ y0: 1, x0: 1, width: N, data: dm.get(det) }, null, x + 1, y + 1, S.grid.scale ** 2, { rAp: 2.5 * k, rIn: 5 * k, rOut: 8 * k });
+      const wl = D.groups[i].filter((e) => e.meta.detector === det).map((e) => e.meta.wavelength).filter(Number.isFinite);
+      out.push({ det, wl: wl.length ? [Math.min(...wl), Math.max(...wl)] : null, flux: p?.flux, err: p?.err, ab: p ? abMag(p.flux, p.err) : null, bad: p ? p.nbad : 0, nap: p ? p.nap : 0 });
+    }
+    return out;
+  }
+
   function sideObject() {
     const sel = S.selected;
     if (!sel) { tabBody.append(h('p', { class: 'empty' }, 'Click anything in the image to inspect it: catalogue details, its spectrum, and tools to mark it as a candidate.')); return; }
@@ -1181,10 +1201,12 @@ export async function render(root, route, { go }) {
         h('dt', {}, 'RA, Dec'), h('dd', {}, `${formatRA(sel.ra)} ${formatDec(sel.dec)}`),
         h('dt', {}, 'Decimal'), h('dd', {}, `${sel.ra.toFixed(6)}, ${sel.dec.toFixed(6)}`),
         h('dt', {}, 'From target'), h('dd', {}, `${(separation(sel.ra, sel.dec, req.target.ra, req.target.dec) * 3600).toFixed(1)}″`),
+        ...positionRows(sel, o),
         o && sel.cat === 'gaia' ? [h('dt', {}, 'G mag'), h('dd', {}, o.phot_g_mean_mag?.toFixed(3) ?? '–'), h('dt', {}, 'BP−RP'), h('dd', {}, o.bp_rp?.toFixed(3) ?? '–'),
           h('dt', {}, 'Proper motion'), h('dd', {}, o.pmra != null ? `${o.pmra.toFixed(1)}, ${o.pmdec.toFixed(1)} mas/yr (${(Math.hypot(o.pmra, o.pmdec) / 1000).toFixed(3)}″/yr)` : '–'),
           h('dt', {}, 'Parallax'), h('dd', {}, o.parallax != null ? `${o.parallax.toFixed(3)} mas${o.parallax > 0 ? ` → ~${(1000 / o.parallax).toFixed(1)} pc (${(3261.56 / o.parallax).toFixed(1)} light-years)` : ''}` : '–')] : null,
         o && sel.cat === 'wise' ? [h('dt', {}, 'W1, W2'), h('dd', {}, `${o.w1mpro ?? '–'}, ${o.w2mpro ?? '–'} mag`), h('dt', {}, 'W1−W2'), h('dd', {}, o.w1mpro != null && o.w2mpro != null ? (o.w1mpro - o.w2mpro).toFixed(2) : '–')] : null),
+      brightnessTable(sel),
       o && sel.cat === 'wise' && o.w1mpro - o.w2mpro > 1.5 ? h('p', { class: 'notice warn' }, 'Very red in WISE (W1−W2 > 1.5): typical of cold brown dwarfs or dusty objects.') : null,
       h('div', { class: 'row' }, specBtn,
         o && sel.cat === 'gaia' && (o.pmra || o.pmdec) ? h('button', { class: 'btn small', onclick: () => { commit({ target: { ra: o.ra, dec: o.dec, pmra: o.pmra, pmdec: o.pmdec, plx: o.parallax > 0 ? o.parallax : 0, refEpoch: o.ref_epoch || 2016, name: o.label || `Gaia DR3 ${o.source_id}`, id: String(o.source_id), source: 'gaia' }, track: false }, { reload: true, push: true }); } }, 'Make this the target') : null,
@@ -1199,6 +1221,34 @@ export async function render(root, route, { go }) {
         h('a', { class: 'btn small', href: `#/view?${toParams(normalise({ ...req, target: { ra: sel.ra, dec: sel.dec, source: 'coords' }, t: 0 }))}` }, 'Centre here')),
       h('p', { class: 'tiny', 'aria-live': 'polite' }),
     );
+  }
+
+  /** Coordinates for reporting: as measured on the frame's date (ICRS, J2000.0 equinox), at epoch J2000.0 when the
+   * motion is known, and precessed to the mean equinox of the frame's date. */
+  function positionRows(sel, o) {
+    const mjd = frameMjd();
+    if (!mjd) return [];
+    const fmt = (p) => [h('span', { class: 'coord' }, formatRA(p.ra)), ' ', h('span', { class: 'coord' }, formatDec(p.dec)), h('br'), `${p.ra.toFixed(6)}, ${p.dec.toFixed(6)}`];
+    const moving = o && sel.cat === 'gaia' && (o.pmra || o.pmdec);
+    const j2000 = moving ? propagate(o.ra, o.dec, o.pmra || 0, o.pmdec || 0, o.ref_epoch || 2016, 2000.0) : null;
+    return [
+      h('dt', {}, `On ${niceDate(mjd)}`), h('dd', {}, fmt(sel), h('span', { class: 'note' }, 'ICRS, J2000.0 equinox (the frame on screen)')),
+      h('dt', {}, 'Epoch J2000.0'), h('dd', {}, j2000 ? [fmt(j2000), h('span', { class: 'note' }, 'Gaia DR3 motion applied')] : h('span', { class: 'note' }, 'not computable without a known motion; the position above is the one to report with its date')),
+      h('dt', {}, 'Equinox of date'), h('dd', {}, fmt(precessFromJ2000(sel.ra, sel.dec, mjd + 2400000.5)), h('span', { class: 'note' }, `mean equinox of ${niceDate(mjd)}`)),
+    ];
+  }
+
+  /** Brightness per detector band at the selected spot in the frame on screen. */
+  function brightnessTable(sel) {
+    const rows = bandsAt(sel.ra, sel.dec);
+    if (!rows.length) return null;
+    return h('div', {},
+      h('h4', {}, `Brightness on ${niceDate(frameMjd())}`),
+      h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}, 'Band'), h('th', {}, 'λ (µm)'), h('th', {}, 'AB mag'), h('th', {}, 'Flux (µJy)'))),
+        h('tbody', {}, rows.map((r) => h('tr', {}, h('td', {}, `D${r.det}`), h('td', {}, r.wl ? (r.wl[1] - r.wl[0] < 0.005 ? r.wl[0].toFixed(3) : `${r.wl[0].toFixed(2)}–${r.wl[1].toFixed(2)}`) : '–'),
+          h('td', {}, r.ab && r.bad ? `≤ ${r.ab.mag.toFixed(2)} (${r.bad} of ${r.nap} pixels saturated or masked: brighter than this)` : r.ab ? `${r.ab.mag.toFixed(2)} ± ${r.ab.err == null ? '–' : r.ab.err < 0.005 ? '<0.01' : r.ab.err.toFixed(2)}` : r.flux != null ? `fainter than ${abMag(Math.max(3 * r.err, 1e-3))?.mag.toFixed(1) ?? '–'} (3σ)` : '–'),
+          h('td', {}, r.flux != null ? `${r.flux.toFixed(1)} ± ${r.err.toFixed(1)}` : 'no clean measurement'))))),
+      h('p', { class: 'tiny muted' }, 'Aperture of 2.5 SPHEREx pixels (15″) on each detector’s stack of this epoch, background from a ring at 5–8 pixels; light outside the aperture is not added back. Each detector spans a range of wavelengths across its field: for one exact wavelength per exposure use “Spectrum & light curve here”.'));
   }
 
   /** Iterative Gaussian-weighted centroid in the current frame near (ra, dec). */

@@ -3,6 +3,22 @@
 // rule to the start or end of a text. Values are carried over in order as $1, $2, … . Rules run in this order on
 // any text that is not an exact phrase, so a long sentence is matched before the shorter pieces inside it.
 export const R = [
+  // ---- Object tab: brightness per band and coordinates for reporting
+  ['^Brightness on {}$', 'Φωτεινότητα στις $1', 'Brillo el $1', 'Luminosité le $1'],
+  ['^On {}$', 'Στις $1', 'El $1', 'Le $1'],
+  ['^Epoch J2000.0$', 'Εποχή J2000.0', 'Época J2000.0', 'Époque J2000.0'],
+  ['^Equinox of date$', 'Ισημερία της ημερομηνίας', 'Equinoccio de la fecha', 'Équinoxe de la date'],
+  ['^ICRS, J2000.0 equinox \(the frame on screen\)$', 'ICRS, ισημερία J2000.0 (το καρέ στην οθόνη)', 'ICRS, equinoccio J2000.0 (la imagen en pantalla)', 'ICRS, équinoxe J2000.0 (l’image à l’écran)'],
+  ['^Gaia DR3 motion applied$', 'με την κίνηση του Gaia DR3', 'con el movimiento de Gaia DR3', 'avec le mouvement de Gaia DR3'],
+  ['^mean equinox of {}$', 'μέση ισημερία της $1', 'equinoccio medio del $1', 'équinoxe moyen du $1'],
+  ['^not computable without a known motion; the position above is the one to report with its date$', 'δεν υπολογίζεται χωρίς γνωστή κίνηση· αναφέρετε την παραπάνω θέση μαζί με την ημερομηνία της', 'no se puede calcular sin un movimiento conocido; la posición de arriba es la que se informa con su fecha', 'non calculable sans mouvement connu ; c’est la position ci-dessus qu’il faut signaler, avec sa date'],
+  ['^Band$', 'Ζώνη', 'Banda', 'Bande'],
+  ['^AB mag$', 'Μέγεθος AB', 'Mag AB', 'Mag AB'],
+  ['^Flux \(µJy\)$', 'Ροή (µJy)', 'Flujo (µJy)', 'Flux (µJy)'],
+  ['^≤ {} \({n} of {n} pixels saturated or masked: brighter than this\)$', '≤ $1 ($2 από $3 pixel κορεσμένα ή καλυμμένα: φωτεινότερο από αυτό)', '≤ $1 ($2 de $3 píxeles saturados o enmascarados: más brillante que esto)', '≤ $1 ($2 sur $3 pixels saturés ou masqués : plus brillant que cela)'],
+  ['^no clean measurement$', 'καμία καθαρή μέτρηση', 'sin medida limpia', 'pas de mesure propre'],
+  ['^fainter than {} \(3σ\)$', 'αμυδρότερο από $1 (3σ)', 'más débil que $1 (3σ)', 'plus faible que $1 (3σ)'],
+  ['^Aperture of 2.5 SPHEREx pixels \(15″\) on each detector’s stack of this epoch, background from a ring at 5–8 pixels; light outside the aperture is not added back. Each detector spans a range of wavelengths across its field: for one exact wavelength per exposure use “Spectrum & light curve here”.$', 'Διάφραγμα 2,5 pixel του SPHEREx (15″) στη στοίβα κάθε ανιχνευτή γι’ αυτή την εποχή, υπόβαθρο από δακτύλιο στα 5–8 pixel· το φως έξω από το διάφραγμα δεν προστίθεται. Κάθε ανιχνευτής καλύπτει ένα εύρος μηκών κύματος στο πεδίο του: για ένα ακριβές μήκος κύματος ανά λήψη χρησιμοποιήστε το «Φάσμα και καμπύλη φωτός εδώ».', 'Apertura de 2,5 píxeles de SPHEREx (15″) en el apilado de cada detector de esta época, fondo de un anillo a 5–8 píxeles; la luz fuera de la apertura no se suma. Cada detector cubre un rango de longitudes de onda en su campo: para una longitud de onda exacta por exposición use «Espectro y curva de luz aquí».', 'Ouverture de 2,5 pixels SPHEREx (15″) sur l’empilement de chaque détecteur pour cette époque, fond mesuré dans un anneau à 5–8 pixels ; la lumière hors de l’ouverture n’est pas ajoutée. Chaque détecteur couvre une plage de longueurs d’onde sur son champ : pour une longueur d’onde exacte par pose, utilisez « Spectre et courbe de lumière ici ».'],
   // ---- Explore: loading and the status line under the movie
   ['^Streaming {n} exposures straight from the IRSA cloud archive…$', 'Μεταφορά $1 λήψεων απευθείας από το αρχείο της IRSA στο νέφος…', 'Descargando $1 exposiciones directamente del archivo de IRSA en la nube…', 'Transfert de $1 poses directement depuis l’archive de l’IRSA dans le nuage…'],
   ['^Streaming exposures from the IRSA cloud archive… {}$', 'Μεταφορά λήψεων από το αρχείο της IRSA στο νέφος… $1', 'Descargando exposiciones del archivo de IRSA en la nube… $1', 'Transfert des poses depuis l’archive de l’IRSA dans le nuage… $1'],

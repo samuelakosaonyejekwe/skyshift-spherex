@@ -207,3 +207,25 @@ export function apparent(ra, dec, pmra, pmdec, plx, refYear, mjd) {
   const ddec = plx * (Z * Math.cos(d) - X * Math.cos(a) * Math.sin(d) - Y * Math.sin(a) * Math.sin(d));
   return { ra: wrap360(p.ra + dra / 3.6e6 / (Math.cos(d) || 1e-9)), dec: p.dec + ddec / 3.6e6 };
 }
+
+/**
+ * Precess ICRS/J2000.0 coordinates to the mean equinox of date (IAU 1976 precession, Meeus, Astronomical
+ * Algorithms, 2nd ed., eqs. 21.2–21.4). jd: Julian date of the equinox wanted. Degrees in and out.
+ */
+export function precessFromJ2000(ra, dec, jd) {
+  const T = (jd - 2451545.0) / 36525, as = Math.PI / 180 / 3600;
+  const zeta = (2306.2181 * T + 0.30188 * T * T + 0.017998 * T ** 3) * as;
+  const z = (2306.2181 * T + 1.09468 * T * T + 0.018203 * T ** 3) * as;
+  const th = (2004.3109 * T - 0.42665 * T * T - 0.041833 * T ** 3) * as;
+  const a0 = ra * Math.PI / 180, d0 = dec * Math.PI / 180;
+  const A = Math.cos(d0) * Math.sin(a0 + zeta);
+  const B = Math.cos(th) * Math.cos(d0) * Math.cos(a0 + zeta) - Math.sin(th) * Math.sin(d0);
+  const C = Math.sin(th) * Math.cos(d0) * Math.cos(a0 + zeta) + Math.cos(th) * Math.sin(d0);
+  return { ra: ((((Math.atan2(A, B) + z) * 180 / Math.PI) % 360) + 360) % 360, dec: Math.asin(Math.max(-1, Math.min(1, C))) * 180 / Math.PI };
+}
+
+/** AB magnitude of a flux density in µJy (m = 23.9 − 2.5 log10 F), with its 1σ error; null when not positive. */
+export function abMag(fluxUJy, errUJy) {
+  if (!(fluxUJy > 0)) return null;
+  return { mag: 23.9 - 2.5 * Math.log10(fluxUJy), err: errUJy > 0 ? 1.0857 * errUJy / fluxUJy : null };
+}
