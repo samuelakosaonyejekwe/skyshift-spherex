@@ -154,7 +154,8 @@ ORDER BY p.time_bounds_lower`;
     const meta = await indexMeta();
     if (meta && (opts.preferIndex || Date.now() - Date.parse(meta.built) < 24 * 3600e3)) { rows = await searchIndex(ra, dec); via = 'index'; }
     else if (relayCount() > 0) {
-      try { rows = await tap(IRSA_TAP, adql, opts); } catch (e) { if (!meta) throw e; }
+      // with an index to fall back on, a hanging search service is not waited for long
+      try { rows = await tap(IRSA_TAP, adql, meta ? { ...opts, timeout: Math.min(opts.timeout || 60000, 8000) } : opts); } catch (e) { if (!meta) throw e; }
     }
     if (!rows) { rows = await searchIndex(ra, dec); via = 'index'; }
     // Superseded releases are listed in config.json ("excludeReleases"), so a new release needs no code change.
