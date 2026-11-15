@@ -41,9 +41,9 @@ jobs:
       - name: Build the image index (scheduled and manual runs, or when none is cached)
         run: |
           if [ "${{ github.event_name }}" != "push" ] || [ ! -f data/idx/meta.json ]; then INDEX_PARALLEL=4 node scripts/index.mjs; fi
-      - name: Cut the frame packs (scheduled and manual runs, or when none are cached)
+      - name: Cut the frame packs (scheduled and manual runs, or when none in the current format are cached)
         run: |
-          if [ "${{ github.event_name }}" != "push" ] || [ ! -f data/packs/index.json ]; then node scripts/packs.mjs || true; fi
+          if [ "${{ github.event_name }}" != "push" ]; then node scripts/packs.mjs || true; else node scripts/packs.mjs --if-missing || true; fi
       - name: Keep refreshed data and index for later runs
         id: carry
         run: node scripts/carry-data.mjs save

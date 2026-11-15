@@ -56,9 +56,10 @@ pop-up offers updates when a new version or new SPHEREx data is available.
   SPHEREx image (`scripts/index.mjs`, `src/lib/skyindex.js`), rebuilt every 6 hours by the scheduled workflow and kept in
   the Actions cache (never committed).
 - **Pre-cut frames** for the five challenge targets and the fastest Gaia DR3 stars (`scripts/packs.mjs`,
-  `src/lib/packs.js`): their default view (6′ field, 120 exposures) is cut from the same S3 images with the same code,
-  rebuilt every 6 hours, and shown while it downloads (about 1.4 MB per field), so these fields open in about a second;
-  only exposures the pack does not hold are then streamed from IRSA.
+  `src/lib/packs.js`): their 6′ field is cut from the same S3 images with the same code, rebuilt every 6 hours, one
+  file per detector (its first 64 exposures in loading order). A view downloads only the detectors it shows and only
+  as far as it needs, and shows frames while they arrive, so these fields open in a few seconds with any detector
+  choice; only exposures the packs do not hold are then streamed from IRSA.
 - **Catalogues** (IRSA TAP, MAST, CADC) do not allow direct browser calls, so they go through a tiny stateless
   allow-listed relay (`relay/core.mjs`). The same code runs on the local server, Cloudflare Pages/Workers, Netlify Edge,
   Vercel Edge and Deno Deploy; several relays can be listed in `config.json` and the app fails over between them.
@@ -94,7 +95,7 @@ node scripts/prebake.mjs    # refresh target image lists (data/targets.json)
 node scripts/allsky.mjs     # rebuild the all-sky map from IRSA's HiPS
 node scripts/mission.mjs    # rebuild coverage map and mission statistics
 node scripts/index.mjs      # build the static image index (data/idx/, ~15 min, not committed)
-node scripts/packs.mjs      # cut the frame packs (data/packs/, ~20 min, not committed; uses the index when present)
+node scripts/packs.mjs      # cut the frame packs (data/packs/, ~45 min, not committed; uses the index when present)
 node scripts/live.mjs       # Live page snapshot (data/live.json)
 node scripts/sources.mjs    # server-side checks of the eight resources (data/sources.json)
 node scripts/overlays.mjs   # built-in Gaia/CatWISE overlays for the five targets

@@ -37,17 +37,19 @@ export function decodePack(bytes) {
   return { key: head.key, built: head.built, n: head.n, frames };
 }
 
-let index; // promise of data/packs/index.json ({ built, packs: { <view key>: <file name> } }) or null
+let index; // promise of data/packs/index.json ({ built, packs: { <view key>: { d1: <file>, …, d6: <file> } } }) or null
 const packIndex = () => (index ||= fetch('./data/packs/index.json').then((r) => (r.ok ? r.json() : null)).catch(() => null));
 
 /**
- * The pack for a view key (see viewer.js loadKey), or null when there is none or it cannot be read.
- * onFrames(batch) receives frames while the file is still arriving (they are stored in loading order), so a slow
- * phone connection shows the first frames after a small part of the file.
+ * Frames of one detector for a view key (see viewer.js loadKey): the first `limit` of that detector's exposures in
+ * the app's loading order, or null when there is no pack or it cannot be read. One file per detector, so a view of
+ * any detector selection downloads only what it shows. onFrames(batch) receives frames while the file is still
+ * arriving, so a slow phone connection shows the first frames after a small part of the file. need (a Set of
+ * image paths), when given, reads just far enough to hold every needed frame the file has.
  */
-export async function loadPack(key, onFrames = () => {}) {
+export async function loadPack(key, det, limit = Infinity, onFrames = () => {}, need = null) {
   try {
-    const file = (await packIndex())?.packs?.[key];
+    const file = (await packIndex())?.packs?.[key]?.[`d${det}`];
     if (!file) return null;
     const r = await fetch(`./data/packs/${file}`);
     if (!r.ok || !r.body) return null;
@@ -73,12 +75,13 @@ export async function loadPack(key, onFrames = () => {}) {
           head = JSON.parse(new TextDecoder().decode(buf.subarray(8, 8 + hl)));
           if (head.key !== key) return null;
           start = Math.ceil((8 + hl) / 4) * 4; nn = head.n * head.n;
+          if (need) { let last = -1; head.frames.forEach((f, k) => { if (need.has(f.rec.uri)) last = k; }); limit = last + 1; }
         }
       }
       if (head) {
         const batch = [];
         const dv = new DataView(buf.buffer);
-        while (done < head.frames.length && start + (done + 1) * nn * 4 <= len) {
+        while (done < head.frames.length && done < limit && start + (done + 1) * nn * 4 <= len) {
           const data = new Float32Array(nn), o = start + done * nn * 4;
           for (let i = 0; i < nn; i++) data[i] = dv.getFloat32(o + i * 4, true);
           const f = head.frames[done];
@@ -88,8 +91,9 @@ export async function loadPack(key, onFrames = () => {}) {
         if (batch.length) { frames.push(...batch); onFrames(batch); }
       }
       if (end) break;
+      if (head && done >= Math.min(limit, head.frames.length)) { reader.cancel().catch(() => {}); break; } // the rest is not needed
     }
-    if (!head || done < head.frames.length) return null;
+    if (!head) return null;
     return { key: head.key, built: head.built, n: head.n, frames };
   } catch (e) {
     console.warn('Frame pack unreadable, streaming instead:', e.message);

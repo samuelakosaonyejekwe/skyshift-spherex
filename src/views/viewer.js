@@ -187,9 +187,19 @@ export async function render(root, route, { go }) {
       const now = performance.now();
       if (S.frames.size >= 2 && (!shown || now - shown > 700)) { shown = now; loading.hidden = true; rebuild(); autoplay(); }
     };
-    const [saved, pack] = await Promise.all([quickSpherex(req.target.ra, req.target.dec), S.frames.size ? null : loadPack(key, onPack)]);
+    // each selected detector gets about its share of the image budget (the loading order alternates detectors);
+    // detectors that already have that many frames in memory are not fetched again
+    const budget = S.extraImages === Infinity ? Infinity : (getSettings().maxImages || 120) + (S.extraImages || 0);
+    const per = Math.ceil(budget / req.dets.length) + 4;
+    const have = (d) => [...S.frames.values()].filter((f) => f.meta.detector === d).length;
+    const saved = await quickSpherex(req.target.ra, req.target.dec); // IndexedDB or built-in list: no network
     if (id !== S.loadId) return;
-    const quick = saved?.data?.length ? saved : pack ? { data: pack.frames.map((f) => f.rec), source: 'pack', ts: Date.parse(pack.built) || null } : null;
+    // with a known image list, exactly the frames this view will show are read from each detector's file
+    const need = saved?.data?.length ? new Set(orderForLoading(saved.data.filter((e) => req.dets.includes(e.det))).slice(0, budget).filter((e) => !S.frames.has(e.uri)).map((e) => e.uri)) : null;
+    const packs = need && !need.size ? [] : await Promise.all(req.dets.filter((d) => need || have(d) < per).map((d) => loadPack(key, d, per, onPack, need)));
+    if (id !== S.loadId) return;
+    const pack = packs.some(Boolean) ? { built: packs.find(Boolean).built, frames: packs.filter(Boolean).flatMap((p) => p.frames) } : null;
+    const quick = saved?.data?.length ? saved : pack ? { data: [...S.frames.values()].map((f) => f.rec), source: 'pack', ts: Date.parse(pack.built) || null } : null;
     if (quick?.data?.length) { S.search = quick; S.exposures = quick.data; renderSuggestion(); stream(id); if (pack) autoplay(); }
     // 2) live search (always): adds anything newer than the quick list
     let live;

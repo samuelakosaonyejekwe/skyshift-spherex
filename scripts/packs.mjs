@@ -1,11 +1,12 @@
-// Builds data/packs/: the default Time Machine view (6′ field, all six detectors, no motion tracking, the first
-// 120 exposures in the app's loading order) of each challenge target and of the fastest-moving Gaia DR3 stars,
+// Builds data/packs/: the default Time Machine view (6′ field, no motion tracking; for each detector its first
+// 64 exposures in the app's loading order, one file per detector) of each challenge target and of the fastest-moving Gaia DR3 stars,
 // cut out of the SPHEREx images on IRSA's public S3 bucket with the same code the browser runs
 // (src/lib/engine.js renderExposure). The app shows a pack at once and streams only newer exposures, so these
 // fields open in about a second. Image lists come from IRSA TAP, as in the app. Run on the data schedule;
 // a target whose search or reads fail keeps its previous pack.
 //   node scripts/packs.mjs            all targets
 //   node scripts/packs.mjs barnard    only targets whose id contains the argument
+//   node scripts/packs.mjs --if-missing   only when there are no packs in the current format (push builds)
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
@@ -17,11 +18,13 @@ import { parseCSV } from '../src/lib/tap.js';
 import { tilesNear, tilePath, decodeRow, contains } from '../src/lib/skyindex.js';
 
 const OUT = 'data/packs';
-const FOV = 6, CAP = 120, CONCURRENCY = Number(process.env.PACK_PARALLEL || 16);
+const FOV = 6, PER_DET = 64, CONCURRENCY = Number(process.env.PACK_PARALLEL || 16);
 const TAP = 'https://irsa.ipac.caltech.edu/TAP/sync';
 const config = JSON.parse(readFileSync('config.json', 'utf8'));
 const EXCLUDED = config.excludeReleases || ['qr1', 'qr2'];
-const only = process.argv[2] || '';
+const args = process.argv.slice(2);
+const only = args.find((a) => !a.startsWith('--')) || '';
+const FORMAT = 2; // 2: one file per detector (index.json packs[key] = { d1: file, … })
 
 // the same targets, positions and motions the app opens (src/targets.js presetToTarget, src/views/chase.js fastTarget)
 const bundled = JSON.parse(readFileSync('data/targets.json', 'utf8'));
@@ -80,19 +83,23 @@ ORDER BY p.time_bounds_lower`);
   });
 }
 
-const name = (t) => `${t.id}.bin`;
 let index = { packs: {} };
 try { index = JSON.parse(readFileSync(`${OUT}/index.json`, 'utf8')); } catch { /* first run */ }
+if (args.includes('--if-missing') && index.format === FORMAT) { console.log('frame packs present (current format): not rebuilt'); process.exit(0); }
+if (index.format !== FORMAT) index = { packs: {} };
 mkdirSync(OUT, { recursive: true });
 
 for (const t of targets) {
   const t0 = Date.now();
   try {
     const list = await images(t);
-    const wanted = orderForLoading(list).slice(0, CAP);
+    // one file per detector: that detector's first PER_DET exposures in the app's loading order, so any detector
+    // selection of two or more is covered by the default budget of 120 images
+    const perDet = [1, 2, 3, 4, 5, 6].map((d) => orderForLoading(list.filter((e) => e.det === d)).slice(0, PER_DET));
+    const wanted = perDet.flat();
     const grid = makeGrid(t.ra, t.dec, FOV);
     const pm = t.pmra || t.pmdec || t.plx ? { pmra: t.pmra, pmdec: t.pmdec, plx: t.plx, refYear: t.refEpoch } : null;
-    const frames = [];
+    const got = new Map();
     let i = 0, failed = 0;
     await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
       while (i < wanted.length) {
@@ -100,17 +107,22 @@ for (const t of targets) {
         try {
           // as the app with default settings: quality flags for photometry only, column-precise reads
           const r = await renderExposure(new SpherexImage(rec.uri), grid, rec, { withFlags: 'target', track: null, photTrack: pm, readMode: 'saver' });
-          if (r) frames.push({ data: r.data, meta: r.meta, phot: r.phot, rec });
+          if (r) got.set(rec, { data: r.data, meta: r.meta, phot: r.phot, rec });
         } catch { failed++; }
       }
     }));
     if (failed > wanted.length * 0.1) throw new Error(`${failed} of ${wanted.length} exposures unreadable`);
-    frames.sort((a, b) => wanted.indexOf(a.rec) - wanted.indexOf(b.rec));
-    const built = new Date().toISOString();
-    const gz = gzipSync(encodePack({ key: viewKey(t), built, n: grid.n, frames }), { level: 9 });
-    writeFileSync(`${OUT}/${name(t)}`, gz);
-    index.packs[viewKey(t)] = name(t);
-    console.log(`${t.id}: ${frames.length} frames (of ${list.length} images), ${(gz.length / 1024).toFixed(0)} kB, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    const built = new Date().toISOString(), entry = {};
+    let bytes = 0;
+    perDet.forEach((recs, k) => {
+      const frames = recs.map((r) => got.get(r)).filter(Boolean);
+      if (!frames.length) return;
+      const gz = gzipSync(encodePack({ key: viewKey(t), built, n: grid.n, frames }), { level: 9 });
+      const file = `${t.id}-d${k + 1}.bin`;
+      writeFileSync(`${OUT}/${file}`, gz); entry[`d${k + 1}`] = file; bytes += gz.length;
+    });
+    index.packs[viewKey(t)] = entry;
+    console.log(`${t.id}: ${got.size} frames (of ${list.length} images) in ${Object.keys(entry).length} detector files, ${(bytes / 1024).toFixed(0)} kB, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   } catch (e) {
     console.warn(`${t.id}: kept the previous pack (${e.message})`);
   }
@@ -118,7 +130,10 @@ for (const t of targets) {
 // drop entries and files of targets no longer in the lists
 const keep = new Set(targets.length && !only ? targets.map(viewKey) : Object.keys(index.packs));
 for (const k of Object.keys(index.packs)) if (!keep.has(k)) delete index.packs[k];
-const files = new Set(Object.values(index.packs));
+// entries from the older one-file-per-field layout are dropped (the app reads one file per detector)
+for (const k of Object.keys(index.packs)) if (typeof index.packs[k] !== 'object') delete index.packs[k];
+const files = new Set(Object.values(index.packs).flatMap((e) => Object.values(e)));
 for (const f of readdirSync(OUT)) if (f.endsWith('.bin') && !files.has(f)) rmSync(`${OUT}/${f}`);
 index.built = new Date().toISOString();
+index.format = FORMAT;
 writeFileSync(`${OUT}/index.json`, JSON.stringify(index, null, 1));
