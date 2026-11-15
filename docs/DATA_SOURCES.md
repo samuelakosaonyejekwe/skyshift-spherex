@@ -108,6 +108,10 @@ Test-target astrometry (Gaia DR3, `ref_epoch` 2016.0), fetched 2026-11-14 and pr
 WISE 0855−0714 is not in Gaia. Its position comes from the challenge (08h55m10.831s, −07°14′42.53″) and from the WiseView
 example link (133.786245, −7.244372), which SkyShift uses as the field centre.
 
+Gaia DR3 cones from MAST (IRSA as fallback) also calibrate the magnitudes in the inspector for the user's own FITS
+images: stars are moved to the image's date with their proper motions, measured in the same aperture and give the
+zero point (median of G + 2.5 log10 flux over isolated, unsaturated stars; `src/lib/userimage.js`).
+
 ## Seeds 5–8: NEOSSat and CADC
 
 - https://www.asc-csa.gc.ca/eng/satellites/neossat/ (date modified 2026-03-20): launch 25 February 2013, active; "world's first
