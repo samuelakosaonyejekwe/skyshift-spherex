@@ -1,7 +1,7 @@
 // Chase: follow fast-moving stars and brown dwarfs. Motions come from Gaia DR3 (IRSA / MAST).
 // "Follow" keeps the object centred (background stars drift); "Watch it move" keeps the sky
-// fixed so the object crosses the frame. Asteroids and comets follow the user's own table of times and
-// positions (no ephemeris service is reached from the challenge resources).
+// fixed so the object crosses the frame. Asteroids and comets are followed along their positions, by name from
+// NASA JPL Horizons (through the relay) or from the user's own table of times and positions.
 
 import { h, icon } from '../ui/dom.js';
 import { presets, presetToTarget, resolveTarget } from '../targets.js';
@@ -9,7 +9,8 @@ import { normalise, toParams } from '../state.js';
 import { parsePosition, formatRA, formatDec } from '../lib/coords.js';
 import { tap, IRSA_TAP } from '../lib/tap.js';
 import { recent } from './home.js';
-import { ephemerisCard } from '../ui/upload-panel.js';
+import { ephemerisCard, ephemerisHref } from '../ui/upload-panel.js';
+import { lookupSolarSystem } from '../lib/sso.js';
 
 export const title = 'Chase';
 
@@ -104,9 +105,40 @@ ORDER BY phot_g_mean_mag`, { timeout: 60000 });
       } catch (err) { out.replaceChildren(h('p', { class: 'notice bad' }, `The table could not be read (${err.message}).`)); }
     };
     fileIn.addEventListener('change', async () => { const f = fileIn.files?.[0]; if (f) read(f.name, await f.arrayBuffer()); });
+    // by name: positions from NASA JPL Horizons
+    const nameIn = h('input', { type: 'text', placeholder: 'Name, number or designation, e.g. 4 Vesta, 67P, C/2023 A3', 'aria-label': 'Asteroid or comet name', style: { flex: '1 1 260px' } });
+    const nameOut = h('div');
+    const find = async (text) => {
+      nameIn.value = text;
+      nameOut.replaceChildren(h('p', { class: 'tiny' }, 'Looking up its path at NASA JPL Horizons…'));
+      try {
+        const r = await lookupSolarSystem(text);
+        if (r.error) { nameOut.replaceChildren(h('p', { class: 'notice warn' }, `${r.error}.`, r.options?.length ? h('ul', { class: 'tiny' }, r.options.map((o) => h('li', {}, o))) : null)); return; }
+        go(ephemerisHref(r.name, r.points, r.source));
+      } catch (err) { nameOut.replaceChildren(h('p', { class: 'notice bad' }, `The lookup did not answer (${err.message}). You can still paste a table below.`)); }
+    };
+    if (route.params?.get('sso')) setTimeout(() => find(route.params.get('sso')), 0);
     return h('section', { class: 'card', style: { marginTop: '18px' } },
       h('h2', {}, 'Asteroids and comets'),
-      h('p', { class: 'tiny muted' }, 'They move too fast to stay at one position. Give SkyShift a table of times and positions (an ephemeris: CSV, or the plain-text table an ephemeris service produces) and it follows the object through every SPHEREx image along its path. Positions come only from your table, which stays on this device.'),
+      h('form', { class: 'row', onsubmit: (e) => { e.preventDefault(); if (nameIn.value.trim()) find(nameIn.value.trim()); } },
+        nameIn, h('button', { class: 'btn primary', type: 'submit' }, 'Find and follow')),
+      h('p', { class: 'tiny muted' }, 'Positions by name come from NASA JPL Horizons (one per day since SPHEREx images began). Or give your own table of times and positions below.'),
+      nameOut,
+      h('p', { class: 'tiny muted' }, 'Your own table of times and positions (an ephemeris: CSV, or the plain-text table an ephemeris service produces) also works; it stays on this device.'),
+      h('details', { class: 'guide-steps', style: { margin: '6px 0 8px' } },
+        h('summary', {}, 'How to get a table for any asteroid or comet (e.g. 4 Vesta or 67P/Churyumov-Gerasimenko)'),
+        h('ol', { class: 'tiny' },
+          h('li', {}, 'Open an ephemeris service, for example NASA JPL Horizons (the same source SkyShift uses for names).'),
+          h('li', {}, 'Choose the object by name or number, for example “4 Vesta” or “67P”.'),
+          h('li', {}, 'Set the observer to Earth (geocentric) and the dates from 1 May 2025, when SPHEREx images begin, to today, one position per day.'),
+          h('li', {}, 'Ask for astrometric RA and Dec (ICRF/J2000) with the date and time in UT.'),
+          h('li', {}, 'Copy the table (or save it as CSV or text), paste it above or choose the file, and press “Read the table”.')),
+        h('p', { class: 'tiny' }, 'Both of these formats are understood (dates may also be JD or MJD; RA and Dec may be in degrees):'),
+        h('p', { class: 'tiny', style: { margin: '4px 0 0' } }, 'Plain text, one position per line:'),
+        h('pre', { class: 'tiny', translate: 'no', style: { whiteSpace: 'pre-wrap', margin: '2px 0' } }, '2026-Mar-14 00:00     12 34 56.78 +12 34 56.7\n2026-Mar-15 00:00     12 36 00.00 +12 30 00.0'),
+        h('p', { class: 'tiny', style: { margin: '4px 0 0' } }, 'CSV with column names:'),
+        h('pre', { class: 'tiny', translate: 'no', style: { whiteSpace: 'pre-wrap', margin: '2px 0' } }, 'date,ra,dec\n2026-03-14 00:00,188.7366,12.5824\n2026-03-15 00:00,189.0000,12.5000'),
+        h('p', { class: 'tiny muted' }, 'Then press “Shift-and-stack all exposures and measure” to add every exposure along the path: faint objects build up while background stars are rejected, and the Object tab gives the brightness in each band or the faintest magnitude that would have been seen.')),
       ta,
       h('div', { class: 'row', style: { marginTop: '8px' } },
         h('button', { class: 'btn primary', onclick: () => { if (ta.value.trim()) read('pasted table.txt', new TextEncoder().encode(ta.value).buffer); } }, 'Read the table'),

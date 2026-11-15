@@ -1,6 +1,7 @@
 // Home: target search with predictive input, typed requests, presets, how-it-works.
 
 import { h, icon } from '../ui/dom.js';
+import { looksSolarSystem } from '../lib/sso.js';
 import { presets, resolveTarget, presetToTarget, presetById, describePosition, fromGalactic } from '../targets.js';
 import { parsePosition, formatRA, formatDec, niceDate, niceNum } from '../lib/coords.js';
 import { normalise, toParams, parseText, DEFAULTS } from '../state.js';
@@ -48,7 +49,13 @@ export async function render(root, route, { go }) {
     parsed.className = 'parsed'; parsed.textContent = 'Resolving…';
     try {
       const r = await resolveTarget(v);
-      if (r.error) { parsed.className = 'parsed err'; parsed.textContent = `${r.error}. ${r.hint}`; return; }
+      if (r.error) {
+        // asteroids and comets are looked up by name on the Chase page (positions from NASA JPL Horizons)
+        if (looksSolarSystem(v)) { go(`#/chase?sso=${encodeURIComponent(v)}`); return; }
+        parsed.className = 'parsed err';
+        parsed.replaceChildren(`${r.error}. ${r.hint} `, h('button', { class: 'btn small', type: 'button', onclick: () => go(`#/chase?sso=${encodeURIComponent(v)}`) }, 'Look it up as an asteroid or comet'));
+        return;
+      }
       if (r.kind === 'text') { runTyped(v); return; }
       const extra = {};
       if (r.preset?.id === 'wise0855') Object.assign(extra, { dets: [4, 5, 6], mode: 'blink' });

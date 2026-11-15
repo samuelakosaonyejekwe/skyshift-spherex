@@ -135,12 +135,12 @@ const KEY = 'skyshift.ephemerides';
 const all = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; } };
 
 /** Keep an ephemeris on this device; returns its id (stable for the same table). */
-export function saveEphemeris(name, points) {
+export function saveEphemeris(name, points, source = 'your table') {
   let h = 2166136261;
   for (const p of points) for (const v of p) { h ^= Math.round(v * 1e6) & 0xffffffff; h = Math.imul(h, 16777619) >>> 0; }
   const id = `e${h.toString(36)}`;
   const store = all();
-  store[id] = { name: String(name || 'Moving object').slice(0, 80), points, saved: Date.now() };
+  store[id] = { name: String(name || 'Moving object').slice(0, 80), points, source, saved: Date.now() };
   // keep the 20 most recent tables
   const ids = Object.keys(store).sort((a, b) => store[b].saved - store[a].saved);
   for (const old of ids.slice(20)) delete store[old];
@@ -149,3 +149,48 @@ export function saveEphemeris(name, points) {
 }
 
 export function getEphemeris(id) { return all()[id] || null; }
+
+// ------------------------------------------------------------------ positions by name (NASA JPL Horizons, via the relay)
+/**
+ * Horizons COMMAND for what a user typed: asteroid numbers ("4", "4 Vesta", "(4) Vesta"), comet designations
+ * ("67P", "67P/Churyumov-Gerasimenko", "C/2023 A3", "P/2010 A2") and names ("Vesta", "Eros").
+ */
+export function horizonsCommand(text) {
+  const s = String(text || '').trim().replace(/\s+/g, ' ');
+  if (!s) return null;
+  let m = s.match(/^(\d{1,4}[PDCXI])(?:[-/].*)?$/i); // numbered periodic comet, e.g. 67P
+  if (m) return `DES=${m[1].toUpperCase()};CAP;NOFRAG`;
+  m = s.match(/^([PDCXI])\/(\d{4}\s?[A-Z]{1,2}\d{0,3})/i); // provisional comet, e.g. C/2023 A3
+  if (m) return `DES=${m[1].toUpperCase()}/${m[2].toUpperCase().replace(/^(\d{4})(?=[A-Z])/, '$1 ')};CAP;NOFRAG`;
+  m = s.match(/^(\d{4}\s?[A-Z]{2}\d{0,3})$/i); // provisional asteroid designation, e.g. 2024 YR4
+  if (m) return `DES=${m[1].toUpperCase().replace(/^(\d{4})(?=[A-Z])/, '$1 ')};`;
+  m = s.match(/^\(?(\d{1,7})\)?(?:\s|$)/); // numbered asteroid
+  if (m) return `${m[1]};`;
+  return `${s.replace(/[;'"]/g, '')};`; // a name
+}
+
+/** Query string for a geocentric daily ephemeris (astrometric RA/Dec, ICRF) from start to end (YYYY-MM-DD). */
+export function horizonsQuery(command, start, end) {
+  const q = { format: 'json', COMMAND: `'${command}'`, OBJ_DATA: "'NO'", MAKE_EPHEM: "'YES'", EPHEM_TYPE: "'OBSERVER'", CENTER: "'500@399'",
+    START_TIME: `'${start}'`, STOP_TIME: `'${end}'`, STEP_SIZE: "'1 d'", QUANTITIES: "'1,9'", CSV_FORMAT: "'NO'" };
+  return Object.entries(q).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+}
+
+/**
+ * Read a Horizons answer: { name, points } or { error } (several matches, unknown object, no ephemeris).
+ * The table is the same plain text a user could paste, so it is read by ephemerisFromText.
+ */
+export function readHorizons(result) {
+  const t = String(result || '');
+  const name = (t.match(/Target body name:\s*(.+?)\s{2,}/) || [])[1]?.trim();
+  if (!/\$\$SOE/.test(t)) {
+    if (/No matches found|Unknown target|not found/i.test(t)) return { error: 'no asteroid or comet of that name or number was found' };
+    if (/Multiple|Matching small-bodies/i.test(t)) {
+      const opts = t.split('\n').map((l) => l.trim()).filter((l) => /^-?\d+\s+\S/.test(l)).slice(0, 8);
+      return { error: 'several objects match this name: type its number or designation instead', options: opts };
+    }
+    return { error: (t.match(/(ERROR|Cannot)[^\n]*/i) || ['no positions were returned'])[0].slice(0, 200) };
+  }
+  const e = ephemerisFromText(t);
+  return e ? { name: name || null, points: e.points } : { error: 'the positions could not be read' };
+}

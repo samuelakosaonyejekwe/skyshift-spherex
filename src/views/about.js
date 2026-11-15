@@ -43,6 +43,8 @@ export async function render(root) {
     h('p', {}, 'Gaia DR3 data from the European Space Agency mission Gaia, processed by the Gaia Data Processing and Analysis Consortium (DPAC), accessed through IRSA and the Mikulski Archive for Space Telescopes (MAST). ', h('a', { href: 'https://archives.esac.esa.int/doi/html/data/astronomy/gaia/DR3.html', target: '_blank', rel: 'noopener' }, 'Gaia DR3 DOI and citation'), '.'),
     h('h3', {}, 'WISE'),
     h('p', {}, 'CatWISE2020 and AllWISE catalogues, served by IRSA. Image comparisons with WISE/NEOWISE open in WiseView (Backyard Worlds: Planet 9).'),
+    h('h3', {}, 'Asteroid and comet positions (NASA JPL Horizons)'),
+    h('p', {}, 'Positions of asteroids and comets looked up by name come from the NASA JPL Horizons system (Solar System Dynamics group, Jet Propulsion Laboratory), an extra source beyond the challenge’s resources. Your own tables of positions stay on your device.'),
     h('h3', {}, 'NEOSSat (Canadian Space Agency)'),
     h('p', {}, 'NEOSSat observations are listed from the Canadian Astronomy Data Centre (CADC, National Research Council of Canada). NEOSSat astronomy data are released under Canada’s Directive on Open Government and licensed under the Open Government Licence – Canada.'),
     h('h3', {}, 'Software'),

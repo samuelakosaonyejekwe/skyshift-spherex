@@ -117,8 +117,8 @@ export function uploadPanel({ go }) {
 }
 
 /** Address of the Time Machine following a table of positions (kept on this device under an id). */
-export function ephemerisHref(name, points) {
-  const id = saveEphemeris(name, points);
+export function ephemerisHref(name, points, source) {
+  const id = saveEphemeris(name, points, source);
   // centre on the object's position in the middle of the SPHEREx survey times the table covers
   const now = Date.now() / 86400000 + 40587;
   const span = points.filter((p) => p[0] >= 60790 && p[0] <= now);

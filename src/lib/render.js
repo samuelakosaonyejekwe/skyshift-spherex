@@ -263,3 +263,28 @@ export function orderForLoading(list) {
   while (any) { any = false; for (const q of queues) if (q.length) { out.push(q.shift()); any = true; } }
   return out;
 }
+
+/**
+ * Robust co-add of background-subtracted frames: per pixel, values more than 3σ (from the median absolute
+ * deviation) away from the median are rejected, then the rest are averaged. Used to stack exposures centred on a
+ * moving object (shift-and-stack): each background star crosses a given pixel in only a few exposures, so its
+ * trail is rejected while the object, present in every exposure, adds up.
+ */
+export function clippedCoadd(exps, n) {
+  const out = new Float32Array(n * n).fill(NaN);
+  const vals = new Float64Array(exps.length);
+  for (let k = 0; k < out.length; k++) {
+    let c = 0;
+    for (const e of exps) { const v = e.data[k]; if (Number.isFinite(v)) vals[c++] = v - (e.meta.bg || 0); }
+    if (!c) continue;
+    const a = Array.from(vals.subarray(0, c)).sort((x, y) => x - y);
+    const med = c % 2 ? a[c >> 1] : (a[c / 2 - 1] + a[c / 2]) / 2;
+    if (c < 3) { out[k] = med; continue; }
+    const dev = a.map((v) => Math.abs(v - med)).sort((x, y) => x - y);
+    const sig = Math.max(1.4826 * (c % 2 ? dev[c >> 1] : (dev[c / 2 - 1] + dev[c / 2]) / 2), 1e-9); // identical values: only those are kept
+    let s = 0, m = 0;
+    for (const v of a) if (Math.abs(v - med) <= 3 * sig) { s += v; m++; }
+    out[k] = m ? s / m : med;
+  }
+  return out;
+}

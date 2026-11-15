@@ -49,8 +49,8 @@ await check('new positions are searchable without a relay (static host, image in
 await check('asteroid or comet table: Chase reads times and positions and opens a followed view', async () => {
   await page.goto(`${BASE}#/chase`); await page.waitForTimeout(1500);
   await page.fill('textarea', '2026-03-14 00:00  12 34 56.78 +12 34 56.7\n2026-03-15 00:00  12 36 00.00 +12 30 00.0\n2026-03-16 00:00  12 37 00.00 +12 25 00.0');
-  await page.click('text=Read the table'); await page.waitForSelector('text=Understood: the path of a moving object, 3 positions');
-  await page.click('text=Follow it in SPHEREx images'); await page.waitForTimeout(800);
+  await page.click('button:has-text("Read the table")'); await page.waitForSelector('text=Understood: the path of a moving object, 3 positions');
+  await page.click('button:has-text("Follow it in SPHEREx images")'); await page.waitForTimeout(800);
   if (!/eph=e[0-9a-z]+/.test(page.url()) || !/track=1/.test(page.url())) throw new Error(page.url());
 });
 await check('install control is visible', async () => { await page.goto(BASE); if (!(await page.isVisible('#installBtn'))) throw new Error('hidden'); });

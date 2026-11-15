@@ -5,11 +5,11 @@
 import { h, icon, toast, sheet, copyText, download, fmtBytes, fmtDur, downlinkMbps } from '../ui/dom.js';
 import { normalise, fromParams, toParams, MODES, GROUPS, FOV_STEPS } from '../state.js';
 import { loadPack } from '../lib/packs.js';
-import { relayUrls } from '../lib/net.js';
+import { relayUrls, smartFetch } from '../lib/net.js';
 import { getEphemeris, interpEph } from '../lib/ephem.js';
 import { searchSpherex, searchAlongPath, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossatCone } from '../lib/tap.js';
 import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE, photometry } from '../lib/engine.js';
-import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName, SURVEY_GAP_DAYS, orderForLoading } from '../lib/render.js';
+import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, clippedCoadd, upsampleRGBA, tintName, SURVEY_GAP_DAYS, orderForLoading } from '../lib/render.js';
 import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
 import { formatRA, formatDec, propagate, apparent, mjdToYear, yearToMjd, mjdToISO, niceDate, niceDateTime, separation, toGalactic, precessFromJ2000, abMag } from '../lib/coords.js';
 import { presetById, presetToTarget, suggestFor } from '../targets.js';
@@ -87,6 +87,10 @@ export async function render(root, route, { go }) {
   const watchBtn = h('button', { class: 'btn small hide-embed', type: 'button', onclick: () => { const on = toggleWatch(req); watchBtn.querySelector('.lbl').textContent = on ? 'Saved' : 'Save'; toast({ title: on ? 'Field saved' : 'Removed from saved fields', text: on ? 'It works offline, and you will be told when new SPHEREx data covers it.' : '', glyph: '🔖', timeout: 3500 }); }, 'aria-label': 'Save this field' }, icon('bookmark'), h('span', { class: 'lbl' }, isWatched(req) ? 'Saved' : 'Save'));
   const wiseLink = h('a', { class: 'btn small', target: '_blank', rel: 'noopener noreferrer', title: 'Compare with WISE/NEOWISE in WiseView (opens byw.tools)',
     href: `${WISEVIEW}#ra=${req.target.ra.toFixed(6)}&dec=${req.target.dec.toFixed(6)}&size=${Math.round(Math.min(req.fov, 30) * 60 / 2.75)}&band=2&speed=${req.speed}&minbright=-50.0000&maxbright=500.0000&window=0.5&diff_window=1&linear=1&color=&zoom=9&border=0&gaia=0&invert=1`, 'aria-label': 'Open in WiseView' }, icon('video'), h('span', { class: 'lbl' }, 'WiseView'));
+  // WiseView is an outside site: it is checked through the relay first; when it does not answer, the same field is
+  // shown in NASA's WISE images (IRSA Finder Chart) inside SkyShift instead of leading to an error page
+  const guardWise = (a) => { a.addEventListener('click', (e) => { e.preventDefault(); openWiseView(a.href); }); return a; };
+  guardWise(wiseLink);
   const skyLink = h('a', { class: 'btn small hide-embed', href: `#/sky?${toParams(req)}`, 'aria-label': 'Sky atlas' }, icon('sky'), h('span', { class: 'lbl' }, 'Sky atlas'));
   const explainBtn = h('button', { class: 'btn small', type: 'button', 'aria-expanded': 'false', onclick: () => { explainBox.hidden = !explainBox.hidden; explainBtn.setAttribute('aria-expanded', String(!explainBox.hidden)); explain(); }, 'aria-label': 'Explain this view' }, icon('help'), h('span', { class: 'lbl' }, 'Explain this view'));
   const dossierBtn = h('button', { class: 'btn small hide-embed', type: 'button', title: 'Generate a reproducible report with figures, tables and FITS cutouts', onclick: () => makeDossier(), 'aria-label': 'Generate dossier' }, icon('download'), h('span', { class: 'lbl' }, 'Dossier'));
@@ -245,7 +249,7 @@ export async function render(root, route, { go }) {
     const e = getEphemeris(req.target.eph);
     const stop = (text) => { setLoad(text, 0); loading.querySelector('.boot-orbit').hidden = true; };
     if (!e) { stop('This object’s table of positions is not on this device (tables stay on the device they were uploaded on). Upload it again on the Chase page.'); return; }
-    S.eph = e.points;
+    S.eph = e.points; S.ephSource = e.source || 'your table';
     setLoad(`Searching for SPHEREx images along the object’s path (${e.points.length} positions)…`, 0.03);
     let r;
     try {
@@ -302,6 +306,7 @@ export async function render(root, route, { go }) {
       } else if (m.type === 'done') {
         progressBar.style.width = '100%';
         rebuild(); renderSide();
+        if (S.afterStream) { const f = S.afterStream; S.afterStream = null; f(); }
         updateStatus(wanted.length, wanted.length, m, true);
         if (!S.frames.size) { loading.hidden = false; loading.querySelector('.boot-orbit').hidden = true; setLoad('None of the images could be read. The archive may be busy; please retry.', 0); }
       }
@@ -411,9 +416,22 @@ export async function render(root, route, { go }) {
         frames.push({ data: d.data, group: groups[i], note: `${label} (wavelength-matched over ${d.dets.map((x) => 'D' + x).join(', ') || 'no common detectors'})` });
       }
       S.display = { frames, groups, lims: limits(frames.map((f) => f.data), req.lo, req.hi, true), kind: 'diff' };
+    } else if (req.mode === 'stack' && req.target.eph) {
+      // shift-and-stack of a followed object: every exposure is centred on it; a robust (clipped) average per
+      // detector rejects the trails of background stars, which cross any pixel in only a few exposures
+      const stackMaps = []; const sofar = [];
+      for (let i = 0; i < groups.length; i++) {
+        sofar.push(...groups[i]);
+        const by = new Map();
+        for (const e of sofar) { if (!by.has(e.meta.detector)) by.set(e.meta.detector, []); by.get(e.meta.detector).push(e); }
+        const dm = new Map(); for (const [det, list] of by) dm.set(det, clippedCoadd(list, N));
+        frames.push({ data: detectorBalanced(dm, N), group: groups[i], note: `shift-and-stack of epochs 1–${i + 1} (${sofar.length} exposures, star trails rejected)`, stackCount: sofar.length });
+        stackMaps.push(dm);
+      }
+      S.display = { frames, groups, lims: limits([frames[frames.length - 1].data], req.lo, req.hi), kind: 'mono', stackMaps };
     } else if (req.mode === 'stack') {
       // running weighted sums per detector: each exposure is added once (the result equals perDetector(all so far))
-      const run = new Map(); let count = 0;
+      const run = new Map(); let count = 0; const stackMaps = [];
       for (let i = 0; i < groups.length; i++) {
         for (const e of groups[i]) {
           const det = e.meta.detector;
@@ -425,8 +443,9 @@ export async function render(root, route, { go }) {
         const dm = new Map();
         for (const [det, r] of run) { const o = new Float32Array(N * N); for (let k = 0; k < o.length; k++) o[k] = r.w[k] ? r.sum[k] / r.w[k] : NaN; dm.set(det, o); }
         frames.push({ data: detectorBalanced(dm, N), group: groups[i], note: `stack of epochs 1–${i + 1} (${count} exposures)`, stackCount: count });
+        stackMaps.push(dm);
       }
-      S.display = { frames, groups, lims: limits([frames[frames.length - 1].data], req.lo, req.hi), kind: 'mono' };
+      S.display = { frames, groups, lims: limits([frames[frames.length - 1].data], req.lo, req.hi), kind: 'mono', stackMaps };
     } else {
       for (let i = 0; i < groups.length; i++) frames.push({ data: detectorBalanced(dmaps[i], N), group: groups[i] });
       S.display = { frames, groups, lims: limits(frames.map((f) => f.data), req.lo, req.hi), kind: 'mono' };
@@ -1188,7 +1207,7 @@ export async function render(root, route, { go }) {
       h('h3', { style: { marginTop: '12px' } }, h('span', { class: 'legend-dot', style: { '--c': '#ffb547' } }), 'WISE'),
       req.ov.includes('wise') ? (wise ? (wise.error ? h('p', { class: 'notice bad' }, `WISE catalogue unavailable: ${wise.error}`) : h('p', { class: 'tiny' }, `${wise.rows.length} sources via ${wise.via}. Squares mark WISE positions moved to the frame date with CatWISE2020 motions.`)) : h('p', { class: 'tiny' }, 'Loading…'))
         : h('button', { class: 'btn small', onclick: () => toggleOv('wise') }, 'Show WISE sources'),
-      h('p', { class: 'tiny' }, 'For a then-and-now comparison with WISE/NEOWISE images, ', wiseLink.cloneNode(true), ' opens this field in WiseView.'),
+      h('p', { class: 'tiny' }, 'For a then-and-now comparison with WISE/NEOWISE images, ', guardWise(wiseLink.cloneNode(true)), ' opens this field in WiseView.', h('button', { class: 'btn small', type: 'button', style: { marginLeft: '6px' }, onclick: () => wiseCompare() }, 'NASA WISE images of this field')),
       h('h3', { style: { marginTop: '12px' } }, 'NEOSSat (Canadian Space Agency)'), neo,
     );
     neossatCone(req.target.ra, req.target.dec, 0.5).then((r) => {
@@ -1203,17 +1222,46 @@ export async function render(root, route, { go }) {
 
   /** Aperture photometry at (ra, dec) in each detector's co-add of the frame on screen: flux (µJy), AB magnitude
    * and the wavelengths the exposures saw at that spot. Same aperture as the light curves (2.5 native pixels). */
-  function bandsAt(ra, dec) {
+  function bandsAt(ra, dec, { empirical = false } = {}) {
     const D = S.display, i = currentIndex();
-    const dm = D?.dmaps?.[i];
+    // in Stack mode, measure the cumulative stack on screen (every exposure up to this pass)
+    const dm = D?.stackMaps?.[i] || D?.dmaps?.[i];
     if (!dm) return [];
     const N = n(), [cra, cdec] = frameCenter(i), k = NATIVE_SCALE / S.grid.scale;
     const [x, y] = worldToGrid(S.grid, ra, dec, cra, cdec);
     const out = [];
     for (const det of [...dm.keys()].sort()) {
-      const p = photometry({ y0: 1, x0: 1, width: N, data: dm.get(det) }, null, x + 1, y + 1, S.grid.scale ** 2, { rAp: 2.5 * k, rIn: 5 * k, rOut: 8 * k });
-      const wl = D.groups[i].filter((e) => e.meta.detector === det).map((e) => e.meta.wavelength).filter(Number.isFinite);
-      out.push({ det, wl: wl.length ? [Math.min(...wl), Math.max(...wl)] : null, flux: p?.flux, err: p?.err, ab: p ? abMag(p.flux, p.err) : null, bad: p ? p.nbad : 0, nap: p ? p.nap : 0 });
+      const img = { y0: 1, x0: 1, width: N, data: dm.get(det) }, opt = { rAp: 2.5 * k, rIn: 5 * k, rOut: 8 * k };
+      const p = photometry(img, null, x + 1, y + 1, S.grid.scale ** 2, opt);
+      // comparison apertures: the same measurement at 16 places around the object (12 native pixels away, inside the
+      // image); their scatter is the real noise of this image, including faint stars and trails in crowded fields
+      let emp = null;
+      if (empirical && p) {
+        const f = [];
+        for (let a = 0; a < 16; a++) {
+          const r = 12 * k, xx = x + r * Math.cos((a * Math.PI) / 8), yy = y + r * Math.sin((a * Math.PI) / 8);
+          if (xx < 8 * k || yy < 8 * k || xx > N - 1 - 8 * k || yy > N - 1 - 8 * k) continue;
+          const q = photometry(img, null, xx + 1, yy + 1, S.grid.scale ** 2, opt);
+          if (q && Number.isFinite(q.flux)) f.push(q.flux);
+        }
+        if (f.length >= 6) { const m = f.slice().sort((u, v) => u - v)[f.length >> 1]; emp = 1.4826 * f.map((v) => Math.abs(v - m)).sort((u, v) => u - v)[f.length >> 1]; }
+      }
+      const err = p ? Math.max(p.err, emp || 0) : null;
+      // shift-and-stack of a followed object: measure each six-month pass on its own as well; a real object shows in
+      // every pass, a chance blend in a crowded field usually in one
+      let passes = null;
+      if (empirical && p && D.stackMaps && req.target.eph && i > 0) {
+        passes = D.groups.slice(0, i + 1).map((g) => {
+          const list = g.filter((e) => e.meta.detector === det);
+          if (list.length < 2) return null;
+          const q = photometry({ y0: 1, x0: 1, width: N, data: clippedCoadd(list, N) }, null, x + 1, y + 1, S.grid.scale ** 2, opt);
+          return q ? q.flux / Math.max(q.err, 1e-12) : null;
+        }).filter((v) => v != null);
+        // the per-pass noise is scaled like the whole stack's (comparison apertures), so S/N stays comparable
+        if (emp && p.err) passes = passes.map((snr) => snr * p.err / emp);
+      }
+      const wl = (D.stackMaps ? D.groups.slice(0, i + 1).flat() : D.groups[i]).filter((e) => e.meta.detector === det).map((e) => e.meta.wavelength).filter(Number.isFinite);
+      out.push({ det, wl: wl.length ? [Math.min(...wl), Math.max(...wl)] : null, flux: p?.flux, err, ab: p ? abMag(p.flux, err) : null, bad: p ? p.nbad : 0, nap: p ? p.nap : 0, empirical: emp != null && emp > p.err, passes });
     }
     return out;
   }
@@ -1268,15 +1316,16 @@ export async function render(root, route, { go }) {
 
   /** Brightness per detector band at the selected spot in the frame on screen. */
   function brightnessTable(sel) {
-    const rows = bandsAt(sel.ra, sel.dec);
+    const rows = bandsAt(sel.ra, sel.dec, { empirical: true });
     if (!rows.length) return null;
     return h('div', {},
-      h('h4', {}, `Brightness on ${niceDate(frameMjd())}`),
+      h('h4', {}, S.display?.stackMaps ? `Brightness in the stack of ${S.display.frames[currentIndex()]?.stackCount ?? ''} exposures up to ${niceDate(frameMjd())}` : `Brightness on ${niceDate(frameMjd())}`),
       h('table', { class: 'table' }, h('thead', {}, h('tr', {}, h('th', {}, 'Band'), h('th', {}, 'λ (µm)'), h('th', {}, 'AB mag'), h('th', {}, 'Flux (µJy)'))),
         h('tbody', {}, rows.map((r) => h('tr', {}, h('td', {}, `D${r.det}`), h('td', {}, r.wl ? (r.wl[1] - r.wl[0] < 0.005 ? r.wl[0].toFixed(3) : `${r.wl[0].toFixed(2)}–${r.wl[1].toFixed(2)}`) : '–'),
-          h('td', {}, r.ab && r.bad ? `≤ ${r.ab.mag.toFixed(2)} (${r.bad} of ${r.nap} pixels saturated or masked: brighter than this)` : r.ab ? `${r.ab.mag.toFixed(2)} ± ${r.ab.err == null ? '–' : r.ab.err < 0.005 ? '<0.01' : r.ab.err.toFixed(2)}` : r.flux != null ? `fainter than ${abMag(Math.max(3 * r.err, 1e-3))?.mag.toFixed(1) ?? '–'} (3σ)` : '–'),
-          h('td', {}, r.flux != null ? `${r.flux.toFixed(1)} ± ${r.err.toFixed(1)}` : 'no clean measurement'))))),
-      h('p', { class: 'tiny muted' }, 'Aperture of 2.5 SPHEREx pixels (15″) on each detector’s stack of this epoch, background from a ring at 5–8 pixels; light outside the aperture is not added back. Each detector spans a range of wavelengths across its field: for one exact wavelength per exposure use “Spectrum & light curve here”.'));
+          h('td', {}, r.ab && r.bad ? `≤ ${r.ab.mag.toFixed(2)} (${r.bad} of ${r.nap} pixels saturated or masked: brighter than this)` : r.flux != null && r.err > 0 && r.flux < 3 * r.err ? `not detected (S/N ${(r.flux / r.err).toFixed(1)}): fainter than ${abMag(3 * r.err).mag.toFixed(2)} (3σ)` : r.ab && r.passes?.length >= 2 && r.passes.filter((v) => v >= 1).length < r.passes.length ? `not confirmed: ${r.ab.mag.toFixed(2)} in the stack but seen in only ${r.passes.filter((v) => v >= 1).length} of ${r.passes.length} passes` : r.ab && r.passes?.length >= 2 ? `${r.ab.mag.toFixed(2)} ± ${r.ab.err == null ? '–' : r.ab.err < 0.005 ? '<0.01' : r.ab.err.toFixed(2)} (seen in all ${r.passes.length} passes)` : r.ab ? `${r.ab.mag.toFixed(2)} ± ${r.ab.err == null ? '–' : r.ab.err < 0.005 ? '<0.01' : r.ab.err.toFixed(2)}` : r.flux != null ? `fainter than ${abMag(Math.max(3 * r.err, 1e-3))?.mag.toFixed(1) ?? '–'} (3σ)` : '–'),
+          h('td', {}, r.flux != null ? `${r.flux.toFixed(1)} ± ${r.err.toFixed(1)}${r.empirical ? '*' : ''}` : 'no clean measurement'))))),
+      h('p', { class: 'tiny muted' }, 'Aperture of 2.5 SPHEREx pixels (15″) on each detector’s stack of this epoch, background from a ring at 5–8 pixels; light outside the aperture is not added back. Each detector spans a range of wavelengths across its field: for one exact wavelength per exposure use “Spectrum & light curve here”.'),
+      rows.some((r) => r.empirical) ? h('p', { class: 'tiny muted' }, 'Errors marked * come from 16 comparison apertures around the object, which scatter more than the pixel noise alone (faint stars or trails in a crowded field). A detection needs at least 3 times that error.') : null);
   }
 
   /** Iterative Gaussian-weighted centroid in the current frame near (ra, dec). */
@@ -1374,15 +1423,68 @@ export async function render(root, route, { go }) {
   function renderSuggestion() {
     suggestionBox.replaceChildren();
     const sg = suggestFor(req.target);
-    const tip = req.target.eph && S.eph ? `Followed along your table of ${S.eph.length} positions (${niceDate(S.eph[0][0])} to ${niceDate(S.eph[S.eph.length - 1][0])}): every exposure is centred on the object at its own time, so the object stays still while the stars stream past. Positions come from your table, not from SkyShift.` : preset?.tip;
+    const tip = req.target.eph && S.eph ? (S.ephSource === 'NASA JPL Horizons'
+      ? `Followed along ${S.eph.length} daily positions from NASA JPL Horizons (${niceDate(S.eph[0][0])} to ${niceDate(S.eph[S.eph.length - 1][0])}): every exposure is centred on the object at its own time, so the object stays still while the stars stream past.`
+      : `Followed along your table of ${S.eph.length} positions (${niceDate(S.eph[0][0])} to ${niceDate(S.eph[S.eph.length - 1][0])}): every exposure is centred on the object at its own time, so the object stays still while the stars stream past. Positions come from your table, not from SkyShift.`) : preset?.tip;
     const text = [tip, sg?.text].filter(Boolean).join(' ');
     if (!text) return;
     const btns = [];
+    // a Solar System object: add every exposure along its path (shift-and-stack) and measure it at the centre
+    if (req.target.eph && S.eph) btns.push(h('button', { class: 'btn small primary', title: 'Every exposure is already centred on the object, so adding them all builds up its faint light while the stars smear out (shift-and-stack).', onclick: () => shiftAndStack() }, 'Shift-and-stack all exposures and measure'));
     if (sg && (req.mode !== sg.mode || req.group !== 'survey')) btns.push(h('button', { class: 'btn small primary', onclick: () => { commit({ mode: sg.mode, group: 'survey' }); if (sg.mode === 'blink') { S.blinkPhase = 0; draw(); play(); } } }, `Try ${MODE_INFO[sg.mode][0]}`));
     if (preset?.id === 'epsindib' && req.fov < 15) btns.push(h('button', { class: 'btn small', onclick: () => commit({ fov: 15, ov: [...new Set([...req.ov, 'gaia'])] }) }, 'Show the host star (15′ field)'));
     if ((preset?.id === 'rwaur' || preset?.id === 'rdra') && S.tab !== 'lightcurve') btns.push(h('button', { class: 'btn small', onclick: () => { S.tab = 'lightcurve'; renderTabs(); renderSide(); } }, 'Open light curve'));
     suggestionBox.append(h('div', { class: 'suggestion', style: { marginBottom: '10px' } }, h('span', { 'aria-hidden': 'true' }, '💡'), h('span', { style: { flex: 1 } }, text), btns));
   }
+  /** Shift-and-stack for a followed object: load every exposure, stack them all, select the object, measure it. */
+  function shiftAndStack() {
+    stopPlay();
+    const measure = () => {
+      const N = S.display?.frames.length || 0;
+      if (!N) return;
+      S.frame = N - 1; slider.value = S.frame; draw();
+      const [ra, dec] = frameCenter(N - 1);
+      S.selected = { ra, dec }; S.tab = 'object'; renderTabs(); renderSide(); drawOverlay();
+    };
+    S.afterStream = measure; // runs again once the remaining exposures have arrived
+    commit({ mode: 'stack' });
+    if (S.moreAvailable > 0) { S.extraImages = Infinity; stream(S.loadId); toast({ title: 'Loading every exposure along the path', text: 'The stack and the measurement update when they have arrived.', glyph: '🌠', timeout: 4000 }); }
+    measure();
+  }
+
+  /** Open WiseView if it answers; otherwise show NASA's WISE images of the field and say why. */
+  async function openWiseView(url) {
+    const w = window.open('', '_blank'); // opened now, inside the click, so pop-up blockers allow it
+    let up = true;
+    try {
+      const r = await smartFetch('http://byw.tools/wiseview', { timeout: 6000 });
+      const st = Number(r.headers.get('x-relay-upstream-status') || r.status);
+      up = st > 0 && st < 500 && !r.headers.get('x-relay-error');
+    } catch (e) { up = /no archive relay/.test(String(e.message)); } // no relay to ask: open it directly; any other failure: down
+    if (up && w) { w.opener = null; w.location.href = url; return; }
+    if (up) { window.open(url, '_blank', 'noopener'); return; }
+    w?.close();
+    wiseCompare('WiseView (byw.tools) is not answering right now, so here is the same field in NASA’s WISE images from IRSA.');
+  }
+
+  /** NASA WISE (AllWISE) images of the field from IRSA Finder Chart, beside the SPHEREx view. */
+  function wiseCompare(note) {
+    const size = Math.min(Math.max(req.fov, 1), 30).toFixed(1);
+    const img = (band) => `https://irsa.ipac.caltech.edu/applications/finderchart/servlet/api?mode=getImage&RA=${req.target.ra.toFixed(6)}&DEC=${req.target.dec.toFixed(6)}&subsetsize=${size}&thumbnail_size=large&survey=wise&wise_bands=${band}&type=jpgurl`;
+    const fig = (band, label) => h('figure', { style: { margin: 0, flex: '1 1 220px' } },
+      h('img', { src: img(band), alt: `WISE ${label} image of this field`, loading: 'lazy', style: { width: '100%', aspectRatio: '1', objectFit: 'cover', background: '#05061a', borderRadius: '8px' }, onerror: (e) => { e.currentTarget.replaceWith(h('p', { class: 'notice warn tiny' }, 'IRSA did not return this image right now.')); } }),
+      h('figcaption', { class: 'tiny' }, `WISE ${label} (AllWISE, 2010), ${size}′ field`));
+    sheet(h('div', { class: 'grid' },
+      h('h2', {}, 'This field in NASA’s WISE images'),
+      note ? h('p', { class: 'notice warn' }, note) : null,
+      h('p', { class: 'tiny muted' }, 'WISE mapped the whole sky at 3.4 and 4.6 µm in 2010, about 15 years before SPHEREx. Compare positions to see what has moved; north is up and east left in both.'),
+      h('div', { class: 'row', style: { gap: '10px', alignItems: 'flex-start' } }, fig(1, 'W1 3.4 µm'), fig(2, 'W2 4.6 µm')),
+      h('div', { class: 'row' },
+        h('a', { class: 'btn small', target: '_blank', rel: 'noopener noreferrer', href: `https://irsa.ipac.caltech.edu/applications/finderchart/servlet/api?mode=getResult&UserTargetWorldPt=${req.target.ra.toFixed(6)};${req.target.dec.toFixed(6)};EQ_J2000&subsize=${(size / 60).toFixed(3)}&survey=WISE` }, 'Open in IRSA Finder Chart'),
+        h('a', { class: 'btn small', target: '_blank', rel: 'noopener noreferrer', href: wiseLink.href }, 'Try WiseView anyway')),
+      h('p', { class: 'tiny muted' }, 'Images: NASA/JPL-Caltech/UCLA (WISE), served by IRSA Finder Chart.')), { label: 'NASA WISE images of this field' });
+  }
+
   function explain() {
     if (explainBox.hidden) return;
     const D = S.display;

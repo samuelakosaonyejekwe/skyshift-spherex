@@ -73,5 +73,8 @@ try {
   console.error(e.message);
   rmSync(TMP, { recursive: true, force: true });
   if (!existsSync(`${OUT}/meta.json`)) console.warn('no index available (the app falls back to the relay)');
-  else console.warn('kept previous index');
+  else {
+    console.warn('kept previous index; adding new images from the archive storage instead (scripts/index-s3.mjs)');
+    try { await (await import('./index-s3.mjs')).updateFromStorage(); } catch (e2) { console.warn('storage update failed:', e2.message); }
+  }
 }

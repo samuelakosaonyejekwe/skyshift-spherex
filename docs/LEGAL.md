@@ -14,6 +14,7 @@
 | Item | Owner / terms | How SkyShift complies |
 |---|---|---|
 | SPHEREx data (IRSA) | NASA/JPL/Caltech; IRSA acknowledgement and DOIs | Acknowledgement text and DOIs on the About page; release shown for every frame |
+| Asteroid and comet positions (NASA JPL Horizons) | NASA/JPL Solar System Dynamics group; U.S. Government work, free to use with credit | Named on the Chase page and in every followed view ("positions from NASA JPL Horizons") |
 | Gaia DR3 | ESA / Gaia DPAC, via IRSA and MAST; CC BY-NC 3.0 IGO | Credit and DOI link on the About page; licence in `NOTICE` |
 | CatWISE2020, AllWISE | via IRSA | Credit on the About page |
 | NEOSSat data | Canadian Space Agency; CADC (NRC); Open Government Licence – Canada | Credit on the About page; listed, never mixed with SPHEREx frames |

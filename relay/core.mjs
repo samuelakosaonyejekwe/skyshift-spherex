@@ -1,7 +1,7 @@
 // Stateless, allow-listed CORS relay. Written against the standard Fetch API
 // (Request/Response), so the same code runs on Node 18+, Cloudflare Workers/Pages,
 // Netlify Edge, Vercel Edge and Deno Deploy. It only forwards to the data services
-// and pages of the challenge resources; it is not an open proxy.
+// and pages of the challenge resources (and JPL Horizons for Solar System positions); it is not an open proxy.
 
 export const ALLOW = [
   // IRSA (SPHEREx archive, TAP, SIA, IBE cutouts, docs)
@@ -18,6 +18,8 @@ export const ALLOW = [
   { host: 'donnees-data.asc-csa.gc.ca', paths: ['/en/dataset/', '/api/3/action/'] },
   { host: 'www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca', paths: ['/en/'] },
   { host: 'ws.cadc-ccda.hia-iha.nrc-cnrc.gc.ca', paths: ['/argus/', '/caom2ops/'] },
+  // NASA JPL Horizons (positions of asteroids and comets by name; added by the author beyond the eight resources)
+  { host: 'ssd.jpl.nasa.gov', paths: ['/api/horizons.api'] },
   // GitHub (NEOSSat tutorial repository)
   { host: 'github.com', paths: ['/asc-csa/NEOSSAT_Tutorial'] },
 ];

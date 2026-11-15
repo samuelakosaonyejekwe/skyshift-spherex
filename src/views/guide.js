@@ -87,7 +87,7 @@ export async function render(root) {
       h('li', {}, 'Very bright stars (Barnard’s Star, R Draconis, ε Indi A) saturate SPHEREx: their cores have no valid pixels. SkyShift marks these frames and leaves them out of spectra.'),
       h('li', {}, 'SPHEREx pixels are 6.15″, so neighbouring objects blend; SkyShift warns when Gaia stars fall inside the photometry aperture. Forced photometry of blends is not yet implemented.'),
       h('li', {}, 'Photometry is simple aperture photometry for quick looks, not a replacement for the IRSA SPHEREx Spectrophotometry Tool.'),
-      h('li', {}, 'Asteroids and comets are not found by name: no ephemeris service is reachable from the challenge’s resources. Upload their table of times and positions on the Chase page and SkyShift follows them along it.'),
+      h('li', {}, 'Asteroids and comets: type their name, number or designation on the Chase page (positions from NASA JPL Horizons, an extra source beyond the challenge’s resources), or upload your own table of times and positions; SkyShift follows them along it.'),
       h('li', {}, 'Object names resolve only for the five challenge targets and Gaia DR3 source IDs; use coordinates for anything else.'),
       h('li', {}, 'Exact water, CO₂ and CO ice band wavelengths were not found in the approved sources, so they are not marked on spectra.'),
       h('li', {}, 'Image pixels stream directly from IRSA’s cloud bucket. Searches for new positions use IRSA’s live search through a small relay where one is available, and otherwise a pre-built index of every SPHEREx image, refreshed from IRSA every 6 hours. Gaia, WISE and NEOSSat overlays need the relay; without it the app says so and the images still work.')),

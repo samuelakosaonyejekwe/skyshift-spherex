@@ -45,3 +45,12 @@ test('path samples cover the whole table in time, at most 240 points', () => {
   assert.ok(s[0].t0 <= 60800 && s[s.length - 1].t1 >= 61799);
   for (let k = 1; k < s.length; k++) assert.ok(s[k].t0 <= s[k - 1].t1, 'windows overlap, no time is missed');
 });
+
+test('shift-and-stack: the clipped co-add rejects a star trail crossing a pixel once and keeps a source present in every frame', async () => {
+  const { clippedCoadd } = await import('../src/lib/render.js');
+  const frames = Array.from({ length: 20 }, (_, i) => ({ meta: { bg: 0 }, data: Float32Array.from([1, 1 + (i % 2 ? 0.1 : -0.1), 1, 1, 5, 1, 1, 1, 1].map((v, k) => v + (i === 3 && k === 0 ? 1000 : 0))) }));
+  const out = clippedCoadd(frames, 3);
+  assert.ok(Math.abs(out[0] - 1) < 1e-9, `trail rejected: ${out[0]}`);
+  assert.ok(Math.abs(out[4] - 5) < 1e-9, 'source kept');
+  assert.ok(Math.abs(out[1] - 1) < 1e-9, 'noise averaged');
+});

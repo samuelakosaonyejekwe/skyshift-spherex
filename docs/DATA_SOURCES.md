@@ -125,6 +125,15 @@ example link (133.786245, −7.244372), which SkyShift uses as the field centre.
   AIA URL (`relay/certs/README.txt`), for this host only, with verification still on. Its CKAN API answers live: "NEOSSAT -
   Astronomy Data", 8 resources, Open Government Licence - Canada (checked 2026-11-14).
 
+## Additional source approved by the author (2026-11-15)
+
+- **NASA JPL Horizons API** (`https://ssd.jpl.nasa.gov/api/horizons.api`, through the relay because it sends no CORS
+  headers): daily geocentric astrometric positions (ICRF) of asteroids and comets typed by name, number or designation on
+  the Chase page, from 1 May 2025 (start of SPHEREx images) to today (`src/lib/sso.js`, `src/lib/ephem.js`). Added after a
+  reviewer asked to test 4 Vesta and 67P/Churyumov-Gerasimenko; the challenge's resources provide no Solar System
+  positions. Users can still give their own table of times and positions instead. SkyShift then searches SPHEREx images
+  along the path and centres each exposure on the position at its time.
+
 ## Relay (why it exists)
 
 IRSA TAP/SIA, MAST API, CADC TAP and the mission web pages do not send CORS headers, so a browser cannot read them
@@ -140,9 +149,6 @@ S3 bucket straight to the user's browser.
 
 ## Features left out because no approved source provides the data
 
-- **Solar-system object positions**: no ephemeris service is reached from the seeds, so asteroids and comets are not found
-  by name. Users upload their own table of times and positions (Chase page, or any upload); SkyShift then searches
-  SPHEREx images along the path and centres each exposure on the position at its time (`src/lib/ephem.js`).
 - **General object-name resolution**: no name resolver is reached from the seeds; names resolve for the five targets and for
   Gaia DR3 source IDs only.
 - **Water, CO₂ and CO ice band markers**: the approved pages read (mission page, User Guide, Explanatory Supplement, SPLICES pages
