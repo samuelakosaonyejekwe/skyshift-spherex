@@ -77,7 +77,8 @@ export async function render(root, route, { go }) {
   const progressBar = h('i');
   const statusLine = h('div', { class: 'tiny', 'aria-live': 'polite' });
   const modeSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Display mode' });
-  // Negative view: dark objects on a white sky (black and white, except Colour, which shows complementary colours)
+  // Inverted view (WiseView, DS9 and JS9 call it "invert"): dark objects on a white sky; black and white, except
+  // Colour, which shows complementary colours
   const setNegative = (on) => {
     if (on) { S.cmapBeforeNeg = req.cmap; commit({ invert: true, cmap: req.mode === 'color' ? req.cmap : 'gray' }); }
     else commit({ invert: false, cmap: S.cmapBeforeNeg && S.cmapBeforeNeg !== 'gray' ? S.cmapBeforeNeg : 'auto' });
@@ -85,7 +86,7 @@ export async function render(root, route, { go }) {
   // your own image of the same field (sent from the image inspector): off → shown → blinking with the SPHEREx frame
   const userBtn = h('button', { type: 'button', class: 'btn small user-btn', hidden: true, 'aria-pressed': 'false', onclick: () => setUserMode(S.userMode === 'off' ? 'show' : S.userMode === 'show' ? 'blink' : 'off') }, 'Your image');
   const negBtn = h('button', { type: 'button', class: 'btn small neg-btn', 'aria-pressed': 'false', onclick: () => setNegative(!req.invert) },
-    h('span', { class: 'neg-ico', 'aria-hidden': 'true' }), h('span', { class: 'neg-lbl' }, 'Negative'));
+    h('span', { class: 'neg-ico', 'aria-hidden': 'true' }), h('span', { class: 'neg-lbl' }, 'Invert'));
   const suggestionBox = h('div');
   const explainBox = h('div', { class: 'notice', hidden: true });
   const tabsBar = h('div', { class: 'tabs', role: 'tablist' });
@@ -188,11 +189,11 @@ export async function render(root, route, { go }) {
 
   function renderModes() {
     modeSeg.replaceChildren(...MODES.filter((m) => m !== 'expr' || req.expr).map((m, i) => h('button', { type: 'button', 'aria-pressed': String(req.mode === m), title: `${MODE_INFO[m][1]} (key ${i + 1})`, onclick: () => commit({ mode: m }) }, MODE_INFO[m][0])));
-    // Negative: black-and-white, dark objects on a white sky, where faint tails, comas and moving objects show best
+    // Inverted: black and white, dark objects on a white sky, where faint tails, comas and moving objects show best
     const neg = !!req.invert;
     negBtn.setAttribute('aria-pressed', String(neg));
-    negBtn.querySelector('.neg-lbl').textContent = neg ? 'Negative on' : 'Negative';
-    negBtn.title = neg ? 'Back to the normal view (key i)' : 'Negative: black and white, dark objects on a white sky; faint tails, comas and moving objects show best (key i)';
+    negBtn.querySelector('.neg-lbl').textContent = neg ? 'Inverted' : 'Invert';
+    negBtn.title = neg ? 'Back to the normal view (key i)' : 'Invert: black and white, dark objects on a white sky; faint tails, comas and moving objects show best (key i)';
   }
 
   // ------------------------------------------------------------------ loading
@@ -968,7 +969,7 @@ export async function render(root, route, { go }) {
         slider2('lo', 'Black point', 0, 30, 0.5), slider2('hi', 'White point', 80, 100, 0.1)),
       h('div', { class: 'row' },
         h('label', { class: 'field' }, 'Colours', h('select', { onchange: (e) => commit({ cmap: e.target.value }) }, [['auto', 'By wavelength (tint of the detectors shown)'], ['gray', 'Grey (classic blink look)'], ['viridis', 'Viridis (colour-blind safe)'], ['heat', 'Heat'], ['ice', 'Ice']].map(([v, l]) => h('option', { value: v, selected: req.cmap === v }, l)))),
-        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: req.invert, onchange: (e) => setNegative(e.target.checked) }), 'Negative (black stars on white)')),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: req.invert, onchange: (e) => setNegative(e.target.checked) }), 'Invert (black stars on white)')),
       h('div', { class: 'panel' }, h('b', {}, 'Overlays'),
         h('div', { class: 'row' }, [['gaia', 'Gaia DR3 stars', 'Positions moved to each frame’s date using Gaia proper motions'], ['wise', 'WISE (CatWISE2020)', 'Infrared sources from WISE'], ['flags', 'Contamination flags', 'Tint pixels flagged as bad'], ['track', 'Predicted track', 'Where the target should be at each date'], ['compass', 'Compass & scale', 'North/East arrows and a scale bar']]
           .map(([o, l, t]) => h('label', { class: 'check', title: t }, h('input', { type: 'checkbox', checked: req.ov.includes(o), onchange: () => toggleOv(o) }), l)))),

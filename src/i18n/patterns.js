@@ -3,6 +3,9 @@
 // rule to the start or end of a text. Values are carried over in order as $1, $2, … . Rules run in this order on
 // any text that is not an exact phrase, so a long sentence is matched before the shorter pieces inside it.
 export const R = [
+  ['^Invert$', 'Αντιστροφή', 'Invertir', 'Inverser'],
+  ['^Inverted$', 'Αντεστραμμένο', 'Invertido', 'Inversé'],
+  ['^Invert: black and white, dark objects on a white sky; faint tails, comas and moving objects show best \(key i\)$', 'Αντιστροφή: ασπρόμαυρο, σκοτεινά αντικείμενα σε λευκό ουρανό· οι αμυδρές ουρές, οι κόμες και τα κινούμενα αντικείμενα φαίνονται καλύτερα (πλήκτρο i)', 'Invertir: blanco y negro, objetos oscuros sobre cielo blanco; las colas débiles, las comas y los objetos en movimiento se ven mejor (tecla i)', 'Inverser : noir et blanc, objets sombres sur ciel blanc ; les queues faibles, les chevelures et les objets mobiles se voient le mieux (touche i)'],
   ['^Reading your image… large or compressed images take a few seconds.$', 'Ανάγνωση της εικόνας σας… οι μεγάλες ή συμπιεσμένες εικόνες χρειάζονται λίγα δευτερόλεπτα.', 'Leyendo su imagen… las imágenes grandes o comprimidas tardan unos segundos.', 'Lecture de votre image… les images grandes ou compressées prennent quelques secondes.'],
   // ---- image inspector display controls and "your image" in the Time Machine
   ['^Compare with SPHEREx \(Time Machine\)$', 'Σύγκριση με το SPHEREx (Μηχανή του χρόνου)', 'Comparar con SPHEREx (Máquina del tiempo)', 'Comparer avec SPHEREx (Machine à remonter le temps)'],

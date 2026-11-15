@@ -302,7 +302,7 @@ export async function inspectImage(buf, name) {
       sel('Limits', [['zscale', 'zscale'], ['99.5', '99.5%'], ['minmax', 'Min–max']], 'limits'),
       sel('Colours', [['gray', 'Grey'], ['heat', 'Heat'], ['ice', 'Ice'], ['viridis', 'Viridis']], 'cmap'),
       sel('Coordinates', [['icrs', 'J2000.0 (ICRS)'], ['gal', 'Galactic'], ['ecl', 'Ecliptic (J2000.0)']], 'coords'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { disp.negative = e.target.checked; paint(); draw(); } }), 'Negative'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { disp.negative = e.target.checked; paint(); draw(); } }), 'Invert'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => { disp.magnifier = e.target.checked; if (!disp.magnifier) mag.style.display = 'none'; } }), 'Magnifier')),
     h('div', { class: 'row' },
       h('button', { class: 'btn small primary', type: 'button', title: 'Open the same patch of sky in the Time Machine with your image aligned to the SPHEREx frames, to blink between them', onclick: () => compareInTimeMachine() }, 'Compare with SPHEREx (Time Machine)'),
