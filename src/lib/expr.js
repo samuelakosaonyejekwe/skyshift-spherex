@@ -78,7 +78,7 @@ export function parse(input) {
       k++;
       const name = t.v;
       if (isOp('(')) {
-        const f = FUNCS[name.toLowerCase()];
+        const f = Object.hasOwn(FUNCS, name.toLowerCase()) ? FUNCS[name.toLowerCase()] : null; // own names only (not 'constructor')
         if (!f) throw new ExprError(`Unknown function "${name}". Allowed: ${Object.keys(FUNCS).join(', ')}`, t.pos, s);
         k++;
         const args = [];
@@ -130,7 +130,8 @@ export function evalScalar(ast, env) {
     }
     case 'call': {
       const v = ast.args.map((x) => evalScalar(x, env));
-      const F = { abs: Math.abs, sqrt: Math.sqrt, log10: Math.log10, ln: Math.log, exp: Math.exp, min: Math.min, max: Math.max, mean: (...x) => x.reduce((p, q) => p + q, 0) / x.length, clip: (x, a, b) => Math.min(b, Math.max(a, x)) }[ast.name];
+      const FS = { abs: Math.abs, sqrt: Math.sqrt, log10: Math.log10, ln: Math.log, exp: Math.exp, min: Math.min, max: Math.max, mean: (...x) => x.reduce((p, q) => p + q, 0) / x.length, clip: (x, a, b) => Math.min(b, Math.max(a, x)) };
+      const F = Object.hasOwn(FS, ast.name) ? FS[ast.name] : null;
       if (!F) throw new ExprError(`${ast.name}() cannot be used here`, ast.pos, '');
       return F(...v);
     }
@@ -170,7 +171,8 @@ export function evalImage(ast, ctx) {
         if (node.name === 'epoch') { const k = ev(node.args[0]); if (!isC(k)) throw new ExprError('epoch(k) needs a number', node.pos, ''); const a = ctx.epoch(Math.round(k.c)); return { a: a || nanArr(), missing: a ? null : `epoch ${k.c}` }; }
         if (node.name === 'wl') { const a1 = ev(node.args[0]), b1 = ev(node.args[1]); if (!isC(a1) || !isC(b1)) throw new ExprError('wl(from, to) needs numbers in µm', node.pos, ''); const a = ctx.wl(a1.c, b1.c); return { a: a || nanArr(), missing: a ? null : `wl(${a1.c},${b1.c})` }; }
         const args = node.args.map(ev);
-        const F = { abs: Math.abs, sqrt: Math.sqrt, log10: Math.log10, ln: Math.log, exp: Math.exp }[node.name];
+        const FS = { abs: Math.abs, sqrt: Math.sqrt, log10: Math.log10, ln: Math.log, exp: Math.exp };
+        const F = Object.hasOwn(FS, node.name) ? FS[node.name] : null;
         if (F) return map1(args[0], F);
         if (node.name === 'min' || node.name === 'max' || node.name === 'mean') {
           let acc = args[0];
@@ -201,23 +203,25 @@ export function splitStatements(text) {
   for (const raw of String(text || '').split(/[;\n]+/)) {
     const line = raw.trim();
     if (!line) continue;
+    let off = 0; // where the parsed part starts in the line, so the error pointer lines up
     try {
       const w = line.match(/^(?:epochs?|frames?|exposures?)?\s*where\s+(.+)$/i);
-      if (w) { parse(w[1]); out.where = w[1].trim(); continue; }
+      if (w) { off = line.length - w[1].length; parse(w[1]); out.where = w[1].trim(); continue; }
       const a = line.match(/^([A-Za-z_]\w*)\s*(\(\s*t\s*\))?\s*=(?!=)\s*(.+)$/);
       if (a && a[2]) throw new ExprError('Motion models are written as numbers: pmra = <mas/yr>; pmdec = <mas/yr>; epoch = <year of the position>', 0, line);
       if (a) a.splice(2, 1);
       if (a) {
         const name = a[1].toLowerCase();
+        off = line.length - a[2].length;
         if (name === 'img' || name === 'image' || name === 'frame') { parse(a[2]); out.image = a[2].trim(); continue; }
         const v = evalScalar(parse(a[2]), {});
-        if (!Number.isFinite(v)) throw new ExprError('Assignments need a number', 0, line);
+        if (!Number.isFinite(v)) { off = 0; throw new ExprError('Assignments need a number', 0, line); }
         out.assign[name] = v;
         continue;
       }
-      parse(line); out.image = line;
+      off = 0; parse(line); out.image = line;
     } catch (e) {
-      out.errors.push({ line, message: e.message, pointer: e instanceof ExprError ? `${line}\n${' '.repeat(Math.max(0, e.pos))}^` : line });
+      out.errors.push({ line, message: e.message, pointer: e instanceof ExprError ? `${line}\n${' '.repeat(Math.max(0, off + e.pos))}^` : line });
     }
   }
   return out;

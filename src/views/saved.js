@@ -80,7 +80,7 @@ export async function render(root) {
           watch.map((w) => h('tr', {},
             h('td', {}, h('a', { href: w.url }, w.target.name || 'Field')),
             h('td', { class: 'mono' }, `${formatRA(w.target.ra)} ${formatDec(w.target.dec)}`),
-            h('td', {}, niceDate(w.saved)),
+            h('td', {}, niceDate(new Date(w.saved))),
             h('td', {}, w.knownCount != null ? `${w.knownCount} exposures to ${niceDate(w.knownNewest)}` : '–'),
             h('td', {}, h('button', { class: 'btn small ghost', onclick: () => { write(WATCH, read(WATCH).filter((x) => !same(x.target, w.target))); draw(); } }, 'Remove')))))
           : h('p', { class: 'empty compact' }, 'No saved fields yet. Use “Save” in the Time Machine to keep a field offline and get new-data alerts.')),

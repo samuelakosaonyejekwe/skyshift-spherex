@@ -45,7 +45,10 @@ async function tap(q) {
     try {
       const r = await fetch(url, { headers: { 'User-Agent': 'SkyShift-packs/1.0' }, signal: AbortSignal.timeout(120000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return parseCSV(await r.text());
+      const txt = await r.text();
+      // IRSA can answer 200 with an error or maintenance page: never treat that as an empty result
+      if (/QUERY_STATUS" value="ERROR|<html/i.test(txt)) throw new Error('TAP error document');
+      return parseCSV(txt);
     } catch (e) { if (i === 2) throw e; await new Promise((res) => setTimeout(res, 5000 * (i + 1))); }
   }
 }
@@ -111,6 +114,7 @@ for (const t of targets) {
         } catch { failed++; }
       }
     }));
+    if (!got.size) throw new Error(`no frames (${list.length} images found)`);
     if (failed > wanted.length * 0.1) throw new Error(`${failed} of ${wanted.length} exposures unreadable`);
     const built = new Date().toISOString(), entry = {};
     let bytes = 0;

@@ -6,7 +6,8 @@
 import { parsePosition, parseAngle, wrap360 } from './coords.js';
 
 const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-const mjdFromUTC = (y, mo, d, h = 0, mi = 0, s = 0) => Date.UTC(y, mo - 1, d, h, mi, s) / 86400000 + 40587;
+// Date.UTC drops fractions of a second, so they are added afterwards
+const mjdFromUTC = (y, mo, d, h = 0, mi = 0, s = 0) => (Date.UTC(y, mo - 1, d, h, mi, Math.floor(s)) + (s - Math.floor(s)) * 1000) / 86400000 + 40587;
 
 /**
  * A time in a table cell or line → MJD (UTC), or NaN. Accepts ISO dates (2026-03-14, 2026-03-14T05:30:00,

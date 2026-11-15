@@ -131,6 +131,12 @@ Both modes give identical pixels; saver reads only the columns the field covers.
 |---|---|---|---|---|
 `;
 for (const p of perImage) md += `| ${p.fov}′${p.fov === 6 ? ' (default)' : ''} | ${f(p.saver / 1e6, 3)} MB | ${f(p.rows / 1e6, 3)} MB | ${f(p.rows / p.saver, 1)}× | ${fileBytes ? `${f(fileBytes / p.saver)}×` : '–'} |\n`;
+// sections added to docs/VALIDATION.md by hand (checks this script does not run) are kept, before "Reading the results"
+try {
+  const made = new Set(md.split(/^## /m).slice(1).map((x) => x.split('\n')[0]).concat('Reading the results'));
+  const kept = readFileSync('docs/VALIDATION.md', 'utf8').split(/^## /m).slice(1).filter((x) => !made.has(x.split('\n')[0]));
+  for (const x of kept) md += `\n## ${x.trimEnd()}\n`;
+} catch { /* first run */ }
 md += `
 ## Reading the results
 

@@ -14,11 +14,11 @@ export function parseAngle(text, { hours = false } = {}) {
   if (!s) return NaN;
   const hasH = /h/.test(s);
   const hasD = /[d°]/.test(s);
-  s = s.replace(/[hdm°'′:"″s]/g, ' ').replace(/,/g, '.').trim();
+  s = s.replace(/[hdm°'′:"″s]/g, ' ').replace(/,/g, '.').trim().replace(/^([+-])\s+/, '$1'); // "- 5" is -5
   const parts = s.split(/\s+/).filter(Boolean);
   if (!parts.length || parts.length > 3) return NaN;
   const neg = parts[0].startsWith('-');
-  const nums = parts.map((p) => Number(p.replace(/^[+-]/, '')));
+  const nums = parts.map((p) => { const q = p.replace(/^[+-]/, ''); return q === '' ? NaN : Number(q); }); // a lone sign is not 0
   if (nums.some((n) => !Number.isFinite(n))) return NaN;
   if (nums.length > 1 && (nums[1] >= 60 || (nums[2] ?? 0) >= 60)) return NaN;
   let v = nums[0] + (nums[1] ?? 0) / 60 + (nums[2] ?? 0) / 3600;

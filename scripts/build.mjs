@@ -104,7 +104,7 @@ if (gz > BUDGET_SHELL_GZ) { console.error('Size budget exceeded'); process.exit(
 // ---- attribution rule: no tool attribution anywhere in shipped or source files
 // (patterns are stored encoded so this file does not itself contain the words it rejects)
 const banned = ['XGJjbGF1ZGVcYg==', 'YW50aHJvcGlj', 'Y2hhdGdwdA==', 'b3BlbmFp', 'Y29waWxvdA==', 'Y28tYXV0aG9yZWQtYnk=', 'Z2VuZXJhdGVkIChieXx3aXRoKSAoYW4gKT9haVxi', 'XGJhaVstIF1nZW5lcmF0ZWRcYg==', 'XGJhaVstIF1hc3Npc3RlZFxi'].map((b) => new RegExp(Buffer.from(b, 'base64').toString(), 'i'));
-const scan = [...files, 'README.md', 'NOTICE', 'CITATION.cff', 'package.json', 'server.mjs', 'relay/core.mjs', ...walk('docs').filter((f) => /\.(md|html)$/.test(f)), ...walk('scripts'), ...walk('test'), ...walk('.github')].filter((f) => existsSync(f) && !LAZY.includes(f) && !f.endsWith('.bin'));
+const scan = [...files, 'README.md', 'NOTICE', 'CITATION.cff', 'package.json', 'server.mjs', ...walk('relay'), 'functions/api/relay.js', 'api/relay.js', 'netlify/edge-functions/relay.js', 'wrangler.toml', 'vercel.json', 'netlify.toml', ...walk('docs').filter((f) => /\.(md|html)$/.test(f)), ...walk('scripts'), ...walk('test'), ...walk('.github')].filter((f) => existsSync(f) && !LAZY.includes(f) && !f.endsWith('.bin'));
 const hits = [];
 for (const f of scan) {
   const txt = readFileSync(f, 'utf8');

@@ -14,7 +14,8 @@ async function tap(q, tries = 3) {
     try {
       const r = await fetch(`${TAP}?LANG=ADQL&FORMAT=csv&QUERY=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'SkyShift-build/1.0' }, signal: AbortSignal.timeout(900000) });
       const t = await r.text();
-      if (r.ok && !/QUERY_STATUS" value="ERROR/.test(t)) return parseCSV(t);
+      // IRSA can answer 200 with an error or maintenance page: never treat that as an empty result
+      if (r.ok && !/QUERY_STATUS" value="ERROR|<html/i.test(t)) return parseCSV(t);
       console.warn('TAP error', (t.match(/<INFO[^>]*>([^<]+)/) || [])[1] || t.slice(0, 200));
     } catch (e) { console.warn('TAP failed', e.message); }
     await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
@@ -30,6 +31,7 @@ try {
   const IMG = "energy_bandpassname LIKE 'SPHEREx-D%' AND s_ra IS NOT NULL";
   const span = await tap(`SELECT MIN(t_min) AS t0, MAX(t_min) AS t1 FROM spherex.obscore WHERE ${IMG}`);
   const T0 = Math.floor(span[0].t0), T1 = Math.floor(span[0].t1) + 1;
+  if (!Number.isFinite(T0) || !Number.isFinite(T1)) throw new Error('no time span returned');
   const cells = [], perDayBand = [];
   const windows = []; for (let a = T0; a < T1; a += 20) windows.push([a, Math.min(T1, a + 20)]);
   const runWindow = async ([a, b]) => {
@@ -77,6 +79,7 @@ try {
   const perDay = [...dayMap].sort((x, y) => x[0] - y[0]).map(([d, n]) => ({ d, n }));
   const perBand = [...bandMap].sort((x, y) => (x[0] < y[0] ? -1 : 1)).map(([band, n]) => ({ band, n }));
   const sumDay = perDay.reduce((s, r) => s + r.n, 0), sumBand = perBand.reduce((s, r) => s + r.n, 0);
+  if (!total) throw new Error('no images returned');
   if (sumDay !== total || sumBand !== total) throw new Error(`inconsistent totals: images ${total}, per day ${sumDay}, per detector ${sumBand}`);
   const mission = {
     built: new Date().toISOString(), images: total, firstMjd: span[0].t0, lastMjd: span[0].t1, skyFraction: covered / area,

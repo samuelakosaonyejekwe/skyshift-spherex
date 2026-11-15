@@ -112,6 +112,8 @@ export class RangeSource {
         return await pooled(() => this._once(range, attempt));
       } catch (e) {
         if (e.name === 'AbortError' && this.signal?.aborted) throw e;
+        // a missing file or an impossible range will not change on retry (408 timeout and 429 busy may)
+        if (e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429) throw e;
         lastErr = e;
         await new Promise((r) => setTimeout(r, 150 * (attempt + 1) ** 2));
       }
@@ -130,7 +132,7 @@ export class RangeSource {
       {
         // no-store: the HTTP cache's per-URL lock would serialise parallel ranges (results are cached in IndexedDB)
         const res = await this.fetch(viaHost(this.url, attempt), { headers: { Range: range }, signal: ctl.signal, cache: 'no-store', mode: 'cors' });
-        if (res.status !== 206 && res.status !== 200) throw new Error(`HTTP ${res.status} for ${range}`);
+        if (res.status !== 206 && res.status !== 200) throw Object.assign(new Error(`HTTP ${res.status} for ${range}`), { status: res.status });
         const cr = res.headers.get('content-range');
         if (cr) { const m = cr.match(/\/(\d+)$/); if (m) this.size = Number(m[1]); }
         const buf = new Uint8Array(await res.arrayBuffer());

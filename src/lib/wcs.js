@@ -20,6 +20,7 @@ function sipCoeffs(h, prefix) {
 }
 
 function polyEval(terms, u, v) {
+  if (!terms) return 0;
   let s = 0;
   for (const [p, q, c] of terms) s += c * u ** p * v ** q;
   return s;
@@ -53,7 +54,7 @@ export class CelestialWCS {
   /** FITS 1-based pixel -> [ra, dec] degrees */
   pixToWorld(x, y) {
     let u = x - this.crpix1, v = y - this.crpix2;
-    if (this.A) { const du = polyEval(this.A, u, v), dv = polyEval(this.B, u, v); u += du; v += dv; }
+    if (this.A || this.B) { const du = polyEval(this.A, u, v), dv = polyEval(this.B, u, v); u += du; v += dv; }
     const xi = (this.cd[0][0] * u + this.cd[0][1] * v) * D2R;
     const eta = (this.cd[1][0] * u + this.cd[1][1] * v) * D2R;
     // inverse gnomonic (standard coordinates xi, eta)
@@ -76,11 +77,11 @@ export class CelestialWCS {
     const eta = (this._cd * sd - this._sd * cdd * Math.cos(da)) / cosc * R2D;
     let U = this.icd[0][0] * xi + this.icd[0][1] * eta;
     let V = this.icd[1][0] * xi + this.icd[1][1] * eta;
-    if (this.AP) {
-      const du = polyEval(this.AP, U, V), dv = polyEval(this.BP, U, V);
-      let u = U + du, v = V + dv;
+    if (this.A || this.B) {
+      // start from the inverse SIP polynomials (AP, BP) when the header has them, otherwise from the undistorted pixel
+      let u = U + polyEval(this.AP, U, V), v = V + polyEval(this.BP, U, V);
       // refine with forward SIP so the inverse is consistent with pixToWorld to ~1e-6 px
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 20; i++) {
         const fu = u + polyEval(this.A, u, v) - U;
         const fv = v + polyEval(this.B, u, v) - V;
         if (Math.abs(fu) < 1e-8 && Math.abs(fv) < 1e-8) break;

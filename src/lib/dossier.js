@@ -144,15 +144,18 @@ function frameCanvas(data, N, lims, kind, opts, scale = 6, grid = null, caption 
   ctx.fillStyle = '#0b0e24'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.drawImage(off, 0, 0, W, W);
   // compass and scale bar
-  ctx.strokeStyle = '#fff'; ctx.fillStyle = '#fff'; ctx.lineWidth = 2; ctx.font = '600 13px system-ui, sans-serif';
+  // compass and scale in the image's ink (dark on an inverted white sky), outlined so they read over stars too
+  const inkC = opts.invert && kind !== 'diff' ? '#111' : '#fff', haloC = opts.invert && kind !== 'diff' ? 'rgba(255,255,255,0.9)' : 'rgba(5,6,26,0.85)';
+  const label = (t, x, y) => { ctx.save(); ctx.strokeStyle = haloC; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.strokeText(t, x, y); ctx.restore(); ctx.fillText(t, x, y); };
+  ctx.strokeStyle = inkC; ctx.fillStyle = inkC; ctx.lineWidth = 2; ctx.font = '600 13px system-ui, sans-serif';
   const x0 = W - 30, y0 = W - 30;
   ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0, y0 - 22); ctx.moveTo(x0, y0); ctx.lineTo(x0 - 22, y0); ctx.stroke();
-  ctx.fillText('N', x0 - 4, y0 - 26); ctx.fillText('E', x0 - 36, y0 + 5);
+  label('N', x0 - 4, y0 - 26); label('E', x0 - 36, y0 + 5);
   if (grid) {
     const arcsecPerPx = grid.scale / scale;
     const L = [10, 30, 60, 120, 300, 600].find((a) => a / arcsecPerPx > 50) || 600;
     ctx.fillRect(10, W - 14, L / arcsecPerPx, 3);
-    ctx.fillText(L >= 60 ? `${L / 60}′` : `${L}″`, 10, W - 20);
+    label(L >= 60 ? `${L / 60}′` : `${L}″`, 10, W - 20);
   }
   ctx.fillStyle = '#dfe3ff'; ctx.font = '13px system-ui, sans-serif';
   ctx.fillText(caption.slice(0, Math.floor(W / 7)), 6, W + 22);
@@ -182,6 +185,9 @@ function colourBar(lims, kind, opts) {
 export function writeFitsImage(data, N, grid, cards = {}) {
   const head = [];
   const card = (k, v, c = '') => {
+    // FITS has no NaN or infinity for header numbers: such a keyword is left out; strings are cut to keep the closing quote
+    if (typeof v === 'number' && !Number.isFinite(v)) return;
+    if (typeof v === 'string' && v.length > 68) v = v.slice(0, 68);
     let val = typeof v === 'string' ? `'${v.replace(/'/g, "''").padEnd(8)}'` : typeof v === 'boolean' ? (v ? 'T' : 'F') : Number.isInteger(v) ? String(v) : Number(v).toExponential(12).toUpperCase();
     if (typeof v !== 'string') val = val.padStart(20);
     head.push(`${k.padEnd(8)}= ${val}${c ? ` / ${c}` : ''}`.slice(0, 80).padEnd(80));

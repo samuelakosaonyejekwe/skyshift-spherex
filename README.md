@@ -36,8 +36,8 @@ and the images still work.
 | Criterion | How SkyShift meets it | Evidence |
 |---|---|---|
 | Impact | Free, instant SPHEREx exploration on any device; candidates export as MPC ADES; classroom-ready targets; two hosts and offline use | Live app, [docs/HOSTING.md](docs/HOSTING.md) |
-| Creativity | Sky as a film; wavelength-true colours across 102 bands; user image equations; coverage-glow sky map; all processing in the browser | Time Machine, Explore |
-| Validity | Real data only from the challenge's resources; Astropy-level maths; motions checked against Gaia; limits stated; 24 unit tests, 24 browser checks | [docs/VALIDATION.md](docs/VALIDATION.md), `test/` |
+| Creativity | Sky as a film; wavelength-true colours across 102 bands; user image equations; coverage-glow sky map; images decoded, aligned and measured in the visitor's browser (the relay only gathers the needed bytes and unpacks the small quality-flag window) | Time Machine, Explore |
+| Validity | Real data only, from the challenge's resources plus NASA JPL Horizons for asteroid and comet positions; Astropy-level maths; motions checked against Gaia; limits stated; 50 unit tests, 25 browser checks | [docs/VALIDATION.md](docs/VALIDATION.md), `test/` |
 | Relevance | Every point of the challenge statement mapped to a feature | [docs/CHALLENGE_TRACEABILITY.md](docs/CHALLENGE_TRACEABILITY.md) |
 | Presentation | 7-slide deck per the Space Apps checklist (the demo), with a silent 29.5-second screen recording of the app; every page and tab in English, Greek, Spanish and French | [Presentation](https://samuelakosaonyejekwe.github.io/skyshift-spherex/presentation/) |
 
@@ -51,7 +51,8 @@ pop-up offers updates when a new version or new SPHEREx data is available.
 
 - **Image pixels** stream from IRSA's public cloud copy of SPHEREx (AWS bucket `nasa-irsa-spherex`) straight to each
   visitor's browser using HTTP byte ranges: about 0.24 MB per image for the default 6′ field instead of a 65 MB file (measured; see docs/VALIDATION.md). Requests are
-  spread across the bucket's CORS-enabled hostnames.
+  spread across the bucket's CORS-enabled hostnames. Where a relay answers, it reads the same bytes next to the archive
+  and passes them on in one request per exposure (`?gather=`, `?bundle=`; docs/HOSTING.md).
 - **Image searches** use IRSA TAP live through the relay where one is available; otherwise a static index of every
   SPHEREx image (`scripts/index.mjs`, `src/lib/skyindex.js`), rebuilt every 6 hours by the scheduled workflow and kept in
   the Actions cache (never committed).
@@ -68,10 +69,11 @@ pop-up offers updates when a new version or new SPHEREx data is available.
 - **New releases** need no code change: searches cover every release IRSA serves; superseded releases are listed in
   `config.json` (`excludeReleases`).
 
-## Data sources (the challenge's eight resources only)
+## Data sources (the challenge's eight resources, plus NASA JPL Horizons)
 
 See [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) for the full source map, link chains, CORS behaviour and dates checked.
-SPHEREx (NASA/IPAC IRSA, tutorials), WiseView, Gaia at MAST, NEOSSat (CSA), CADC, the NEOSSat tutorial and CSA open data.
+SPHEREx (NASA/IPAC IRSA, tutorials), WiseView, Gaia at MAST, NEOSSat (CSA), CADC, the NEOSSat tutorial and CSA open data;
+NASA JPL Horizons (added by the author) for the positions of asteroids and comets followed by name.
 
 ## Validation
 
@@ -82,8 +84,8 @@ SPHEREx (NASA/IPAC IRSA, tutorials), WiseView, Gaia at MAST, NEOSSat (CSA), CADC
 ## Limitations
 
 Very bright stars saturate SPHEREx; photometry is quick-look aperture photometry; SPHEREx pixels (6.15″) blend neighbours;
-solar-system object tracks, general name resolution and ice-band markers are left out because no approved source provides
-them; WISE 0855's motion is too faint to measure reliably. Details in the Learn page and docs.
+general name resolution (names work for the five targets, Gaia DR3 IDs, and asteroids and comets through NASA JPL Horizons)
+and ice-band markers are left out because no approved source provides them; WISE 0855's motion is too faint to measure reliably. Details in the Learn page and docs.
 
 ## Development
 

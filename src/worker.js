@@ -51,6 +51,7 @@ async function prefetchBundle(img, grid, rec, opts) {
 }
 
 async function pool(items, limit, fn, signal, { first = limit } = {}) {
+  if (!items.length) return; // nothing would ever release the second wave
   let i = 0;
   let release; const ramp = new Promise((r) => { release = r; });
   signal.addEventListener('abort', () => release(), { once: true }); // a cancelled job never leaves workers waiting

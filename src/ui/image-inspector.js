@@ -133,10 +133,15 @@ export async function inspectImage(buf, name) {
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const ink = disp.negative ? '#b85500' : '#ffb547';
-    ctx.strokeStyle = ink; ctx.lineWidth = 1.5; ctx.font = '12px system-ui'; ctx.fillStyle = ink;
+    ctx.strokeStyle = ink; ctx.lineWidth = 1.5; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = ink; ctx.lineJoin = 'round';
+    const halo = disp.negative ? 'rgba(255,255,255,0.9)' : 'rgba(5,6,26,0.85)';
     marks.forEach((m, i) => {
       const cx = (m.x - view.x) * k, cy = (Hh - 1 - m.y - view.y) * k, r = Math.max(6, (cal?.rAp || 4) * k);
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.stroke(); ctx.fillText(String(i + 1), cx + r + 3, cy - r);
+      ctx.strokeStyle = ink; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.stroke();
+      // measurement number with a contrasting outline, kept inside the picture
+      const t = String(i + 1), w = ctx.measureText(t).width;
+      const tx = cx + r + 3 + w > ctx.canvas.width - 2 ? cx - r - 3 - w : cx + r + 3, ty = Math.max(13, cy - r);
+      ctx.strokeStyle = halo; ctx.lineWidth = 3; ctx.strokeText(t, tx, ty); ctx.fillText(t, tx, ty);
     });
   };
   // magnifier: 10 × 10 image pixels around the pointer, enlarged 15 times

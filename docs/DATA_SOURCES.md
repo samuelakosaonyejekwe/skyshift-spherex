@@ -141,20 +141,21 @@ zero point (median of G + 2.5 log10 flux over isolated, unsaturated stars; `src/
 ## Relay (why it exists)
 
 IRSA TAP/SIA, MAST API, CADC TAP and the mission web pages do not send CORS headers, so a browser cannot read them
-directly. `relay/core.mjs` is a stateless allow-list relay (hosts and path prefixes of the eight seeds only, GET/POST,
+directly. `relay/core.mjs` is a stateless allow-list relay (hosts and path prefixes of the eight seeds and NASA JPL Horizons only, plus byte reads of IRSA's public SPHEREx bucket for `?gather=`, `?flagwin=` and `?bundle=`; GET/HEAD/POST,
 40 MB cap, 55 s timeout, no cookies, no logging, per-client rate limit). An archive's server error is reported in
 `X-Relay-Upstream-Status` with a 200 from the relay (not cached), so clients use their fallbacks instead of failing over
 to another relay, and a 502/503/504 from the relay always means the relay itself is down. It runs as the local server's `/api/relay`, and is
 packaged for Cloudflare Pages Functions, Cloudflare Workers, Netlify Edge, Vercel Edge and Deno Deploy, so two or more
 independent relays can be listed in `config.json`. GitHub Pages cannot run it: there the app skips the same-origin relay
 (`config.json` → `staticHosts`), searches images through the static index (below) and uses any external relay listed
-for catalogues; otherwise saved and built-in data. Image pixels never pass through the relay: they stream from the public
-S3 bucket straight to the user's browser.
+for catalogues; otherwise saved and built-in data. Without a relay, image pixels stream from the public S3 bucket straight
+to the user's browser; with one, the relay's gather and bundle requests read the same bytes next to the bucket and pass them
+on unchanged, and it unpacks only the small quality-flag window. Images are decoded, aligned and measured in the browser.
 
 ## Features left out because no approved source provides the data
 
-- **General object-name resolution**: no name resolver is reached from the seeds; names resolve for the five targets and for
-  Gaia DR3 source IDs only.
+- **General object-name resolution**: no name resolver is reached from the seeds; names resolve for the five targets, Gaia DR3
+  source IDs, and asteroids and comets (NASA JPL Horizons, added by the author) only.
 - **Water, CO₂ and CO ice band markers**: the approved pages read (mission page, User Guide, Explanatory Supplement, SPLICES pages
   and release notes, tutorials) do not state their wavelengths. Lines that are stated are marked.
 - **unWISE image overlay**: WiseView's image backend could not be read; WiseView is linked instead.
@@ -169,6 +170,6 @@ S3 bucket straight to the user's browser.
 | `data/packs/` (not committed) | `scripts/packs.mjs` | SPHEREx level-2b images on IRSA's public S3 bucket (the image list from `data/idx/`, or IRSA TAP): the 6′ field of the five targets and the 13 fastest Gaia DR3 stars that are not targets, one file per detector holding its first 64 exposures in the app's loading order, cut with the app's own code (`renderExposure`); about 3 MB per field in all | every scheduled run |
 | `data/live.json` | `scripts/live.mjs` (`src/lib/livelist.js`) | IRSA public S3 bucket listing: newest planning periods and detector-3 files, shown at once on the Live page | every scheduled run |
 | `data/sources.json` | `scripts/sources.mjs` | the Mission page's checks of the eight resources, run from the build server | every scheduled run |
-| `data/overlays/<target>.json` | `scripts/overlays.mjs` | IRSA TAP `gaia_dr3_source` and `catwise_2020` cones (0.6°) around the five targets | once (fixed catalogue releases) |
+| `data/overlays/<target>.json` | `scripts/overlays.mjs` | IRSA TAP `gaia_dr3_source` and `catwise_2020` cones (0.6°) around the five targets, the brightest 3,000 sources of each catalogue per cone | once (fixed catalogue releases) |
 | `data/fastmovers.json` | `scripts/fastmovers.mjs` | IRSA TAP `gaia_dr3_source`, the 15 stars with pm > 3″/yr (asynchronous TAP job) | once (fixed catalogue release) |
 | `assets/allsky-1000.jpg`, `assets/allsky-1600.jpg` | `scripts/allsky.mjs` | IRSA HiPS `spherex_allsky_cube`, order-3 Allsky previews of cube channels 8, 42, 95 | 2026-11-14 |

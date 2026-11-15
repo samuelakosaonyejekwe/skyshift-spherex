@@ -54,7 +54,7 @@ export async function render(root, route, { go }) {
 
   // ------------------------------------------------------------------ state
   const S = {
-    search: null, exposures: [], frames: new Map(), grid: null, display: null, frame: Math.min(req.t, 999),
+    search: null, exposures: [], frames: new Map(), grid: null, display: null, frame: Math.min(req.t, 999), wantT: req.t ? Math.min(req.t, 999) : null,
     playing: false, timer: 0, blinkPhase: 0, userMode: 'off', userPhase: true, userTimer: 0, loadId: 0, jobId: 0, bytes: 0, t0: 0, skipped: 0,
     view: { s: 1, tx: 0, ty: 0 }, hover: null, tool: null, ruler: null, selected: null,
     cats: { gaia: null, wise: null, neossat: null }, rawPixels: localStorage.getItem('skyshift.rawPixels') === '1', movers: null, variables: null, clickSpec: null,
@@ -152,9 +152,11 @@ export async function render(root, route, { go }) {
   }
 
   // ------------------------------------------------------------------ URL sync
+  // the frame on screen, or the one asked for in the address while the frames are still arriving
+  const curT = () => S.wantT ?? Math.max(0, S.frame);
   function commit(patch, { reload = false, push = false } = {}) {
     const prevKey = loadKey();
-    const nextReq = normalise({ ...req, ...patch });
+    const nextReq = normalise({ ...req, ...(push ? {} : { t: curT() }), ...patch });
     const hash = `#/view?${toParams(nextReq)}`;
     if (push) { go(hash); return; }
     req = nextReq;
@@ -200,7 +202,11 @@ export async function render(root, route, { go }) {
   async function load() {
     const id = ++S.loadId;
     stopPlay();
+    const gridKey = `${req.target.ra},${req.target.dec},${req.fov}`;
     S.grid = makeGrid(req.target.ra, req.target.dec, req.fov);
+    S.afterStream = null;
+    // results in grid pixels of a different field no longer line up with the new grid
+    if (S.gridKey !== gridKey) { S.gridKey = gridKey; S.display = null; S.movers = null; S.variables = null; S.ruler = null; }
     S.userLayer = !req.track ? globalThis.__skyshiftUserLayers?.get(`${req.target.ra.toFixed(6)},${req.target.dec.toFixed(6)},${req.fov}`) || null : null;
     if (S.userLayer) S.userLims = limits([S.userLayer.data], 0.5, 99.5);
     setUserMode(S.userLayer ? (S.userMode && S.userMode !== 'off' ? S.userMode : 'blink') : 'off');
@@ -427,6 +433,7 @@ export async function render(root, route, { go }) {
         vals.sort((a, b) => a - b);
         const signed = vals.length && vals[Math.floor(vals.length * 0.02)] < -0.25 * Math.abs(vals[Math.floor(vals.length * 0.98)]);
         S.display = { frames: exprFrames, groups, lims: limits(exprFrames.map((f) => f.data), req.lo, req.hi, signed), kind: signed ? 'diff' : 'mono', dmaps };
+        if (S.wantT != null && S.wantT < exprFrames.length) S.frame = S.wantT;
         if (S.frame >= exprFrames.length) S.frame = exprFrames.length - 1;
         updateTimeline(); draw();
         return;
@@ -483,6 +490,7 @@ export async function render(root, route, { go }) {
       S.display = { frames, groups, lims: limits(frames.map((f) => f.data), req.lo, req.hi), kind: 'mono' };
     }
     S.display.dmaps = dmaps;
+    if (S.wantT != null && S.wantT < frames.length) S.frame = S.wantT;
     if (S.frame >= frames.length) S.frame = frames.length - 1;
     if (req.mode === 'blink') {
       const [a, b] = req.blink && req.blink[0] < frames.length && req.blink[1] < frames.length ? req.blink : [0, frames.length - 1];
@@ -512,7 +520,7 @@ export async function render(root, route, { go }) {
     const natural = stage.getBoundingClientRect().width;
     const header = document.querySelector('.topbar')?.getBoundingClientRect().height || 0;
     const free = innerHeight - header - (hud?.getBoundingClientRect().height || 0) - bar.getBoundingClientRect().height - 20;
-    if (free < natural) stage.style.width = `${Math.max(innerWidth < 360 ? 150 : innerWidth < 420 ? 180 : 230, Math.floor(free))}px`;
+    if (free < natural) stage.style.width = `${Math.min(natural, Math.max(innerWidth < 360 ? 150 : innerWidth < 420 ? 180 : 230, Math.floor(free)))}px`;
     // checked for the first few seconds after the first frame, while hints and notices above the image settle;
     // never once the visitor has scrolled
     if (!fitScrolled && S.display?.frames?.length) {
@@ -633,7 +641,7 @@ export async function render(root, route, { go }) {
           const [x2, y2] = G(q.ra, q.dec);
           arrow(ctx, x, y, x2, y2, ink('#5ec8ff', '#0069a8'), dpr);
         }
-        if (s.label) { ctx.font = `${11 * dpr}px system-ui`; ctx.fillText(s.label, x + r + 3 * dpr, y - r); }
+        if (s.label) nameTag(ctx, s.label, x, y, r, W, dpr);
       }
     }
     if (req.ov.includes('wise') && S.cats.wise) {
@@ -685,21 +693,56 @@ export async function render(root, route, { go }) {
       ctx.strokeStyle = ink('#ffffff', '#111111'); ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
       const wa = gridToWorld(S.grid, a[0], a[1], cra, cdec), wb = gridToWorld(S.grid, b[0], b[1], cra, cdec);
       const d = separation(wa[0], wa[1], wb[0], wb[1]) * 3600;
-      ctx.font = `600 ${13 * dpr}px system-ui`; ctx.fillStyle = ink('#fff', '#111');
-      ctx.fillText(d >= 120 ? `${(d / 60).toFixed(2)}′` : `${d.toFixed(1)}″`, (x1 + x2) / 2 + 6 * dpr, (y1 + y2) / 2 - 6 * dpr);
+      nameTag(ctx, d >= 120 ? `${(d / 60).toFixed(2)}′` : `${d.toFixed(1)}″`, (x1 + x2) / 2, (y1 + y2) / 2, 4 * dpr, W, dpr);
     }
     // compass + scale bar
     if (req.ov.includes('compass')) {
       const x0 = W - 52 * dpr, y0 = W - 52 * dpr, L = 30 * dpr;
       ctx.strokeStyle = ink('#fff', '#111'); ctx.fillStyle = ink('#fff', '#111'); ctx.lineWidth = 2 * dpr;
       arrow(ctx, x0, y0, x0, y0 - L, ink('#ffffff', '#111111'), dpr); arrow(ctx, x0, y0, x0 - L, y0, ink('#ffffff', '#111111'), dpr);
-      ctx.font = `600 ${12 * dpr}px system-ui`; ctx.fillText('N', x0 - 4 * dpr, y0 - L - 6 * dpr); ctx.fillText('E', x0 - L - 14 * dpr, y0 + 4 * dpr);
+      ctx.font = `700 ${12 * dpr}px system-ui`; haloText(ctx, 'N', x0 - 4 * dpr, y0 - L - 6 * dpr, dpr); haloText(ctx, 'E', x0 - L - 14 * dpr, y0 + 4 * dpr, dpr);
       const arcsecPerPx = S.grid.scale / ((W / n()) * S.view.s);
       const targetArcsec = [10, 30, 60, 120, 300, 600, 1200].find((a) => a / arcsecPerPx > 50 * dpr) || 1200;
       const len = targetArcsec / arcsecPerPx;
       ctx.fillRect(16 * dpr, W - 22 * dpr, len, 3 * dpr);
-      ctx.fillText(targetArcsec >= 60 ? `${targetArcsec / 60}′` : `${targetArcsec}″`, 16 * dpr, W - 28 * dpr);
+      haloText(ctx, targetArcsec >= 60 ? `${targetArcsec / 60}′` : `${targetArcsec}″`, 16 * dpr, W - 28 * dpr, dpr);
     }
+  }
+  // names and readouts drawn on the image: a solid label (light text on a dark pill, or dark on light when inverted)
+  // next to the object without covering it and never running off the image; shortened with "…" only when it is
+  // wider than the whole image
+  function nameTag(ctx, text, x, y, r, W, dpr) {
+    const pad = 5 * dpr, h = 20 * dpr, edge = 3 * dpr;
+    ctx.font = `600 ${13 * dpr}px system-ui, sans-serif`;
+    let t = String(text);
+    while (t.length > 3 && ctx.measureText(t).width + 2 * pad > W - 2 * edge) t = t.slice(0, -2) + '…';
+    const w = ctx.measureText(t).width + 2 * pad;
+    // beside the object (right, then left); if neither fits, centred above or below it, slid sideways to stay inside,
+    // so the label never covers the object itself
+    const gap = 4 * dpr, fitsX = (bx) => bx >= edge && bx + w <= W - edge, fitsY = (by) => by >= edge && by + h <= W - edge;
+    const midX = Math.max(edge, Math.min(W - edge - w, x - w / 2));
+    const spots = [[x + r + gap, y - h / 2], [x - r - gap - w, y - h / 2], [midX, y - r - gap - h], [midX, y + r + gap]];
+    let [bx, by] = spots.find(([sx, sy]) => fitsX(sx) && fitsY(sy)) || spots[y > W / 2 ? 2 : 3];
+    bx = Math.max(edge, Math.min(W - edge - w, bx)); by = Math.max(edge, Math.min(W - edge - h, by));
+    ctx.save();
+    ctx.fillStyle = req.invert ? 'rgba(255,255,255,0.92)' : 'rgba(5,6,26,0.82)';
+    ctx.strokeStyle = req.invert ? 'rgba(0,54,90,0.55)' : 'rgba(159,224,255,0.45)';
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(bx, by, w, h, 5 * dpr); else ctx.rect(bx, by, w, h);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = req.invert ? '#002b49' : '#eaf7ff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(t, bx + pad, by + h / 2 + 0.5 * dpr);
+    ctx.restore();
+  }
+  // short marks (N, E, scale) keep their colour but get a contrasting outline so they read on bright stars too
+  function haloText(ctx, text, x, y, dpr) {
+    ctx.save();
+    ctx.lineJoin = 'round'; ctx.lineWidth = 3 * dpr;
+    ctx.strokeStyle = req.invert ? 'rgba(255,255,255,0.9)' : 'rgba(5,6,26,0.85)';
+    ctx.strokeText(text, x, y); ctx.fillText(text, x, y);
+    ctx.restore();
   }
   function crosshair(ctx, x, y, r, c, dpr) {
     ctx.strokeStyle = c; ctx.lineWidth = 2 * dpr;
@@ -759,7 +802,7 @@ export async function render(root, route, { go }) {
     const N = S.display?.frames.length || 0;
     if (!N) return;
     if (req.mode === 'blink') S.blinkPhase++;
-    else S.frame = (S.frame + d + N) % N;
+    else { S.wantT = null; S.frame = (S.frame + d + N) % N; }
     slider.value = S.frame;
     [...ticks.children].forEach((t, i) => t.classList.toggle('cur', i === S.frame));
     draw();
@@ -773,9 +816,9 @@ export async function render(root, route, { go }) {
   }
   function stopPlay() { S.playing = false; clearTimeout(S.timer); playBtn.replaceChildren(icon('play')); playBtn.setAttribute('aria-label', 'Play'); }
   playBtn.addEventListener('click', () => (S.playing ? stopPlay() : play()));
-  slider.addEventListener('input', () => { S.frame = Number(slider.value); draw(); [...ticks.children].forEach((t, i) => t.classList.toggle('cur', i === S.frame)); });
+  slider.addEventListener('input', () => { S.wantT = null; S.frame = Number(slider.value); draw(); [...ticks.children].forEach((t, i) => t.classList.toggle('cur', i === S.frame)); });
   slider.addEventListener('change', () => { history.replaceState(history.state, '', `#/view?${toParams(normalise({ ...req, t: S.frame }))}`); if (S.tab === 'frame') renderSide(); });
-  speedSel.addEventListener('change', () => commit({ speed: Number(speedSel.value) }));
+  speedSel.addEventListener('change', () => { commit({ speed: Number(speedSel.value) }); if (S.userMode === 'blink') setUserMode('blink'); });
 
   // ------------------------------------------------------------------ pointer: hover, click, pan, zoom, ruler
   const pointers = new Map();
@@ -850,7 +893,6 @@ export async function render(root, route, { go }) {
     const [ra, dec] = gridToWorld(S.grid, gi, gj, cra, cdec);
     // nearest catalogue object within 2 grid px
     let best = null;
-    const yr = mjdToYear(frameMjd() || 61000);
     const consider = (s, cat) => {
       const m = frameMjd() || 61000;
       const p = cat === 'gaia'
@@ -860,7 +902,6 @@ export async function render(root, route, { go }) {
       if (d < 2.2 * S.grid.scale && (!best || d < best.d)) best = { d, s, cat, ra: p.ra, dec: p.dec };
     };
     // known fast movers and labelled objects near the click win over faint neighbours
-    const yr2 = mjdToYear(frameMjd() || 61000);
     let notable = null;
     for (const s of S.cats.gaia?.rows || []) {
       if (!(s.label || Math.hypot(s.pmra || 0, s.pmdec || 0) > 300)) continue;
@@ -883,7 +924,8 @@ export async function render(root, route, { go }) {
     const t = e.target;
     if (t.closest?.('input, textarea, select, button, a, summary, [role=button], [role=tab], [contenteditable], .sheet, .tour, [role=dialog]') && !t.closest?.('.stage')) return;
     if (getSettings().noShortcuts) return;
-    const k = e.key;
+    if (e.ctrlKey || e.metaKey || e.altKey) return; // leave browser shortcuts (Ctrl+R, Ctrl+F…) alone
+    const k = /^[A-Z]$/.test(e.key) ? e.key.toLowerCase() : e.key; // R, G, W, F, I as listed in the key table
     if (k === ' ') { e.preventDefault(); S.playing ? stopPlay() : play(); }
     else if (k === 'ArrowRight') { e.preventDefault(); step(1); }
     else if (k === 'ArrowLeft') { e.preventDefault(); step(-1); }
@@ -998,7 +1040,7 @@ export async function render(root, route, { go }) {
           .map(([o, l, t]) => h('label', { class: 'check', title: t }, h('input', { type: 'checkbox', checked: req.ov.includes(o), onchange: () => toggleOv(o) }), l)))),
       req.target.pmra || req.target.pmdec ? h('label', { class: 'check', title: 'Shift every frame along the proper motion so the target stays centred; background stars then move instead (synthetic tracking).' },
         h('input', { type: 'checkbox', checked: req.track, onchange: (e) => commit({ track: e.target.checked }) }),
-        `Follow the target’s motion (${(Math.hypot(req.target.pmra, req.target.pmdec) / 1000).toFixed(2)}″/yr)`) : null,
+        `Follow the target’s motion (${(Math.hypot(req.target.pmra || 0, req.target.pmdec || 0) / 1000).toFixed(2)}″/yr)`) : null,
     );
   }
   function equationPanel() {
@@ -1034,20 +1076,21 @@ export async function render(root, route, { go }) {
     const lab = h('span', {}, `${label} ${req[key]}%`);
     const inp = h('input', { type: 'range', min, max, step, value: req[key], 'aria-label': label });
     inp.addEventListener('input', () => { const v = Number(inp.value); lab.textContent = `${label} ${v}%`; req = normalise({ ...req, [key]: v }); rebuild(); });
-    inp.addEventListener('change', () => { history.replaceState(history.state, '', `#/view?${toParams(req)}`); });
+    inp.addEventListener('change', () => { history.replaceState(history.state, '', `#/view?${toParams(normalise({ ...req, t: curT() }))}`); });
     return h('label', { class: 'field', style: { flex: 1 } }, lab, inp);
   }
 
   function setWl(a, b) {
     const cur = req.wl || [0.75, 5.0];
+    // emptying either box removes the window (all wavelengths again)
+    if (a === '' || b === '') { if (req.wl) commit({ wl: null }); return; }
     const lo = a != null ? Number(a) : cur[0], hi = b != null ? Number(b) : cur[1];
-    if (!a && !b) return;
     commit({ wl: Number.isFinite(lo) && Number.isFinite(hi) && lo < hi ? [lo, hi] : null });
   }
   function blinkSel(k) {
     const D = S.display;
     const cur = D.blink || [0, D.frames.length - 1];
-    return h('select', { onchange: (e) => { const b = [...cur]; b[k] = Number(e.target.value); commit({ blink: b }); } },
+    return h('select', { onchange: (e) => { const b = [...cur]; b[k] = Number(e.target.value); b.sort((x, y) => x - y); commit({ blink: b }); } },
       D.frames.map((_, i) => h('option', { value: i, selected: cur[k] === i }, `${i + 1}: ${niceDate(frameMjd(i))}`)));
   }
   function segment(opts, value, on) {
@@ -1101,7 +1144,7 @@ export async function render(root, route, { go }) {
       markers: LINES,
       bands: DETECTORS.map((d) => ({ x0: d.range[0], x1: d.range[1], color: getComputedStyle(document.documentElement).getPropertyValue(`--d${d.id}`) || '#888', label: `D${d.id}`, short: `D${d.id}` })),
       xRange: [0.72, 5.03],
-      legend: [...new Set(ep.values())].sort().map((e) => ({ color: EPOCH_COLORS[e % EPOCH_COLORS.length], label: `Survey pass ${e + 1}` })).concat(pts.some(questionable) ? [{ color: '#aaa', label: 'questionable', hollow: true }] : []),
+      legend: [...new Set(ep.values())].sort((a, b) => a - b).map((e) => ({ color: EPOCH_COLORS[e % EPOCH_COLORS.length], label: `Survey pass ${e + 1}` })).concat(pts.some(questionable) ? [{ color: '#aaa', label: 'questionable', hollow: true }] : []),
       onPoint: (pt) => focusExposure(pt.ref.uri),
     };
   }
@@ -1201,7 +1244,7 @@ export async function render(root, route, { go }) {
   function focusExposure(uri) {
     const D = S.display; if (!D) return;
     const i = D.frames.findIndex((f) => f.group.some((e) => e.meta.uri === uri));
-    if (i >= 0) { stopPlay(); S.frame = i; slider.value = i; draw(); S.tab = 'frame'; renderTabs(); renderSide(); }
+    if (i >= 0) { stopPlay(); S.wantT = null; S.frame = i; slider.value = i; draw(); S.tab = 'frame'; renderTabs(); renderSide(); }
   }
 
   function sideFrames() {
@@ -1216,7 +1259,7 @@ export async function render(root, route, { go }) {
       else if (D.kind === 'diff') paintDiff(fr.data, im.data, D.lims, { invert: req.invert });
       else paint(fr.data, im.data, D.lims, { stretch: req.stretch, cmap: cmapFor(fr), invert: req.invert });
       c.getContext('2d').putImageData(im, 0, 0);
-      const pick = () => { stopPlay(); if (req.mode === 'blink') commit({ mode: 'movie' }); S.frame = i; slider.value = i; draw(); renderSide(); };
+      const pick = () => { stopPlay(); S.wantT = null; if (req.mode === 'blink') commit({ mode: 'movie' }); S.frame = i; slider.value = i; draw(); renderSide(); };
       c.addEventListener('click', pick); c.addEventListener('keydown', (e) => { if (e.key === 'Enter') pick(); });
       grid.append(h('figure', { class: 'thumb-fig' }, c, h('figcaption', { class: 'tiny' }, `${i + 1} · ${niceDate(frameMjd(i))}`)));
     });
@@ -1505,7 +1548,7 @@ export async function render(root, route, { go }) {
     const measure = () => {
       const N = S.display?.frames.length || 0;
       if (!N) return;
-      S.frame = N - 1; slider.value = S.frame; draw();
+      S.wantT = null; S.frame = N - 1; slider.value = S.frame; draw();
       const [ra, dec] = frameCenter(N - 1);
       S.selected = { ra, dec }; S.tab = 'object'; renderTabs(); renderSide(); drawOverlay();
     };
@@ -1564,7 +1607,7 @@ export async function render(root, route, { go }) {
   }
   function shareDialog() {
     const url = new URL(location.href);
-    const qs = toParams(normalise({ ...req, t: S.frame }));
+    const qs = toParams(normalise({ ...req, t: curT() }));
     const page = `${url.origin}${url.pathname}`;
     const link = `${page}?${qs}`;
     const embedQs = new URLSearchParams(qs); embedQs.set('embed', '1');
@@ -1576,7 +1619,7 @@ export async function render(root, route, { go }) {
     sheet(h('div', { class: 'grid' }, h('h2', {}, 'Share or embed this view'),
       h('p', { class: 'muted' }, 'The link holds the whole view (position, field, detectors, mode, stretch, overlays and frame), so others see exactly what you see.'),
       box('Link', link), box('Embed code (iframe)', iframe),
-      h('p', { class: 'tiny' }, 'URL parameters: ra, dec (degrees or sexagesimal), fov (arcmin), det (e.g. 456), wl (e.g. 3-4), group (exposure|day|survey), mode (movie|blink|diff|stack|color), stretch, lo, hi, invert, cmap, speed (ms), track, ov, t, embed. WiseView-style size, speed, invert, diff, linear, gaia, window, pmra, pmdec are accepted too. Full list on the Learn page.'),
+      h('p', { class: 'tiny' }, 'URL parameters: ra, dec (degrees or sexagesimal), fov (arcmin), det (e.g. 456), wl (e.g. 3-4), group (exposure|day|survey), mode (movie|blink|diff|stack|color|expr), stretch, lo, hi, invert, cmap, speed (ms), track, ov, t, embed. WiseView-style size, speed, invert, diff, linear, gaia, window, pmra, pmdec are accepted too. Full list on the Learn page.'),
       navigator.share ? h('button', { class: 'btn primary', onclick: () => navigator.share({ title: `SkyShift: ${name}`, url: link }).catch(() => {}) }, 'Share…') : null), { label: 'Share or embed' });
   }
   function tour() {
@@ -1587,19 +1630,26 @@ export async function render(root, route, { go }) {
     const ring = h('div', { class: 'tour-ring' });
     const box = h('div', { class: 'tour', role: 'dialog', 'aria-label': 'Guided tour' });
     document.body.append(ring, box);
-    const end = () => { ring.remove(); box.remove(); localStorage.setItem('skyshift.toured', '1'); S.endTour = null; };
+    // Escape leaves the tour (it is a dialog); the ring and box follow the highlighted control when the page scrolls or resizes
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); end(); } };
+    const place = () => {
+      const el = steps[Math.min(k, steps.length - 1)][0], r = el.getBoundingClientRect();
+      Object.assign(ring.style, { left: `${r.left - 6}px`, top: `${r.top - 6}px`, width: `${r.width + 12}px`, height: `${r.height + 12}px` });
+      const top = r.bottom + 12 + 160 < innerHeight ? r.bottom + 12 : Math.max(12, r.top - 172);
+      Object.assign(box.style, { left: `${Math.min(innerWidth - 352, Math.max(12, r.left))}px`, top: `${top}px` });
+    };
+    const end = () => { ring.remove(); box.remove(); localStorage.setItem('skyshift.toured', '1'); S.endTour = null; document.removeEventListener('keydown', onKey, true); removeEventListener('scroll', place); removeEventListener('resize', place); };
     S.endTour = end;
+    document.addEventListener('keydown', onKey, true); addEventListener('scroll', place, { passive: true }); addEventListener('resize', place);
     const show = () => {
       if (k >= steps.length) return end();
       const [el, text] = steps[k];
       el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       setTimeout(() => {
-        const r = el.getBoundingClientRect();
-        Object.assign(ring.style, { left: `${r.left - 6}px`, top: `${r.top - 6}px`, width: `${r.width + 12}px`, height: `${r.height + 12}px` });
+        if (!box.isConnected) return;
         box.replaceChildren(h('p', {}, text), h('div', { class: 'row' }, h('span', { class: 'tiny' }, `${k + 1}/${steps.length}`), h('div', { class: 'spacer' }),
           h('button', { class: 'btn small ghost', onclick: end }, 'Skip'), h('button', { class: 'btn small primary', onclick: () => { k++; show(); } }, k === steps.length - 1 ? 'Done' : 'Next')));
-        const top = r.bottom + 12 + 160 < innerHeight ? r.bottom + 12 : Math.max(12, r.top - 172);
-        Object.assign(box.style, { left: `${Math.min(innerWidth - 352, Math.max(12, r.left))}px`, top: `${top}px` });
+        place();
         box.querySelector('.primary').focus();
       }, 250);
     };
@@ -1723,7 +1773,7 @@ export function update(r) {
 function renderEmpty(root, go) {
   root.append(h('div', { class: 'card empty' },
     h('h1', {}, 'Choose a patch of sky'),
-    h('p', {}, 'Open a challenge target from the home page, type coordinates, or add ?ra=…&dec=… to the address.'),
+    h('p', {}, 'Open a challenge target from Explore, type coordinates, or add ?ra=…&dec=… to the address.'),
     h('div', { class: 'row', style: { justifyContent: 'center' } },
       h('a', { class: 'btn primary', href: '#/' }, 'Go to search'),
       h('a', { class: 'btn', href: '#/view?ra=133.786245&dec=-7.244372&name=WISE%200855%E2%88%920714&id=wise0855&det=456&mode=blink' }, 'Try WISE 0855'))));

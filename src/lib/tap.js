@@ -253,7 +253,7 @@ async function bundledCone(kind, ra, dec, radiusDeg) {
   if (!o?.[kind] || radiusDeg > o.radiusDeg + 1e-6) return null;
   const cosd = Math.cos((dec * Math.PI) / 180);
   const rows = o[kind].rows.map((r) => Object.fromEntries(o[kind].cols.map((c, i) => [c, r[i]])))
-    .filter((r) => Math.hypot((r.ra - ra) * cosd, r.dec - dec) <= radiusDeg);
+    .filter((r) => Math.hypot((((r.ra - ra + 540) % 360) - 180) * cosd, r.dec - dec) <= radiusDeg);
   return { via: `built-in ${kind === 'gaia' ? 'Gaia DR3' : 'CatWISE2020'} list from IRSA TAP (${o.built.slice(0, 10)})`, rows };
 }
 

@@ -27,7 +27,7 @@ export function normaliseWcs(h) {
 let RAND = null;
 function randTable() {
   if (RAND) return RAND;
-  RAND = new Float64Array(10000);
+  RAND = new Float32Array(10000); // single precision, as CFITSIO stores the table
   let seed = 1;
   for (let i = 0; i < 10000; i++) { const t = 16807 * seed; seed = t - 2147483647 * Math.floor(t / 2147483647); RAND[i] = seed / 2147483647; }
   return RAND;
@@ -58,7 +58,9 @@ function readTileCompressed(bytes, h, dataStart) {
   const float = h.ZBITPIX < 0, dither = String(h.ZQUANTIZ || '').trim();
   const tiles1 = Math.ceil(W / tw), out = new Float32Array(W * H);
   const R = float && /SUBTRACTIVE_DITHER/.test(dither) ? randTable() : null;
-  for (let row = 0; row < h.NAXIS2; row++) {
+  // tiles of the first image plane only (a data cube stores further planes in later rows)
+  const nTiles = Math.min(h.NAXIS2, tiles1 * Math.ceil(H / th));
+  for (let row = 0; row < nTiles; row++) {
     const r0 = dataStart + row * rowBytes;
     const n = cd.desc === 'Q' ? Number(dv.getBigInt64(r0 + cd.off, false)) : dv.getInt32(r0 + cd.off, false);
     const off = cd.desc === 'Q' ? Number(dv.getBigInt64(r0 + cd.off + 8, false)) : dv.getInt32(r0 + cd.off + 4, false);
@@ -151,6 +153,9 @@ export function imageMjd(h) {
   let d = h['DATE-OBS'] || h['DATE-AVG'];
   if (!d) return null;
   d = String(d).trim();
+  // the pre-2000 FITS form 'dd/mm/yy' (years 1900-1999), which Date.parse would read as month/day
+  const old = d.match(/^(\d\d)\/(\d\d)\/(\d\d)$/);
+  if (old) d = `19${old[3]}-${old[2]}-${old[1]}`;
   if (!/T/.test(d) && h['TIME-OBS']) d = `${d}T${String(h['TIME-OBS']).trim()}`;
   const t = Date.parse(/Z$|[+-]\d\d:\d\d$/.test(d) ? d : `${d}Z`);
   return Number.isFinite(t) ? t / 86400000 + 40587 : null;

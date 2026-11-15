@@ -97,7 +97,7 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
   const scheduled = await fetch('./data/sources.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   root.append(
     embedded ? null : h('h1', {}, 'Data freshness'),
-    h('p', { class: 'muted prose' }, 'SkyShift uses only the eight resources listed by the challenge, and pages and services reached from them. Every check below runs now, from your device, against the live sites. Archives that do not allow direct browser access are reached through a small relay that only forwards to these sites.'),
+    h('p', { class: 'muted prose' }, 'SkyShift uses the eight resources listed by the challenge, and pages and services reached from them, plus NASA JPL Horizons for asteroid and comet positions by name. Every check below runs now, from your device, against the live sites. Archives that do not allow direct browser access are reached through a small relay that only forwards to these sites.'),
     h('div', { class: 'row', style: { marginBottom: '12px' } }, refreshBtn, stamp, h('span', { class: 'tiny' }, bundle.generated ? ` · built-in fallback image lists refreshed ${niceDate(bundle.generated)}` : '')),
     grid);
   const cards = new Map();
@@ -153,7 +153,7 @@ export async function render(root, route, ctx, { embedded = false } = {}) {
           c.status.className = 'src-status bad';
           c.status.textContent = navigator.onLine ? 'Not reachable now' : 'Offline';
           c.body.replaceChildren(h('p', { class: 'notice warn' }, `${e.message || e}`),
-            prev ? h('p', {}, `Last good check ${niceDateTime(prev.at)}: ${prev.extra || (prev.lines || []).slice(0, 2).join(' · ')}`) : null);
+            prev ? h('p', {}, `Last good check ${niceDateTime(new Date(prev.at))}: ${prev.extra || (prev.lines || []).slice(0, 2).join(' · ')}`) : null);
         }
         relayout();
       }

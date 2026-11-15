@@ -46,7 +46,7 @@ export function uploadPanel({ go }) {
   ['dragenter', 'dragover'].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add('over'); }));
   ['dragleave', 'drop'].forEach((ev) => zone.addEventListener(ev, () => zone.classList.remove('over')));
   zone.addEventListener('drop', (e) => { e.preventDefault(); handle([...e.dataTransfer.files]); });
-  input.addEventListener('change', () => handle([...input.files]));
+  input.addEventListener('change', () => { const files = [...input.files]; input.value = ''; handle(files); }); // the same file can be chosen again
 
   async function handle(files) {
     out.replaceChildren(h('p', { class: 'tiny' }, `Reading ${files.length} file${files.length > 1 ? 's' : ''}…`));

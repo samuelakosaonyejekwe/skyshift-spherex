@@ -17,7 +17,7 @@ export async function render(root) {
 
     h('h2', { id: 'start' }, 'Getting started'),
     h('ol', {},
-      h('li', {}, 'On Home, type a target: a challenge target name, coordinates (decimal degrees or h m s / d m s), galactic coordinates like ', h('code', {}, 'l=30 b=2'), ', or ', h('code', {}, 'Gaia DR3 <source id>'), '.'),
+      h('li', {}, 'On Explore, type a target: a challenge target name, an asteroid or comet name (opened on the Chase page), coordinates (decimal degrees or h m s / d m s), galactic coordinates like ', h('code', {}, 'l=30 b=2'), ', or ', h('code', {}, 'Gaia DR3 <source id>'), '.'),
       h('li', {}, 'SkyShift asks the IRSA archive for every SPHEREx image covering that point, then streams only the pixels it needs straight from IRSA’s public cloud copy.'),
       h('li', {}, 'Press Play. By default each frame adds together one six-month pass of the sky, so the film shows how the field changed between passes.'),
       h('li', {}, 'Click an object for its details and spectrum; mark anything interesting as a candidate.')),
@@ -63,9 +63,9 @@ export async function render(root) {
     h('table', { class: 'table' }, h('tr', {}, h('th', {}, 'Parameter'), h('th', {}, 'Meaning')),
       [['ra, dec', 'Position: degrees (133.786) or sexagesimal (08:55:10.8, -07:14:42)'], ['name, id', 'Label shown for the field; id of a preset (barnard, epsindib, wise0855, rwaur, rdra)'], ['target', 'Open a preset by id, e.g. target=rdra'],
         ['pmra, pmdec, epoch', 'Proper motion (mas/yr, μα* and μδ) and reference epoch (year) for the track and photometry'], ['fov', 'Field of view in arcminutes (1–60)'], ['det', 'Detector arrays, e.g. 456'], ['wl', 'Wavelength window in µm, e.g. 3-4'],
-        ['group', 'exposure, day or survey'], ['mode', 'movie, blink, diff, stack or color'], ['diffref', 'mean, first or prev'], ['blink', 'Two frame numbers (from 0), e.g. 0,3'],
+        ['group', 'exposure, day or survey'], ['mode', 'movie, blink, diff, stack, color or expr'], ['expr, where', 'Image equation and selection, as typed in the equation box'], ['diffref', 'mean, first or prev'], ['blink', 'Two frame numbers (from 0), e.g. 0,3'],
         ['stretch, lo, hi', 'asinh/log/sqrt/linear and black/white percentiles'], ['invert, cmap', 'Inverted greyscale; colour map gray/viridis/heat/ice'], ['speed', 'Milliseconds per frame'], ['track', '1 to follow the target’s proper motion'],
-        ['ov', 'Overlays: gaia, wise, flags, track, compass'], ['t', 'Frame number to open on'], ['embed', '1 for the compact embeddable view']].map(([a, b]) => h('tr', {}, h('td', { class: 'mono' }, a), h('td', {}, b)))),
+        ['ov', 'Overlays: gaia, wise, flags, track, compass'], ['eph', 'Follow an asteroid or comet loaded on the Chase page'], ['t', 'Frame number to open on'], ['embed', '1 for the compact embeddable view']].map(([a, b]) => h('tr', {}, h('td', { class: 'mono' }, a), h('td', {}, b)))),
     h('p', {}, 'WiseView-style parameters are understood too: ', h('code', {}, 'size'), ' (unWISE pixels of 2.75″), ', h('code', {}, 'speed'), ', ', h('code', {}, 'invert'), ', ', h('code', {}, 'linear'), ', ', h('code', {}, 'diff'), ', ', h('code', {}, 'gaia'), ', ', h('code', {}, 'window'), ' (years; ≥0.25 gives one frame per survey), ', h('code', {}, 'pmra'), '/', h('code', {}, 'pmdec'), ' (read as mas/yr). Parameters SkyShift has no use for are ignored.'),
     h('p', {}, 'Embed code (Share → Embed) gives an iframe. The embedded app runs in its own page and cannot read or change the page that hosts it.'),
 
@@ -88,9 +88,9 @@ export async function render(root) {
       h('li', {}, 'SPHEREx pixels are 6.15″, so neighbouring objects blend; SkyShift warns when Gaia stars fall inside the photometry aperture. Forced photometry of blends is not yet implemented.'),
       h('li', {}, 'Photometry is simple aperture photometry for quick looks, not a replacement for the IRSA SPHEREx Spectrophotometry Tool.'),
       h('li', {}, 'Asteroids and comets: type their name, number or designation on the Chase page (positions from NASA JPL Horizons, an extra source beyond the challenge’s resources), or upload your own table of times and positions; SkyShift follows them along it.'),
-      h('li', {}, 'Object names resolve only for the five challenge targets and Gaia DR3 source IDs; use coordinates for anything else.'),
+      h('li', {}, 'Star names resolve for the five challenge targets; any other star opens by its coordinates or its Gaia DR3 source ID. Asteroid and comet names are looked up in NASA JPL Horizons.'),
       h('li', {}, 'Exact water, CO₂ and CO ice band wavelengths were not found in the approved sources, so they are not marked on spectra.'),
-      h('li', {}, 'Image pixels stream directly from IRSA’s cloud bucket. Searches for new positions use IRSA’s live search through a small relay where one is available, and otherwise a pre-built index of every SPHEREx image, refreshed from IRSA every 6 hours. Gaia, WISE and NEOSSat overlays need the relay; without it the app says so and the images still work.')),
+      h('li', {}, 'Image pixels come from IRSA’s cloud bucket, read directly or collected in one request by a small relay where one is available. Searches for new positions use IRSA’s live search through a small relay where one is available, and otherwise a pre-built index of every SPHEREx image, refreshed from IRSA every 6 hours. Gaia, WISE and NEOSSat overlays need the relay; without it the app says so and the images still work.')),
   ));
   root.append(article);
   return () => article.dispose?.();

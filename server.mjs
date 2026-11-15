@@ -55,7 +55,8 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     if (url.pathname === '/api/relay') return await relay(req, res, url); // awaited, so a failing request is answered, not fatal
-    let p = decodeURIComponent(url.pathname);
+    let p;
+    try { p = decodeURIComponent(url.pathname); } catch { res.writeHead(400, { 'Content-Type': 'text/plain' }).end('Bad request'); return; }
     if (p.endsWith('/')) p += 'index.html';
     const file = normalize(join(ROOT, p));
     if (file !== ROOT && !file.startsWith(ROOT + sep)) { res.writeHead(403).end(); return; }

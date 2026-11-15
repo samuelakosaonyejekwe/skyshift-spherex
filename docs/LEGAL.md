@@ -46,4 +46,4 @@ Apps partner agency and Gaia is listed by the challenge itself.
 ## Privacy
 
 No accounts, no analytics, no tracking. Requests go from the user's browser to the archives (directly, or via the
-allow-listed relay, which forwards and keeps no logs). Saved fields, candidates, uploads and caches stay in the browser.
+allow-listed relay, which forwards and writes no logs; it keeps only a per-minute request count per client address, in memory, for its rate limit). Saved fields, candidates, uploads and caches stay in the browser.

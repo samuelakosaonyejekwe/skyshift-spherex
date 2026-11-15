@@ -1,10 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handle, parseGather } from '../relay/core.mjs';
+import { handle, parseGather, isAllowed } from '../relay/core.mjs';
 
 const FILE = 'https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/qr3/level2/2026W40_1A/l2b-v20-2026-279/1/level2_2026W40_1A_0001_1D1_spx_l2b-v20-2026-279.fits';
 
-test('gather accepts only SPHEREx files of the public bucket and bounded ranges', () => {
+test('relay forwards only to allow-listed pages; gather only to SPHEREx files of the public bucket, with bounded ranges', () => {
+  assert.ok(isAllowed('https://irsa.ipac.caltech.edu/TAP/sync?QUERY=x'));
+  assert.ok(isAllowed('https://mast.stsci.edu/api/v0/invoke', 'POST'));
+  for (const u of ['https://irsa.ipac.caltech.edu@evil.example/TAP/', 'https://evil.example/#@irsa.ipac.caltech.edu/TAP/', 'https://irsa.ipac.caltech.edu.evil.example/TAP/',
+    'https://user:pw@irsa.ipac.caltech.edu/TAP/', 'https://irsa.ipac.caltech.edu:8443/TAP/', 'https://irsa.ipac.caltech.edu/TAP/../admin', 'https://github.com/asc-csa/NEOSSAT_Tutorial-other',
+    'file:///etc/passwd', 'http://127.0.0.1/', 'not a url']) assert.equal(isAllowed(u), false, u);
+  assert.equal(isAllowed('https://irsa.ipac.caltech.edu/SIA?x', 'POST'), false);
+  assert.match(parseGather(FILE.replace('.amazonaws.com/', '.amazonaws.com:8443/'), '0-1').error, /only for SPHEREx/);
   assert.ok(parseGather(FILE, '0-9,100-199').spans.length === 1);
   assert.match(parseGather('https://example.com/x.fits', '0-1').error, /only for SPHEREx/);
   assert.match(parseGather(FILE.replace('.fits', '.txt'), '0-1').error, /only for SPHEREx/);

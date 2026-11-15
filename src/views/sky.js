@@ -68,7 +68,7 @@ export async function render(root, route, { go }) {
     aladin.addOverlay(ov);
     const half = req.fov / 120, cosd = Math.cos((t.dec * Math.PI) / 180) || 1e-6;
     ov.add(A.polygon([[t.ra + half / cosd, t.dec - half], [t.ra - half / cosd, t.dec - half], [t.ra - half / cosd, t.dec + half], [t.ra + half / cosd, t.dec + half]]));
-    info.textContent = `Centred on ${t.name || `${formatRA(t.ra)} ${formatDec(t.dec)}`}. Yellow box = the field shown in Explore.`;
+    info.textContent = `Centred on ${t.name || `${formatRA(t.ra)} ${formatDec(t.dec)}`}. Yellow box = the field shown in the Time Machine.`;
     // catalogues
     const rad = Math.min(0.5, Math.max(0.05, req.fov / 60));
     // catalogues: brightest sources only, so the SPHEREx sky stays visible; toggles below the map
@@ -99,11 +99,11 @@ export async function render(root, route, { go }) {
     };
     fetch(`${SPHEREX_HIPS}/properties`).then((r) => r.text()).then((txt) => {
       const get = (k) => (txt.match(new RegExp(`^${k}\\s*=\\s*(.+)$`, 'm')) || [])[1]?.trim();
-      props.textContent = `HiPS: ${get('obs_title') || 'SPHEREx'} · released ${get('hips_release_date') || '?'} · ${get('hips_cube_depth') || '?'} spectral frames · served by IRSA (${get('hips_copyright') || 'Caltech/IPAC'}). The HiPS PNG tiles are for visualisation only (fixed stretch). Aladin opens the cube’s middle channel, which IRSA leaves blank, so SkyShift shows the neighbouring channel (index 49, about 2.4 µm) instead; use Explore for every wavelength.`;
+      props.textContent = `HiPS: ${get('obs_title') || 'SPHEREx'} · released ${get('hips_release_date') || '?'} · ${get('hips_cube_depth') || '?'} spectral frames · served by IRSA (${get('hips_copyright') || 'Caltech/IPAC'}). The HiPS PNG tiles are for visualisation only (fixed stretch). Aladin opens the cube’s middle channel, which IRSA leaves blank, so SkyShift shows the neighbouring channel (index 49, about 2.4 µm) instead; use the Time Machine for every wavelength.`;
     }).catch(() => {});
   } catch (e) {
     console.warn(e);
-    host.replaceChildren(h('div', { class: 'empty' }, navigator.onLine ? `The sky map could not start (${e.message || e}).` : 'The sky map needs a connection the first time. Explore works offline for saved fields.'));
+    host.replaceChildren(h('div', { class: 'empty' }, navigator.onLine ? `The sky map could not start (${e.message || e}).` : 'The sky map needs a connection the first time. The Time Machine works offline for saved fields.'));
     info.textContent = '';
   }
   return () => { skyVisit++; if (atlas) atlas.onClick = null; host.remove(); /* the map instance is kept for the next visit */ };

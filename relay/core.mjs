@@ -53,7 +53,7 @@ export function isAllowed(target, method = 'GET') {
   return list.some((p) => u.pathname === p.replace(/[/?]$/, '') || (pathq.startsWith(p) && (/[/?]$/.test(p) || /^[/?.]|^$/.test(pathq.slice(p.length)))));
 }
 
-const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+const json = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { ...CORS, 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' } });
 
 // best-effort in-memory rate limit (per isolate / process)
 const hits = new Map();
@@ -83,7 +83,7 @@ const GATHER = { ranges: 600, want: 6 * 1024 * 1024, fetch: 24 * 1024 * 1024, sp
 export function parseGather(target, rspec) {
   let u;
   try { u = new URL(target); } catch { return { error: 'bad url' }; }
-  if (u.protocol !== 'https:' || !GATHER_HOSTS.includes(u.hostname) || u.search || u.username || !/^\/[\w./-]+\.fits$/.test(u.pathname)) return { error: 'gather is only for SPHEREx files of IRSA’s public bucket' };
+  if (u.protocol !== 'https:' || !GATHER_HOSTS.includes(u.hostname) || u.search || u.username || u.password || u.port || !/^\/[\w./-]+\.fits$/.test(u.pathname)) return { error: 'gather is only for SPHEREx files of IRSA’s public bucket' };
   const ranges = String(rspec || '').split(',').filter(Boolean).map((x) => x.split('-').map(Number));
   if (!ranges.length || ranges.length > GATHER.ranges) return { error: `1 to ${GATHER.ranges} ranges` };
   let want = 0;
@@ -161,6 +161,7 @@ async function flagWindow(q, fetchImpl) {
     if (!h || h.EXTNAME !== 'FLAGS' || h.ZCMPTYPE !== 'RICE_1' || (h.ZTILE2 ?? 1) !== 1) throw new Error('FLAGS HDU not where expected');
     const W = h.ZNAXIS1, H = h.ZNAXIS2, rowBytes = h.NAXIS1, dataStart = w.off + p.end, heapStart = dataStart + (h.THEAP ?? h.NAXIS1 * h.NAXIS2);
     const y0 = Math.max(1, w.y0), y1 = Math.min(H, w.y1), x0 = Math.max(1, w.x0), x1 = Math.min(W, w.x1);
+    if (x1 < x0 || y1 < y0) throw new Error('flag window outside the image');
     const desc = await get(dataStart + (y0 - 1) * rowBytes, dataStart + y1 * rowBytes - 1);
     const dv = new DataView(desc.buffer, desc.byteOffset, desc.byteLength);
     const rows = []; let lo = Infinity, hi = 0;
@@ -292,12 +293,14 @@ export async function handle(request, { clientIp = 'anon', fetchImpl = fetch } =
       const loc = up.status >= 300 && up.status < 400 ? up.headers.get('location') : null;
       if (!loc) break;
       const next = new URL(loc, url).toString();
-      if (hop >= 3 || !isAllowed(next, 'GET')) {
+      // 307/308 repeat the same method (a POST stays a POST), so the next hop is checked for that method
+      const nextMethod = init.method === 'POST' && up.status !== 307 && up.status !== 308 ? 'GET' : init.method;
+      if (hop >= 3 || !isAllowed(next, nextMethod)) {
         clearTimeout(timer);
         return json(403, { error: hop >= 3 ? 'too many redirects' : 'redirect off allow-list' });
       }
       url = next;
-      if (init.method === 'POST' && up.status !== 307 && up.status !== 308) { init.method = 'GET'; delete init.body; }
+      if (nextMethod !== init.method) { init.method = nextMethod; delete init.body; }
     }
   } catch (e) {
     clearTimeout(timer);

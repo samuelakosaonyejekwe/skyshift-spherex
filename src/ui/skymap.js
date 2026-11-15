@@ -85,7 +85,9 @@ export function skyMap({ targets = [], onPick, onTarget, count, coverage = null,
     const gg = el('g', { class: 'mark', tabindex: '0', role: 'button', 'aria-label': `Open ${t.name}` }, mk);
     el('circle', { cx: x * W, cy: y * H, r: 16, class: 'mark-hit' }, gg);
     el('path', { d: star(x * W, y * H, 11), class: 'mark-star' }, gg);
-    const lab = el('text', { x: x * W + 14, y: y * H + 4, class: 'mark-lab' }, gg); lab.textContent = t.name;
+    // names near the right edge open to the left so they are never cut off
+    const right = x > 0.78;
+    const lab = el('text', { x: x * W + (right ? -14 : 14), y: y * H + 4, class: 'mark-lab', 'text-anchor': right ? 'end' : 'start' }, gg); lab.textContent = t.name;
     return { t, gg, x, y };
   });
 

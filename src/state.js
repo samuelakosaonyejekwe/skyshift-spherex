@@ -30,7 +30,7 @@ export const MODES = ['movie', 'blink', 'diff', 'stack', 'color', 'expr'];
 export const GROUPS = ['exposure', 'day', 'survey'];
 export const STRETCHES = ['asinh', 'linear', 'log', 'sqrt'];
 export const CMAPS = ['auto', 'gray', 'heat', 'ice', 'viridis'];
-export const OVERLAYS = ['gaia', 'wise', 'flags', 'track', 'compass', 'grid'];
+export const OVERLAYS = ['gaia', 'wise', 'flags', 'track', 'compass'];
 export const FOV_STEPS = [2, 4, 6, 10, 15, 20, 30, 45, 60];
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -98,7 +98,7 @@ export function fromParams(params) {
   if (p('mode')) out.mode = p('mode');
   if (p('diff') && MODES.includes(p('mode') || '') === false && truthy(p('diff'))) out.mode = 'diff';
   if (p('diffref')) out.diff = p('diffref');
-  if (p('blink')) { const b = String(p('blink')).split(',').map(Number); if (b.length === 2) out.blink = b; }
+  if (p('blink')) { const b = String(p('blink')).split(',').map(Number); if (b.length === 2) out.blink = b.sort((x, y) => x - y); } // A is always the earlier frame
   if (p('stretch')) out.stretch = p('stretch');
   if (p('linear') && truthy(p('linear')) && !p('stretch')) out.stretch = 'linear';
   if (p('lo')) out.lo = Number(p('lo'));

@@ -13,7 +13,7 @@ async function tap(q) {
     try {
       const r = await fetch(`${TAP}?LANG=ADQL&FORMAT=csv&QUERY=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'SkyShift-build/1.0' }, signal: AbortSignal.timeout(600000) });
       const t = await r.text();
-      if (r.ok && !/QUERY_STATUS" value="ERROR/.test(t)) return parseCSV(t);
+      if (r.ok && !/QUERY_STATUS" value="ERROR|<html/i.test(t)) return parseCSV(t);
       console.warn('TAP error', t.slice(0, 200));
     } catch (e) { console.warn('TAP failed', e.message); }
     await new Promise((r) => setTimeout(r, 5000 * (i + 1)));

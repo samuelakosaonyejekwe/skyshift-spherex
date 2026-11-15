@@ -104,7 +104,9 @@ async function route() {
   try {
     const mod = await ROUTES[r.name]();
     if (seq !== renderSeq) return;
-    current?.dispose?.();
+    // the old page is gone from here on: a failed render must not leave it as the page that later updates go to
+    const old = current; current = null;
+    old?.dispose?.();
     // each page renders into its own container: a slow page that finishes after the user has
     // moved on writes into a detached container and can never leak into the next page
     const view = h('div', { class: 'view', 'data-view': r.name });
@@ -137,6 +139,9 @@ async function route() {
       h('button', { class: 'btn primary', onclick: () => location.reload() }, 'Reload')));
   }
 }
+
+// "Skip to content" moves focus to the page without changing the address (#main is not a page)
+document.querySelector('a.skip')?.addEventListener('click', (e) => { e.preventDefault(); main.focus(); main.scrollIntoView(); });
 
 // ---------------- menu ----------------
 const menuBtn = document.getElementById('menuBtn');
@@ -323,7 +328,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
     chk('reduceMotion', 'Reduce motion (no automatic playback)'),
     chk('noShortcuts', 'Turn off single-key keyboard shortcuts (for screen-reader and switch users)'),
     h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => { close(); toast({ title: 'Settings saved', text: 'They apply to the next target you open.', glyph: '⚙', timeout: 2500 }); } }, 'Done'),
-      h('button', { class: 'btn ghost', onclick: () => { localStorage.removeItem('skyshift.settings'); applyTheme(); close(); toast({ title: 'Settings reset', glyph: '⚙', timeout: 2000 }); } }, 'Reset to defaults'))), { label: 'Settings' });
+      h('button', { class: 'btn ghost', onclick: () => { const lang = getSettings().lang; localStorage.removeItem('skyshift.settings'); if (lang && lang !== 'en') { location.reload(); return; } /* back to English */ applyTheme(); close(); toast({ title: 'Settings reset', glyph: '⚙', timeout: 2000 }); } }, 'Reset to defaults'))), { label: 'Settings' });
 });
 // "/" focuses the search box (on Explore) from anywhere
 document.addEventListener('keydown', (e) => {

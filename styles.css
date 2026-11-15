@@ -185,10 +185,9 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; f
 .preset .meta { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 22px 0; }
 .step { display: flex; gap: 12px; align-items: flex-start; }
-.step .n { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: linear-gradient(135deg, #6c5cff, #2f8ee8); }
+.step .n { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: linear-gradient(135deg, #6c5cff, #2f8ee8); color: #fff; }
 .understood { margin-top: 10px; display: grid; gap: 8px; }
 .understood ul { margin: 0; padding-left: 18px; }
-@media (max-width: 860px) { .hero { grid-template-columns: 1fr; } .hero-art { order: -1; } }
 
 /* ---------- viewer ---------- */
 .viewer { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
@@ -202,8 +201,6 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; f
 /* the image area is always dark: give it dark-theme text colours in both themes */
 .stage { --text: #eef0ff; --text-2: #b9bee6; --text-3: #8d93c4; color: var(--text); }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.stage canvas.pix { image-rendering: pixelated; image-rendering: crisp-edges; }
-.stage canvas.smooth { image-rendering: auto; }
 .stage-wrap .hud { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center; min-height: 30px; margin: 0 auto 6px; max-width: 100%; }
 .stage-wrap .hud .chip { font-size: .78rem; padding: 3px 9px; } /* frame details above the image, never covering it */
 .stage .readout { position: absolute; left: 10px; bottom: 10px; font: 12px var(--mono); background: #05061acc; padding: 5px 9px; border-radius: 8px; pointer-events: none; color: #b9bee6; max-width: calc(100% - 20px); } /* fixed dark panel: fixed light text */
@@ -310,7 +307,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; f
 .sheet .grab { width: 44px; height: 5px; border-radius: 3px; background: #ffffff40; margin: -8px auto 14px; }
 .sheet ol.install-steps { counter-reset: s; list-style: none; padding: 0; display: grid; gap: 12px; }
 .sheet ol.install-steps li { counter-increment: s; display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 14px; background: #ffffff0c; border: 1px solid var(--line); }
-.sheet ol.install-steps li::before { content: counter(s); flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: linear-gradient(135deg, #6c5cff, #2f8ee8); }
+.sheet ol.install-steps li::before { content: counter(s); flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: linear-gradient(135deg, #6c5cff, #2f8ee8); color: #fff; }
 .sheet .glyph { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: #fff; color: #007aff; }
 .sheet .glyph svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tour { position: fixed; z-index: 95; max-width: 340px; background: linear-gradient(150deg, #2b2385, #123f73); border: 1px solid #ffffff44; border-radius: 16px; padding: 14px; box-shadow: var(--shadow); }
@@ -444,6 +441,7 @@ blockquote { margin: 8px 0; }
 @media (max-width: 900px) { .chase-grid { grid-template-columns: minmax(0, 1fr); } }
 /* light theme: status pill and tip banner keep readable contrast (measured ≥ 4.5:1) */
 [data-theme="light"] .netpill { color: #0b6a40; background: #3ddc9726; }
+[data-theme="light"] .netpill.off { color: #9b1530; background: #ff6b8122; }
 [data-theme="light"] .suggestion { background: linear-gradient(135deg, #ece8ff, #e3f0ff); border-color: #8b7bff66; color: var(--text); }
 /* light theme: main search box, notifications and the guided tour use light panels with dark text */
 [data-theme="light"] .searchbox input { background: #ffffffee; }
@@ -451,7 +449,7 @@ blockquote { margin: 8px 0; }
 [data-theme="light"] .tour { background: linear-gradient(150deg, #ffffff, #e9edff); color: var(--text); border-color: #8b7bff66; }
 [data-theme="light"] .tour-ring { box-shadow: 0 0 0 4px var(--warm), 0 0 0 9999px #1a1f4d66; }
 [data-theme="light"] .mainnav a:hover, [data-theme="light"] .seg button:hover:not([aria-pressed="true"]) { background: #1a1f4d10; }
-/* Negative view toggle beside the display modes: shown as white-on-black when on */
+/* Invert view toggle beside the display modes: shown as white-on-black when on */
 .neg-btn { gap: 7px; }
 .neg-btn .neg-ico { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid currentColor; background: linear-gradient(90deg, currentColor 50%, transparent 50%); flex: none; }
 .neg-btn[aria-pressed="true"] { background: linear-gradient(135deg, #4a3fd0, #2367b8); color: #fff; border-color: transparent; }

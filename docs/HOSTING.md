@@ -53,7 +53,7 @@ automatically.
 
 - **Gather**: `?gather=<SPHEREx file>&r=<start-end,...>` reads the image rows of one exposure near IRSA's bucket in a few
   large reads and returns only the requested bytes, so a browser makes one request per exposure instead of about 100
-  (limits: 600 ranges, 6 MB asked, 8 reads of at most 24 MB; only files of the public SPHEREx bucket).
+  (limits: 600 ranges, 6 MB asked, at most 8 reads and 24 MB read in all; only files of the public SPHEREx bucket).
 - **Flag windows**: `?flagwin=<SPHEREx file>&off=…&x0=…&x1=…&y0=…&y1=…` decodes the quality flags around a target next to the
   archive and returns only that window (at most 256 × 64 pixels), instead of about 100 kB of compressed full-width rows.
 - **Bundles**: `?bundle=<SPHEREx file>&g=ra,dec,n,scale&p=…&f=target&mjd=…` reads the file's headers next to the archive,

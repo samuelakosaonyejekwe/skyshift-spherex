@@ -90,7 +90,7 @@ ORDER BY phot_g_mean_mag`, { timeout: 60000 });
     findOut)),
     fastSection(),
     movingSection());
-  // Asteroids and comets: the user's own table of times and positions (no orbit service is called)
+  // Asteroids and comets: by name (positions from NASA JPL Horizons) or from the user's own table of times and positions
   function movingSection() {
     const ta = h('textarea', { rows: 5, placeholder: 'Paste a table of times and positions here, one line per time, e.g.\n2026-03-14 00:00  12 34 56.78 +12 34 56.7\n2026-03-15 00:00  12 36 00.00 +12 30 00.0', 'aria-label': 'Table of times and positions', style: { width: '100%', fontFamily: 'var(--mono)', fontSize: '.82rem' } });
     const fileIn = h('input', { type: 'file', accept: '.csv,.tsv,.txt,.dat,.xlsx,.ods,.json', 'aria-label': 'Table file' });
@@ -104,7 +104,7 @@ ORDER BY phot_g_mean_mag`, { timeout: 60000 });
         out.replaceChildren(ephemerisCard(res.ephemeris, name.replace(/\.[^.]+$/, '').replace(/^pasted table$/, ''), go));
       } catch (err) { out.replaceChildren(h('p', { class: 'notice bad' }, `The table could not be read (${err.message}).`)); }
     };
-    fileIn.addEventListener('change', async () => { const f = fileIn.files?.[0]; if (f) read(f.name, await f.arrayBuffer()); });
+    fileIn.addEventListener('change', async () => { const f = fileIn.files?.[0]; fileIn.value = ''; if (f) read(f.name, await f.arrayBuffer()); });
     // by name: positions from NASA JPL Horizons
     const nameIn = h('input', { type: 'text', placeholder: 'Name, number or designation, e.g. 4 Vesta, 67P, C/2023 A3', 'aria-label': 'Asteroid or comet name', style: { flex: '1 1 260px' } });
     const nameOut = h('div');

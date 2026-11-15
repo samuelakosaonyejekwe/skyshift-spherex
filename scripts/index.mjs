@@ -19,7 +19,8 @@ async function tap(q, tries = 4) {
     try {
       const r = await fetch(`${TAP}?LANG=ADQL&FORMAT=csv&QUERY=${encodeURIComponent(q)}`, { headers: { 'User-Agent': 'SkyShift-build/1.0' }, signal: AbortSignal.timeout(900000) });
       const t = await r.text();
-      if (r.ok && !/QUERY_STATUS" value="ERROR/.test(t)) return parseCSV(t);
+      // IRSA can answer 200 with an error or maintenance page: never treat that as an empty result
+      if (r.ok && !/QUERY_STATUS" value="ERROR|<html/i.test(t)) return parseCSV(t);
       console.warn('TAP error', (t.match(/<INFO[^>]*>([^<]+)/) || [])[1] || t.slice(0, 200));
     } catch (e) { console.warn('TAP failed', e.message); }
     await new Promise((r) => setTimeout(r, 10000 * (i + 1)));
