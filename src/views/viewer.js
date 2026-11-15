@@ -4,9 +4,10 @@
 
 import { h, icon, toast, sheet, copyText, download, fmtBytes, fmtDur, downlinkMbps } from '../ui/dom.js';
 import { normalise, fromParams, toParams, MODES, GROUPS, FOV_STEPS } from '../state.js';
+import { loadPack } from '../lib/packs.js';
 import { searchSpherex, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossatCone } from '../lib/tap.js';
 import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE } from '../lib/engine.js';
-import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName, SURVEY_GAP_DAYS } from '../lib/render.js';
+import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName, SURVEY_GAP_DAYS, orderForLoading } from '../lib/render.js';
 import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
 import { formatRA, formatDec, propagate, apparent, mjdToYear, yearToMjd, mjdToISO, niceDate, niceDateTime, separation, toGalactic } from '../lib/coords.js';
 import { presetById, presetToTarget, suggestFor } from '../targets.js';
@@ -142,6 +143,7 @@ export async function render(root, route, { go }) {
     req = nextReq;
     history.replaceState(history.state, '', hash);
     renderModes();
+    if (S.search) renderSuggestion(); // a "Try …" button disappears once its mode is on
     if (reload || loadKey() !== prevKey) load();
     else { rebuild(); renderSide(); }
   }
@@ -175,10 +177,20 @@ export async function render(root, route, { go }) {
     loading.hidden = false;
     loading.querySelector('.boot-orbit').hidden = false;
     setLoad('Finding every SPHEREx image of this patch (IRSA archive)…', 0.03);
-    // 1) instant start from the saved or built-in image list (no network wait)
-    const quick = await quickSpherex(req.target.ra, req.target.dec);
+    // 1) instant start from the saved or built-in image list (no network wait), and the pre-cut frame pack
+    // when this view has one (challenge targets and the fastest Gaia stars): those frames show at once
+    let shown = 0;
+    const onPack = (batch) => {
+      if (id !== S.loadId) return;
+      for (const f of batch) if (!S.frames.has(f.rec.uri)) S.frames.set(f.rec.uri, f);
+      // show frames while the pack is still arriving (first after 2 frames, then about every 700 ms)
+      const now = performance.now();
+      if (S.frames.size >= 2 && (!shown || now - shown > 700)) { shown = now; loading.hidden = true; rebuild(); autoplay(); }
+    };
+    const [saved, pack] = await Promise.all([quickSpherex(req.target.ra, req.target.dec), S.frames.size ? null : loadPack(key, onPack)]);
     if (id !== S.loadId) return;
-    if (quick?.data?.length) { S.search = quick; S.exposures = quick.data; renderSuggestion(); stream(id); }
+    const quick = saved?.data?.length ? saved : pack ? { data: pack.frames.map((f) => f.rec), source: 'pack', ts: Date.parse(pack.built) || null } : null;
+    if (quick?.data?.length) { S.search = quick; S.exposures = quick.data; renderSuggestion(); stream(id); if (pack) autoplay(); }
     // 2) live search (always): adds anything newer than the quick list
     let live;
     try {
@@ -206,7 +218,7 @@ export async function render(root, route, { go }) {
       return;
     }
     if (!quick?.data?.length || added.length) {
-      if (quick?.data?.length && added.length) toast({ title: `${added.length} newer SPHEREx exposure${added.length > 1 ? 's' : ''} found`, text: 'Adding them to the film now.', glyph: '🛰', timeout: 4000 });
+      if (quick?.data?.length && quick.source !== 'pack' && added.length) toast({ title: `${added.length} newer SPHEREx exposure${added.length > 1 ? 's' : ''} found`, text: 'Adding them to the film now.', glyph: '🛰', timeout: 4000 });
       stream(id);
     } else {
       const n = S.exposures.filter((e) => req.dets.includes(e.det)).length, cap = getSettings().maxImages || n;
@@ -239,7 +251,7 @@ export async function render(root, route, { go }) {
       if (m.type === 'frame') {
         S.frames.set(todo[m.index].uri, { data: m.data, flags: m.flags, meta: m.meta, phot: m.phot, rec: todo[m.index] });
         loading.hidden = true;
-        if (!S.autoplayed && S.display?.frames.length >= 2 && !getSettings().reduceMotion && !matchMedia('(prefers-reduced-motion: reduce)').matches && !req.embed) { S.autoplayed = true; play(); }
+        autoplay();
         const now = performance.now();
         if (now - lastBuild > 700) { lastBuild = now; rebuild(); if (['spectrum', 'lightcurve'].includes(S.tab) && !S.clickSpec) renderSide(); }
       } else if (m.type === 'skip') {
@@ -261,24 +273,11 @@ export async function render(root, route, { go }) {
     w.postMessage({ type: 'frames', id: job, items: todo, grid: S.grid, opts: { withFlags: flagMode(), track: req.track ? pm : null, photTrack: pm, concurrency: 12, readMode: effectiveReadMode() } });
     renderSide();
   }
-  const flagMode = () => (req.ov.includes('flags') ? 'field' : getSettings().mask ? 'target' : false);
-
-  /** Round-robin across survey epochs so a playable movie appears as early as possible. */
-  function orderForLoading(list) {
-    const groups = [];
-    let cur = [];
-    for (const e of [...list].sort((a, b) => a.mjd - b.mjd)) {
-      if (cur.length && e.mjd - cur[cur.length - 1].mjd > SURVEY_GAP_DAYS) { groups.push(cur); cur = []; }
-      cur.push(e);
-    }
-    if (cur.length) groups.push(cur);
-    // inside each epoch, alternate detectors so colour/co-adds fill evenly
-    const queues = groups.map((gr) => { const by = {}; gr.forEach((e) => (by[e.det] ||= []).push(e)); const out = []; let any = true; while (any) { any = false; for (const d of Object.keys(by)) if (by[d].length) { out.push(by[d].shift()); any = true; } } return out; });
-    const out = [];
-    let any = true;
-    while (any) { any = false; for (const q of queues) if (q.length) { out.push(q.shift()); any = true; } }
-    return out;
+  /** Start playing once a movie exists (first load only; never with reduced motion or when embedded). */
+  function autoplay() {
+    if (!S.autoplayed && S.display?.frames.length >= 2 && !getSettings().reduceMotion && !matchMedia('(prefers-reduced-motion: reduce)').matches && !req.embed) { S.autoplayed = true; play(); }
   }
+  const flagMode = () => (req.ov.includes('flags') ? 'field' : getSettings().mask ? 'target' : false);
 
   function setLoad(text, f) {
     const m = loading.querySelector('#loadmsg'); if (m) m.textContent = text;
@@ -292,7 +291,7 @@ export async function render(root, route, { go }) {
     const eta = rate ? (remaining * per) / rate * 1000 : null;
     statusLine.replaceChildren();
     if (final && S.moreAvailable > 0) statusLine.append(h('button', { class: 'btn small', style: { marginRight: '8px' }, onclick: () => { S.extraImages = (S.extraImages || 0) + Math.max(60, getSettings().maxImages || 60); stream(S.loadId); } }, `Load ${Math.min(S.moreAvailable, Math.max(60, getSettings().maxImages || 60))} more images`), h('button', { class: 'btn small ghost', style: { marginRight: '8px' }, onclick: () => { S.extraImages = Infinity; stream(S.loadId); } }, `all ${S.moreAvailable + total}`));
-    statusLine.append(`${done}/${total} exposures loaded${S.moreAvailable > 0 ? ` (of ${S.moreAvailable + total} available)` : ''}${S.skipped ? ` (${S.skipped} skipped: outside field or unreadable)` : ''} · ${fmtBytes(S.bytes)} transferred${rate ? ` at ${fmtBytes(rate)}/s` : ''}${!final && eta ? ` · about ${fmtDur(eta)} left` : ''} · source: ${S.search?.source === 'live' ? (S.search.via === 'index' ? `IRSA image index (${S.search.indexBuilt ? `updated ${niceDateTime(S.search.indexBuilt)}` : 'pre-built'})` : 'IRSA live') : S.search?.source || '…'}${S.search?.source === 'live' ? '' : ' (not live)'}`);
+    statusLine.append(`${done}/${total} exposures loaded${S.moreAvailable > 0 ? ` (of ${S.moreAvailable + total} available)` : ''}${S.skipped ? ` (${S.skipped} skipped: outside field or unreadable)` : ''} · ${fmtBytes(S.bytes)} transferred${rate ? ` at ${fmtBytes(rate)}/s` : ''}${!final && eta ? ` · about ${fmtDur(eta)} left` : ''} · source: ${S.search?.source === 'pack' ? `pre-cut SPHEREx frames (made ${niceDateTime(new Date(S.search.ts))})` : S.search?.source === 'live' ? (S.search.via === 'index' ? `IRSA image index (${S.search.indexBuilt ? `updated ${niceDateTime(S.search.indexBuilt)}` : 'pre-built'})` : 'IRSA live') : S.search?.source || '…'}${S.search?.source === 'live' || S.search?.source === 'pack' ? '' : ' (not live)'}`);
   }
 
   // ------------------------------------------------------------------ display building
@@ -413,8 +412,10 @@ export async function render(root, route, { go }) {
     if (req.mode === 'blink' && D.blink) return D.blink[S.blinkPhase % 2];
     return Math.max(0, Math.min(D.frames.length - 1, S.frame));
   }
+  let stageWidth = 0; // measured on resize only: reading layout on every frame is slow on phones
   function sizeCanvases() {
-    const r = stage.getBoundingClientRect();
+    if (!stageWidth) stageWidth = stage.getBoundingClientRect().width;
+    const r = { width: stageWidth };
     const dpr = Math.min(3, devicePixelRatio || 1);
     const W = Math.max(50, Math.round(r.width * dpr));
     for (const c of [imgCanvas, ovCanvas]) if (c.width !== W) { c.width = W; c.height = W; }
@@ -1289,7 +1290,7 @@ export async function render(root, route, { go }) {
     const text = [tip, sg?.text].filter(Boolean).join(' ');
     if (!text) return;
     const btns = [];
-    if (sg && (req.mode !== sg.mode || req.group !== 'survey')) btns.push(h('button', { class: 'btn small primary', onclick: () => commit({ mode: sg.mode, group: 'survey' }) }, `Try ${MODE_INFO[sg.mode][0]}`));
+    if (sg && (req.mode !== sg.mode || req.group !== 'survey')) btns.push(h('button', { class: 'btn small primary', onclick: () => { commit({ mode: sg.mode, group: 'survey' }); if (sg.mode === 'blink') { S.blinkPhase = 0; draw(); play(); } } }, `Try ${MODE_INFO[sg.mode][0]}`));
     if (preset?.id === 'epsindib' && req.fov < 15) btns.push(h('button', { class: 'btn small', onclick: () => commit({ fov: 15, ov: [...new Set([...req.ov, 'gaia'])] }) }, 'Show the host star (15′ field)'));
     if ((preset?.id === 'rwaur' || preset?.id === 'rdra') && S.tab !== 'lightcurve') btns.push(h('button', { class: 'btn small', onclick: () => { S.tab = 'lightcurve'; renderTabs(); renderSide(); } }, 'Open light curve'));
     suggestionBox.append(h('div', { class: 'suggestion', style: { marginBottom: '10px' } }, h('span', { 'aria-hidden': 'true' }, '💡'), h('span', { style: { flex: 1 } }, text), btns));
@@ -1418,7 +1419,7 @@ export async function render(root, route, { go }) {
   }
 
   // ------------------------------------------------------------------ lifecycle
-  const ro = new ResizeObserver(() => draw());
+  const ro = new ResizeObserver(() => { stageWidth = stage.getBoundingClientRect().width; draw(); });
   ro.observe(stage);
   const onNewData = () => { if (S.search) { S.search = null; load(); } };
   window.addEventListener('skyshift:newdata', onNewData);

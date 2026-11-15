@@ -31,7 +31,7 @@ for (const f of files) {
   copyFileSync(f, dest);
   // data files carry only refreshed numbers and time stamps: they are fetched fresh by the service worker, so
   // they stay out of the version and a scheduled data refresh does not make every user re-download the app
-  if (!/^data\/[^/]+\.json$/.test(f)) hash.update(f).update(readFileSync(f));
+  if (!/^data\/[^/]+\.json$|^data\/packs\//.test(f)) hash.update(f).update(readFileSync(f));
 }
 // Backup hosts (docs/HOSTING.md): relays and mirror addresses supplied by the deploy environment (GitHub
 // repository variables RELAY_URLS and MIRROR_URLS, comma-separated) are added to the shipped config, so the
@@ -55,8 +55,9 @@ hash.update(readFileSync('scripts/sw.template.js'));
 const version = hash.digest('hex').slice(0, 12);
 
 // Precache everything except lazily loaded heavy modules.
-// data/overlays/ (built-in catalogue cones, ~0.5 MB each) load only when a target's overlay needs them
-const precache = ['./', ...files.filter((f) => !LAZY.includes(f) && !f.startsWith('data/overlays/')).map((f) => `./${f}`)];
+// data/overlays/ (built-in catalogue cones, ~0.5 MB each) and data/packs/ (pre-cut frames, ~1.5 MB each, by
+// scripts/packs.mjs) load only when a target that has them is opened
+const precache = ['./', ...files.filter((f) => !LAZY.includes(f) && !f.startsWith('data/overlays/') && !f.startsWith('data/packs/')).map((f) => `./${f}`)];
 const sw = readFileSync('scripts/sw.template.js', 'utf8').replace('__VERSION__', version).replace('__PRECACHE__', JSON.stringify(precache, null, 0));
 writeFileSync(join(OUT, 'sw.js'), sw);
 writeFileSync(join(OUT, 'version.json'), JSON.stringify({ version, built: new Date().toISOString() }));
@@ -103,7 +104,7 @@ if (gz > BUDGET_SHELL_GZ) { console.error('Size budget exceeded'); process.exit(
 // ---- attribution rule: no tool attribution anywhere in shipped or source files
 // (patterns are stored encoded so this file does not itself contain the words it rejects)
 const banned = ['XGJjbGF1ZGVcYg==', 'YW50aHJvcGlj', 'Y2hhdGdwdA==', 'b3BlbmFp', 'Y29waWxvdA==', 'Y28tYXV0aG9yZWQtYnk=', 'Z2VuZXJhdGVkIChieXx3aXRoKSAoYW4gKT9haVxi', 'XGJhaVstIF1nZW5lcmF0ZWRcYg==', 'XGJhaVstIF1hc3Npc3RlZFxi'].map((b) => new RegExp(Buffer.from(b, 'base64').toString(), 'i'));
-const scan = [...files, 'README.md', 'NOTICE', 'CITATION.cff', 'package.json', 'server.mjs', 'relay/core.mjs', ...walk('docs').filter((f) => /\.(md|html)$/.test(f)), ...walk('scripts'), ...walk('test'), ...walk('.github')].filter((f) => existsSync(f) && !LAZY.includes(f));
+const scan = [...files, 'README.md', 'NOTICE', 'CITATION.cff', 'package.json', 'server.mjs', 'relay/core.mjs', ...walk('docs').filter((f) => /\.(md|html)$/.test(f)), ...walk('scripts'), ...walk('test'), ...walk('.github')].filter((f) => existsSync(f) && !LAZY.includes(f) && !f.endsWith('.bin'));
 const hits = [];
 for (const f of scan) {
   const txt = readFileSync(f, 'utf8');

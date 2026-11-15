@@ -9,7 +9,7 @@ const HIPS = 'skyshift-hips-v1';
 const PRECACHE = __PRECACHE__;
 // fetched fresh each time (data files are refreshed every 6 h without a new app version); the last copy is used
 // when the network is down or slower than NET_WAIT
-const NETWORK_FIRST = /\/(version\.json|config\.json|data\/[^/]+\.json|data\/idx\/.+)$/;
+const NETWORK_FIRST = /\/(version\.json|config\.json|data\/[^/]+\.json|data\/packs\/index\.json|data\/idx\/.+)$/;
 const NET_WAIT = 4000;
 // served at once from the last copy and refreshed in the background (none at present)
 const STALE_REVALIDATE = /^$/;

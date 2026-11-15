@@ -1,4 +1,4 @@
-// Carries refreshed data and the image index between GitHub Actions runs through the Actions
+// Carries refreshed data, the image index and the frame packs between GitHub Actions runs through the Actions
 // cache (directory .data-cache), so nothing generated is committed and a push never deploys
 // older data than the last scheduled refresh.
 //   restore: copy each cached file over the committed one when the cached copy is newer
@@ -11,6 +11,7 @@ const C = '.data-cache';
 const JSONS = { 'data/mission.json': 'built', 'data/coverage.json': 'built', 'data/targets.json': 'generated', 'data/live.json': 'checked', 'data/sources.json': 'checked', 'data/fastmovers.json': 'built' };
 const IMAGES = ['assets/allsky-1000.jpg', 'assets/allsky-1600.jpg']; // rebuilt in the same refresh as mission.json
 const IDX = 'data/idx';
+const PACKS = 'data/packs'; // pre-cut frames (scripts/packs.mjs), stamped by index.json "built"
 const stampOf = (f, key) => { try { return Date.parse(JSON.parse(readFileSync(f, 'utf8'))[key]) || 0; } catch { return 0; } };
 const copy = (from, to) => { mkdirSync(dirname(to), { recursive: true }); copyFileSync(from, to); };
 const mode = process.argv[2];
@@ -27,8 +28,11 @@ if (mode === 'restore') {
   if (existsSync(join(C, IDX, 'meta.json')) && stampOf(join(C, IDX, 'meta.json'), 'built') > stampOf(join(IDX, 'meta.json'), 'built')) {
     rmSync(IDX, { recursive: true, force: true }); cpSync(join(C, IDX), IDX, { recursive: true }); console.log('restored image index');
   }
+  if (existsSync(join(C, PACKS, 'index.json')) && stampOf(join(C, PACKS, 'index.json'), 'built') > stampOf(join(PACKS, 'index.json'), 'built')) {
+    rmSync(PACKS, { recursive: true, force: true }); cpSync(join(C, PACKS), PACKS, { recursive: true }); console.log('restored frame packs');
+  }
 } else if (mode === 'save') {
-  const now = { idx: stampOf(join(IDX, 'meta.json'), 'built') };
+  const now = { idx: stampOf(join(IDX, 'meta.json'), 'built'), packs: stampOf(join(PACKS, 'index.json'), 'built') };
   for (const [f, key] of Object.entries(JSONS)) now[f] = stampOf(f, key);
   let prev = {}; try { prev = JSON.parse(readFileSync(join(C, 'stamp.json'), 'utf8')); } catch { /* none */ }
   const changed = Object.keys(now).some((k) => now[k] > (prev[k] || 0));
@@ -36,6 +40,7 @@ if (mode === 'restore') {
     rmSync(C, { recursive: true, force: true });
     for (const f of [...Object.keys(JSONS), ...IMAGES]) if (existsSync(f)) copy(f, join(C, f));
     if (now.idx) cpSync(IDX, join(C, IDX), { recursive: true });
+    if (now.packs) cpSync(PACKS, join(C, PACKS), { recursive: true });
     writeFileSync(join(C, 'stamp.json'), JSON.stringify(now));
   }
   console.log(changed ? 'data changed: cache will be saved' : 'nothing new to cache');

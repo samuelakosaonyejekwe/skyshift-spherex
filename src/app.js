@@ -344,6 +344,8 @@ document.addEventListener('keydown', (e) => {
   const embed = fromParams(parseHash().params).embed;
   document.documentElement.classList.toggle('embedded', !!embed);
   document.body.classList.toggle('embedded', !!embed);
+  // the current page's code downloads while the configuration loads (phones: saves a round of requests)
+  ROUTES[parseHash().name]?.().catch(() => {});
   await loadConfig();
   syncNet();
   if (history.state?.idx == null) history.replaceState({ idx: 0 }, '');

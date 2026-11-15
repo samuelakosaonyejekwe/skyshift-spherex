@@ -246,3 +246,20 @@ export function upsampleRGBA(src, n, f) {
   }
   return { data: out, size: m };
 }
+
+/** Loading order: round-robin across survey epochs (detectors alternating inside each), so a playable movie
+ * appears as early as possible. Shared by the viewer and the frame-pack builder (scripts/packs.mjs). */
+export function orderForLoading(list) {
+  const groups = [];
+  let cur = [];
+  for (const e of [...list].sort((a, b) => a.mjd - b.mjd)) {
+    if (cur.length && e.mjd - cur[cur.length - 1].mjd > SURVEY_GAP_DAYS) { groups.push(cur); cur = []; }
+    cur.push(e);
+  }
+  if (cur.length) groups.push(cur);
+  const queues = groups.map((gr) => { const by = {}; gr.forEach((e) => (by[e.det] ||= []).push(e)); const out = []; let any = true; while (any) { any = false; for (const d of Object.keys(by)) if (by[d].length) { out.push(by[d].shift()); any = true; } } return out; });
+  const out = [];
+  let any = true;
+  while (any) { any = false; for (const q of queues) if (q.length) { out.push(q.shift()); any = true; } }
+  return out;
+}

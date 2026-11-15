@@ -14,6 +14,7 @@ export const R = [
   [' · about {} left', ' · απομένουν περίπου $1', ' · quedan unos $1', ' · environ $1 restantes'],
   [' · source: ', ' · πηγή: ', ' · fuente: ', ' · source : '],
   ['IRSA image index (updated {})', 'ευρετήριο εικόνων IRSA (ενημέρωση $1)', 'índice de imágenes de IRSA (actualizado $1)', 'index d’images IRSA (mis à jour $1)'],
+  ['pre-cut SPHEREx frames (made {})', 'έτοιμα καρέ SPHEREx (δημιουργία $1)', 'imágenes de SPHEREx ya recortadas (creadas $1)', 'images SPHEREx déjà découpées (créées $1)'],
   ['IRSA image index (pre-built)', 'ευρετήριο εικόνων IRSA (έτοιμο)', 'índice de imágenes de IRSA (precalculado)', 'index d’images IRSA (préconstruit)'],
   ['IRSA live', 'IRSA ζωντανά', 'IRSA en vivo', 'IRSA en direct'],
   [' (not live)', ' (όχι ζωντανά)', ' (no en vivo)', ' (pas en direct)'],

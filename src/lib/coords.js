@@ -147,7 +147,17 @@ function dateFmt(monthOnly) {
   }
   return fmtCache.get(key);
 }
+const niceMemo = new Map(); // the same epoch dates are formatted thousands of times while frames stream
 export function niceDate(x, monthOnly = false) {
+  if (typeof x === 'number') {
+    const k = `${uiLang()}|${monthOnly ? 1 : 0}|${Math.floor(x)}`;
+    let v = niceMemo.get(k);
+    if (v === undefined) { v = niceDateRaw(Math.floor(x) + 0.5, monthOnly); if (niceMemo.size > 5000) niceMemo.clear(); niceMemo.set(k, v); }
+    return v;
+  }
+  return niceDateRaw(x, monthOnly);
+}
+function niceDateRaw(x, monthOnly) {
   const d = toUTCDate(x);
   if (Number.isNaN(d.getTime())) return '–';
   const f = dateFmt(monthOnly);

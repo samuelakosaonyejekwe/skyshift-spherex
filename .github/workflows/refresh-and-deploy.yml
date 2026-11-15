@@ -1,7 +1,7 @@
 # Keeps data fresh with no personal computer switched on: rebuilds the pre-built data from the
 # challenge resources (IRSA) and deploys the same build to GitHub Pages (primary) and Cloudflare
 # Pages (backup, only when the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets are set).
-# Nothing is committed: refreshed data and the image index (data/idx/, too large for git) are
+# Nothing is committed: refreshed data, the image index (data/idx/, too large for git) and the frame packs (data/packs/) are
 # carried between runs in the Actions cache, so a push never redeploys older data than the last
 # scheduled refresh, and the index is rebuilt only when it is missing or on the schedule.
 name: refresh-and-deploy
@@ -41,6 +41,9 @@ jobs:
       - name: Build the image index (scheduled and manual runs, or when none is cached)
         run: |
           if [ "${{ github.event_name }}" != "push" ] || [ ! -f data/idx/meta.json ]; then INDEX_PARALLEL=4 node scripts/index.mjs; fi
+      - name: Cut the frame packs (scheduled and manual runs, or when none are cached)
+        run: |
+          if [ "${{ github.event_name }}" != "push" ] || [ ! -f data/packs/index.json ]; then node scripts/packs.mjs || true; fi
       - name: Keep refreshed data and index for later runs
         id: carry
         run: node scripts/carry-data.mjs save
