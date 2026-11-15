@@ -46,6 +46,11 @@ export async function loadConfig() {
   return config;
 }
 export const getConfig = () => config;
+/** Absolute URLs of this host's relays, preferred first (for workers, which do not load the configuration). */
+export function relayUrls() {
+  const base = typeof location !== 'undefined' ? location.href : 'https://localhost/';
+  return [...new Set([preferred, ...config.relays].filter(Boolean))].map((r) => { try { return new URL(r, base).href; } catch { return null; } }).filter(Boolean);
+}
 /** Number of archive relays this host can use (0 on static hosts without an external relay). */
 export const relayCount = () => new Set([preferred, ...config.relays].filter(Boolean)).size;
 

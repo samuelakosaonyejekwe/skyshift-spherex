@@ -50,8 +50,8 @@ const json = (status, obj) => new Response(JSON.stringify(obj), { status, header
 
 // best-effort in-memory rate limit (per isolate / process)
 const hits = new Map();
-function limited(ip) {
-  const now = Date.now(), win = 60000, max = 240;
+function limited(ip, max = 240) {
+  const now = Date.now(), win = 60000;
   const h = hits.get(ip) || { n: 0, t: now };
   if (now - h.t > win) { h.n = 0; h.t = now; }
   h.n++; hits.set(ip, h);
@@ -65,11 +65,75 @@ function cacheControlFor(u) {
   return 'public, max-age=600';
 }
 
+// ------------------------------------------------------------------ gather: many small byte ranges of one SPHEREx file
+// A SPHEREx cutout needs one short range per image row (about 100 per exposure). Browsers would send each as its own
+// request; the relay instead reads the rows in a few large reads near the archive and returns only the requested
+// bytes, in the order asked: one request per exposure instead of about 100. Only files of IRSA's public SPHEREx
+// bucket are read, with fixed limits on ranges and bytes.
+export const GATHER_HOSTS = ['nasa-irsa-spherex.s3.us-east-1.amazonaws.com', 'nasa-irsa-spherex.s3.amazonaws.com'];
+const GATHER = { ranges: 600, want: 6 * 1024 * 1024, fetch: 24 * 1024 * 1024, spans: 8, gap: 256 * 1024 };
+
+export function parseGather(target, rspec) {
+  let u;
+  try { u = new URL(target); } catch { return { error: 'bad url' }; }
+  if (u.protocol !== 'https:' || !GATHER_HOSTS.includes(u.hostname) || u.search || u.username || !/^\/[\w./-]+\.fits$/.test(u.pathname)) return { error: 'gather is only for SPHEREx files of IRSA’s public bucket' };
+  const ranges = String(rspec || '').split(',').filter(Boolean).map((x) => x.split('-').map(Number));
+  if (!ranges.length || ranges.length > GATHER.ranges) return { error: `1 to ${GATHER.ranges} ranges` };
+  let want = 0;
+  for (const r of ranges) {
+    if (r.length !== 2 || !r.every(Number.isSafeInteger) || r[0] < 0 || r[1] < r[0]) return { error: 'ranges are start-end byte offsets' };
+    want += r[1] - r[0] + 1;
+  }
+  if (want > GATHER.want) return { error: 'too many bytes asked' };
+  // merge ranges whose gaps are small into spans, each read with one request
+  const sorted = ranges.map((r, i) => [r[0], r[1], i]).sort((a, b) => a[0] - b[0]);
+  const spans = [];
+  for (const [a, b] of sorted) {
+    const last = spans[spans.length - 1];
+    if (last && a - last[1] <= GATHER.gap) last[1] = Math.max(last[1], b); else spans.push([a, b]);
+  }
+  if (spans.length > GATHER.spans || spans.reduce((n, [a, b]) => n + b - a + 1, 0) > GATHER.fetch) return { error: 'ranges too spread out' };
+  return { url: u.toString(), ranges, spans, want };
+}
+
+async function gather(target, rspec, fetchImpl) {
+  const g = parseGather(target, rspec);
+  if (g.error) return json(400, { error: g.error });
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 30000);
+  try {
+    const parts = await Promise.all(g.spans.map(async ([a, b]) => {
+      const r = await fetchImpl(g.url, { headers: { Range: `bytes=${a}-${b}`, 'User-Agent': 'SkyShift-relay/1.0' }, signal: ctl.signal });
+      if (r.status !== 206 && r.status !== 200) throw Object.assign(new Error(`archive answered ${r.status}`), { upstream: r.status });
+      const buf = new Uint8Array(await r.arrayBuffer());
+      const start = r.status === 200 ? 0 : Number((r.headers.get('content-range') || '').match(/bytes (\d+)-/)?.[1] ?? a);
+      return { a: start, buf };
+    }));
+    const out = new Uint8Array(g.want);
+    let o = 0;
+    for (const [s, e] of g.ranges) {
+      const p = parts.find((x) => s >= x.a && e < x.a + x.buf.length);
+      if (!p) throw Object.assign(new Error('range beyond the end of the file'), { upstream: 416 });
+      out.set(p.buf.subarray(s - p.a, e - p.a + 1), o); o += e - s + 1;
+    }
+    return new Response(out, { status: 200, headers: { ...CORS, 'Content-Type': 'application/octet-stream', 'Cache-Control': 'public, max-age=604800, immutable',
+      'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Content-Disposition': 'attachment', 'X-Relay-Upstream-Status': '206' } });
+  } catch (e) {
+    // as for relayed requests: the relay is healthy, the archive is not (clients fall back to direct reads)
+    return new Response(JSON.stringify({ error: 'gather failed', detail: String(e?.message || e).slice(0, 200) }),
+      { status: 200, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Relay-Error': 'gather-failed', 'X-Relay-Upstream-Status': String(e?.upstream || 0) } });
+  } finally { clearTimeout(timer); }
+}
+
 export async function handle(request, { clientIp = 'anon', fetchImpl = fetch } = {}) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (!['GET', 'HEAD', 'POST'].includes(request.method)) return json(405, { error: 'method not allowed' });
   const self = new URL(request.url);
-  if (!self.searchParams.has('url')) return json(200, { ok: true, service: 'skyshift-relay', allow: ALLOW.map((r) => r.host) });
+  if (self.searchParams.has('gather') && request.method === 'GET') {
+    if (limited(`g:${clientIp}`, 3000)) return json(429, { error: 'rate limited' });
+    return gather(self.searchParams.get('gather'), self.searchParams.get('r'), fetchImpl);
+  }
+  if (!self.searchParams.has('url')) return json(200, { ok: true, service: 'skyshift-relay', allow: ALLOW.map((r) => r.host), gather: GATHER_HOSTS });
   const target = self.searchParams.get('url');
   if (!isAllowed(target, request.method)) return json(403, { error: 'target not on allow-list', target: String(target).slice(0, 200) });
   if (limited(clientIp)) return json(429, { error: 'rate limited' });

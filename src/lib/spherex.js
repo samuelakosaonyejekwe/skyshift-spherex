@@ -172,6 +172,10 @@ export class SpherexImage {
     const w = x1 - x0 + 1, h = y1 - y0 + 1;
     const data = await this._cached(`blk${x0},${x1},${y0},${y1}`, async () => {
       const out = new Float32Array(w * h);
+      // one request through a relay when one can gather; otherwise one request per row
+      const ranges = Array.from({ length: h }, (_, k) => { const a = m.dataStart + ((y0 - 1 + k) * W + (x0 - 1)) * 4; return [a, a + w * 4 - 1]; });
+      const parts = await this.src.gather?.(ranges);
+      if (parts) { parts.forEach((p, k) => out.set(beFloat32(p), k * w)); return out; }
       await Promise.all(Array.from({ length: h }, async (_, k) => {
         const a = m.dataStart + ((y0 - 1 + k) * W + (x0 - 1)) * 4;
         out.set(beFloat32(await this.src.get(a, a + w * 4 - 1)), k * w);

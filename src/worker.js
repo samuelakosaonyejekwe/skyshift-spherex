@@ -4,6 +4,7 @@
 import { SpherexImage } from './lib/spherex.js';
 import { renderExposure, photAt } from './lib/engine.js';
 import { cache } from './lib/store.js';
+import { setGatherRelays } from './lib/fits.js';
 
 let current = null; // { id, ctl }
 const images = new Map(); // small LRU of SpherexImage objects (keeps parsed headers in memory)
@@ -44,6 +45,7 @@ self.onmessage = async (e) => {
     const ctl = new AbortController();
     current = { id: msg.id, ctl };
     const { items, grid, opts } = msg;
+    setGatherRelays(opts.gather);
     let done = 0;
     const t0 = performance.now();
     bytes = 0;
@@ -51,7 +53,8 @@ self.onmessage = async (e) => {
       try {
         const img = getImage(rec.uri, ctl.signal);
         // 'auto': the first few exposures as whole rows (appear fastest), the rest column-precise (far less data)
-        const readMode = opts.readMode === 'fast' ? 'fast' : opts.readMode === 'saver' ? 'saver' : (k < 6 ? 'fast' : 'saver');
+        // with a gathering relay, column-precise reads cost one request each: use them throughout (far less data)
+        const readMode = opts.readMode === 'fast' ? 'fast' : opts.readMode === 'saver' || opts.gather?.length ? 'saver' : (k < 6 ? 'fast' : 'saver');
         const r = await renderExposure(img, grid, rec, { ...opts, readMode });
         if (ctl.signal.aborted) return;
         if (!r) { self.postMessage({ type: 'skip', id: msg.id, index: k, reason: 'outside' }); return; }

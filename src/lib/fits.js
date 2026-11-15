@@ -144,7 +144,47 @@ export class RangeSource {
       this.signal?.removeEventListener('abort', onAbort);
     }
   }
+
+  /**
+   * Many small ranges of this file in one request through a SkyShift relay ("gather", relay/core.mjs): the relay
+   * reads them near the archive and returns only these bytes. Returns one Uint8Array per range, or null when no
+   * relay is set or it cannot help (the caller then reads the ranges directly).
+   */
+  async gather(ranges) {
+    const relay = gatherRelays.find((r) => (gatherFails.get(r) || 0) < 3);
+    if (!relay || !ranges.length || ranges.length > 600) return null;
+    if (this.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const q = `${relay}${relay.includes('?') ? '&' : '?'}gather=${encodeURIComponent(this.url)}&r=${ranges.map(([a, b]) => `${a}-${b}`).join(',')}`;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 20000);
+    const onAbort = () => ctl.abort();
+    this.signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      const res = await pooled(() => this.fetch(q, { signal: ctl.signal, mode: 'cors' }));
+      if (!res.ok || res.headers.get('x-relay-error')) throw new Error(`gather answered ${res.status}${res.headers.get('x-relay-error') ? ' (' + res.headers.get('x-relay-error') + ')' : ''}`);
+      const buf = new Uint8Array(await res.arrayBuffer());
+      const want = ranges.reduce((n, [a, b]) => n + b - a + 1, 0);
+      if (buf.length !== want) throw new Error(`gather returned ${buf.length} of ${want} bytes`);
+      this.onBytes(buf.length);
+      gatherFails.set(relay, 0);
+      const out = []; let o = 0;
+      for (const [a, b] of ranges) { out.push(buf.subarray(o, o + b - a + 1)); o += b - a + 1; }
+      return out;
+    } catch (e) {
+      if (this.signal?.aborted) throw e;
+      gatherFails.set(relay, (gatherFails.get(relay) || 0) + 1); // after 3 failures in a row this relay is not asked again
+      return null;
+    } finally {
+      clearTimeout(timer);
+      this.signal?.removeEventListener('abort', onAbort);
+    }
+  }
 }
+
+// relays that can gather ranges (absolute URLs, set by the page through the frame worker); failures per relay
+let gatherRelays = [];
+const gatherFails = new Map();
+export function setGatherRelays(list) { gatherRelays = Array.isArray(list) ? list.filter((r) => /^https?:\/\//.test(r)) : []; }
 
 /** Convert big-endian float32 bytes into a Float32Array (copy). */
 export function beFloat32(bytes) {

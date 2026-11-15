@@ -5,6 +5,7 @@
 import { h, icon, toast, sheet, copyText, download, fmtBytes, fmtDur, downlinkMbps } from '../ui/dom.js';
 import { normalise, fromParams, toParams, MODES, GROUPS, FOV_STEPS } from '../state.js';
 import { loadPack } from '../lib/packs.js';
+import { relayUrls } from '../lib/net.js';
 import { getEphemeris, interpEph } from '../lib/ephem.js';
 import { searchSpherex, searchAlongPath, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossatCone } from '../lib/tap.js';
 import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE, photometry } from '../lib/engine.js';
@@ -276,6 +277,7 @@ export async function render(root, route, { go }) {
     if (!S.frames.size) setLoad(`Streaming ${todo.length} exposures straight from the IRSA cloud archive…`, 0.05);
     const pm = req.target.eph && S.eph ? { eph: S.eph } : req.target.pmra || req.target.pmdec || req.target.plx ? { pmra: req.target.pmra || 0, pmdec: req.target.pmdec || 0, plx: req.target.plx || 0, refYear: req.target.refEpoch || 2016 } : null;
     const w = getWorker();
+    const gather = relayUrls(); // relays read each exposure's rows in one request (see relay/core.mjs gather)
     let lastBuild = 0;
     const done0 = wanted.length - todo.length;
     const job = ++S.jobId;
@@ -305,7 +307,7 @@ export async function render(root, route, { go }) {
       }
     };
     w.addEventListener('message', S.streamListener);
-    w.postMessage({ type: 'frames', id: job, items: todo, grid: S.grid, opts: { withFlags: flagMode(), track: req.track ? pm : null, photTrack: pm, concurrency: 12, readMode: effectiveReadMode() } });
+    w.postMessage({ type: 'frames', id: job, items: todo, grid: S.grid, opts: { withFlags: flagMode(), track: req.track ? pm : null, photTrack: pm, concurrency: gather.length ? 24 : 12, readMode: effectiveReadMode(), gather } });
     renderSide();
   }
   /** Start playing once a movie exists (first load only; never with reduced motion or when embedded). */
