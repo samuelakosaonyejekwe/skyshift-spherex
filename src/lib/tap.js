@@ -3,6 +3,7 @@
 //  MAST API (Gaia DR3 cone, fallback), CADC TAP "argus" (NEOSSat observations).
 // Every result is cached so the tool keeps working offline and when a service is down.
 
+import { pathSamples } from './ephem.js';
 import { smartFetch, getConfig, relayCount } from './net.js';
 import { tilesNear, tilePath, decodeRow, contains } from './skyindex.js';
 import { cache } from './store.js';
@@ -104,15 +105,24 @@ export async function indexMeta() {
   return idxMeta;
 }
 
+// index tiles read in this session (a path search reads the same neighbouring tiles many times)
+const tileMemo = new Map();
+
 /** Image search from the static index: same rows as the TAP search, as of the index build time. */
 async function searchIndex(ra, dec) {
   const meta = await indexMeta();
   if (!meta) throw new Error('no archive relay or image index is available on this host');
-  const texts = await Promise.all(tilesNear(ra, dec, meta.r).map(async (t) => {
-    const r = await fetch(`./${tilePath(t)}`);
-    if (r.ok) return r.text();
-    if (r.status === 404) return ''; // empty tile
-    throw new Error(`image index tile answered ${r.status}`);
+  const texts = await Promise.all(tilesNear(ra, dec, meta.r).map((t) => {
+    const path = tilePath(t);
+    if (tileMemo.has(path)) return tileMemo.get(path);
+    const p = fetch(`./${path}`).then((r) => {
+      if (r.ok) return r.text();
+      if (r.status === 404) return ''; // empty tile
+      throw new Error(`image index tile answered ${r.status}`);
+    });
+    tileMemo.set(path, p); p.catch(() => tileMemo.delete(path));
+    if (tileMemo.size > 400) tileMemo.delete(tileMemo.keys().next().value);
+    return p;
   }));
   const rows = [];
   for (const txt of texts) for (const line of txt.split('\n')) {
@@ -142,7 +152,7 @@ ORDER BY p.time_bounds_lower`;
     // recent index (e.g. local development), through the relay.
     let rows;
     const meta = await indexMeta();
-    if (meta && Date.now() - Date.parse(meta.built) < 24 * 3600e3) { rows = await searchIndex(ra, dec); via = 'index'; }
+    if (meta && (opts.preferIndex || Date.now() - Date.parse(meta.built) < 24 * 3600e3)) { rows = await searchIndex(ra, dec); via = 'index'; }
     else if (relayCount() > 0) {
       try { rows = await tap(IRSA_TAP, adql, opts); } catch (e) { if (!meta) throw e; }
     }
@@ -158,6 +168,37 @@ ORDER BY p.time_bounds_lower`;
     },
   });
   return { ...r, adql, via, indexBuilt: via === 'index' ? (await indexMeta())?.built : undefined };
+}
+
+/**
+ * SPHEREx images along a moving object's path (an ephemeris: [[mjd, ra, dec], …], see lib/ephem.js): the path is
+ * searched at up to 240 points within the survey's time span, and an image found at a point is kept only if it was
+ * taken while the object was near that point. Uses the image index where there is one, so a long path does not
+ * send hundreds of queries to IRSA.
+ */
+export async function searchAlongPath(points, { onProgress } = {}) {
+  const now = Date.now() / 86400000 + 40587;
+  const SURVEY_START = 60790; // SPHEREx survey images begin in May 2025
+  let first = points.findIndex((p) => p[0] >= SURVEY_START), last = points.length - 1;
+  while (last > 0 && points[last][0] > now + 1) last--;
+  if (first < 0 || last < first) return { data: [], source: 'live', via: 'index', samples: 0 };
+  const inSpan = points.slice(Math.max(0, first - 1), Math.min(points.length, last + 2));
+  const samples = pathSamples(inSpan);
+  const found = new Map();
+  let i = 0, done = 0, failed = 0, via = null, lastErr = null;
+  await Promise.all(Array.from({ length: Math.min(6, samples.length) }, async () => {
+    while (i < samples.length) {
+      const s = samples[i++];
+      try {
+        const r = await searchSpherex(s.ra, s.dec, { preferIndex: true });
+        via ||= r.via;
+        for (const e of r.data) if (e.mjd >= s.t0 && e.mjd <= s.t1 && !found.has(e.uri)) found.set(e.uri, e);
+      } catch (e) { failed++; lastErr = e; }
+      onProgress?.(++done, samples.length);
+    }
+  }));
+  if (failed === samples.length) throw lastErr || new Error('the image search did not answer');
+  return { data: [...found.values()].sort((a, b) => a.mjd - b.mjd), source: 'live', via, samples: samples.length, failed };
 }
 
 /** Saved (IndexedDB) or built-in image list for a position, without touching the network. */

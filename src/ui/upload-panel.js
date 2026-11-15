@@ -4,7 +4,8 @@
 
 import { h, toast, icon } from './dom.js';
 import { normalise, parseText, toParams } from '../state.js';
-import { formatRA, formatDec } from '../lib/coords.js';
+import { formatRA, formatDec, niceDate } from '../lib/coords.js';
+import { saveEphemeris, interpEph } from '../lib/ephem.js';
 import { setQueue } from '../views/saved.js';
 import { pushRecent } from '../views/home.js';
 import { splitStatements } from '../lib/expr.js';
@@ -68,6 +69,9 @@ export function uploadPanel({ go }) {
   function render(all) {
     out.replaceChildren();
     for (const item of all) out.append(fileCard(item, () => render(all)));
+    // a table of times and positions: the path of an asteroid or comet, followed in SPHEREx images
+    const ephs = all.filter((it) => it.res?.ephemeris);
+    if (ephs.length) { for (const it of ephs) out.append(ephemerisCard(it.res.ephemeris, it.file.name.replace(/\.[^.]+$/, ''), go)); return; }
     const targets = all.flatMap((it) => (it.res?.targets || []).map((t) => ({ ...t, file: it.file.name })));
     if (!targets.length) return;
     const pt = instr.value.trim() ? parseText(instr.value) : null;
@@ -110,4 +114,26 @@ export function uploadPanel({ go }) {
   return h('div', { class: 'upload' },
     h('p', { class: 'muted' }, 'Bring a target list, an ephemeris, a table from a paper, or your own FITS image. SkyShift reads it in your browser, shows what it understood, and fetches the SPHEREx images for each position.'),
     zone, input, h('label', { class: 'field', style: { marginTop: '8px' } }, 'Instructions for every target (optional)', instr), out);
+}
+
+/** Address of the Time Machine following a table of positions (kept on this device under an id). */
+export function ephemerisHref(name, points) {
+  const id = saveEphemeris(name, points);
+  // centre on the object's position in the middle of the SPHEREx survey times the table covers
+  const now = Date.now() / 86400000 + 40587;
+  const span = points.filter((p) => p[0] >= 60790 && p[0] <= now);
+  const mid = span.length ? span[span.length >> 1] : points[points.length >> 1];
+  const p = interpEph(points, mid[0]) || { ra: mid[1], dec: mid[2] };
+  return `#/view?${toParams(normalise({ target: { ra: p.ra, dec: p.dec, name: String(name || 'Moving object').slice(0, 80), eph: id, source: 'upload' }, track: true, group: 'survey', ov: ['compass'] }))}`;
+}
+
+/** What was understood from a table of times and positions, with the button that follows the object. */
+export function ephemerisCard(e, defaultName, go) {
+  const nameIn = h('input', { type: 'text', value: defaultName || '', placeholder: 'Name of the object', 'aria-label': 'Name of the object', style: { maxWidth: '260px' } });
+  return h('div', { class: 'notice' },
+    h('b', {}, `Understood: the path of a moving object, ${e.points.length} positions from ${niceDate(e.from)} to ${niceDate(e.to)}`),
+    e.skipped ? h('p', { class: 'tiny' }, `${e.skipped} lines without a time and position were skipped.`) : null,
+    h('p', { class: 'tiny' }, 'SkyShift will look for SPHEREx images along this path and centre every exposure on the object at its own time. Positions are taken from your table as ICRS (J2000) coordinates; the table stays on this device.'),
+    h('div', { class: 'row', style: { marginTop: '6px' } }, nameIn,
+      h('button', { class: 'btn primary small', onclick: () => go(ephemerisHref(nameIn.value.trim(), e.points)) }, 'Follow it in SPHEREx images')));
 }

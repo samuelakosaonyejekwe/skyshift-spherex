@@ -4,6 +4,7 @@
 
 import { BAD_MASK, FLAG_BITS, META_KEYS, describeUri } from './spherex.js';
 import { apparent } from './coords.js';
+import { interpEph } from './ephem.js';
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 export const NATIVE_SCALE = 6.15; // arcsec / pixel (SPHEREx spectral image pixel)
@@ -151,7 +152,12 @@ export async function renderExposure(img, grid, rec, opts = {}) {
   const H = m.header.NAXIS2, W = m.header.NAXIS1;
   const mjd = m.header['MJD-AVG'] ?? rec.mjd;
   let cra = grid.ra, cdec = grid.dec;
-  if (track && (track.pmra || track.pmdec || track.plx)) {
+  if (track?.eph) {
+    // a Solar System object: its position at this exposure's time, from the user's table (outside it: skipped)
+    const p = interpEph(track.eph, mjd);
+    if (!p) return null;
+    cra = p.ra; cdec = p.dec;
+  } else if (track && (track.pmra || track.pmdec || track.plx)) {
     const p = apparent(grid.ra, grid.dec, track.pmra, track.pmdec, track.plx, track.refYear, mjd);
     cra = p.ra; cdec = p.dec;
   }
@@ -159,7 +165,10 @@ export async function renderExposure(img, grid, rec, opts = {}) {
   const [xmin, xmax, ymin, ymax] = map.bbox;
   // photometry follows the target's predicted position (proper motion) when known
   let pra = cra, pdec = cdec;
-  if (photTrack && (photTrack.pmra || photTrack.pmdec || photTrack.plx)) {
+  if (photTrack?.eph) {
+    const p = interpEph(photTrack.eph, mjd);
+    if (p) { pra = p.ra; pdec = p.dec; }
+  } else if (photTrack && (photTrack.pmra || photTrack.pmdec || photTrack.plx)) {
     const p = apparent(grid.ra, grid.dec, photTrack.pmra, photTrack.pmdec, photTrack.plx, photTrack.refYear, mjd);
     pra = p.ra; pdec = p.dec;
   }

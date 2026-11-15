@@ -5,7 +5,8 @@
 import { h, icon, toast, sheet, copyText, download, fmtBytes, fmtDur, downlinkMbps } from '../ui/dom.js';
 import { normalise, fromParams, toParams, MODES, GROUPS, FOV_STEPS } from '../state.js';
 import { loadPack } from '../lib/packs.js';
-import { searchSpherex, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossatCone } from '../lib/tap.js';
+import { getEphemeris, interpEph } from '../lib/ephem.js';
+import { searchSpherex, searchAlongPath, quickSpherex, gaiaCone, catwiseCone, allwiseCone, neossatCone } from '../lib/tap.js';
 import { makeGrid, gridToWorld, worldToGrid, estimateBytesPerExposure, NATIVE_SCALE, photometry } from '../lib/engine.js';
 import { groupExposures, perDetector, detectorBalanced, matchedDifference, meanOfMaps, limits, paint, paintDiff, paintRGB, coadd, upsampleRGBA, tintName, SURVEY_GAP_DAYS, orderForLoading } from '../lib/render.js';
 import { DETECTORS, FLAG_BITS, BAD_MASK, decodeFlags, uriToS3, uriToIbe } from '../lib/spherex.js';
@@ -147,7 +148,7 @@ export async function render(root, route, { go }) {
     if (reload || loadKey() !== prevKey) load();
     else { rebuild(); renderSide(); }
   }
-  const loadKey = () => `${req.target.ra.toFixed(6)},${req.target.dec.toFixed(6)},${req.fov},${req.track ? 1 : 0},${req.ov.includes('flags') ? 'F' : ''}`;
+  const loadKey = () => `${req.target.ra.toFixed(6)},${req.target.dec.toFixed(6)},${req.fov},${req.track ? 1 : 0},${req.ov.includes('flags') ? 'F' : ''}${req.target.eph ? ',' + req.target.eph : ''}`;
 
   // ------------------------------------------------------------------ mode buttons
   const MODE_INFO = {
@@ -177,6 +178,7 @@ export async function render(root, route, { go }) {
     loading.hidden = false;
     loading.querySelector('.boot-orbit').hidden = false;
     setLoad('Finding every SPHEREx image of this patch (IRSA archive)…', 0.03);
+    if (req.target.eph) { loadMoving(id); return; }
     // 1) instant start from the saved or built-in image list (no network wait), and the pre-cut frame pack
     // when this view has one (challenge targets and the fastest Gaia stars): those frames show at once
     let shown = 0;
@@ -237,6 +239,29 @@ export async function render(root, route, { go }) {
     }
   }
 
+  /** A Solar System object followed along the user's table of positions: images along its path, then streaming. */
+  async function loadMoving(id) {
+    const e = getEphemeris(req.target.eph);
+    const stop = (text) => { setLoad(text, 0); loading.querySelector('.boot-orbit').hidden = true; };
+    if (!e) { stop('This object’s table of positions is not on this device (tables stay on the device they were uploaded on). Upload it again on the Chase page.'); return; }
+    S.eph = e.points;
+    setLoad(`Searching for SPHEREx images along the object’s path (${e.points.length} positions)…`, 0.03);
+    let r;
+    try {
+      r = await searchAlongPath(e.points, { onProgress: (d, n) => { if (id === S.loadId) setLoad(`Searching for SPHEREx images along the object’s path… ${d}/${n}`, 0.03 + (0.3 * d) / n); } });
+    } catch (err) {
+      if (id !== S.loadId) return;
+      stop(`The image search did not answer (${err.message}). Please try again shortly.`);
+      loading.firstChild.append(h('button', { class: 'btn primary', style: { marginTop: '10px' }, onclick: () => load() }, 'Retry'));
+      return;
+    }
+    if (id !== S.loadId) return;
+    S.search = r; S.exposures = r.data;
+    renderSuggestion();
+    if (!r.data.length) { stop('SPHEREx has no images along this path during the times your table covers. SPHEREx images begin in May 2025: check that the table covers dates since then.'); return; }
+    stream(id);
+  }
+
   /** Stream every wanted exposure that is not loaded yet (restarts the worker job). */
   function stream(id) {
     const ordered = orderForLoading(S.exposures.filter((e) => req.dets.includes(e.det)));
@@ -249,7 +274,7 @@ export async function render(root, route, { go }) {
     rebuild();
     if (!todo.length) { loading.hidden = true; renderSide(); return; }
     if (!S.frames.size) setLoad(`Streaming ${todo.length} exposures straight from the IRSA cloud archive…`, 0.05);
-    const pm = req.target.pmra || req.target.pmdec || req.target.plx ? { pmra: req.target.pmra || 0, pmdec: req.target.pmdec || 0, plx: req.target.plx || 0, refYear: req.target.refEpoch || 2016 } : null;
+    const pm = req.target.eph && S.eph ? { eph: S.eph } : req.target.pmra || req.target.pmdec || req.target.plx ? { pmra: req.target.pmra || 0, pmdec: req.target.pmdec || 0, plx: req.target.plx || 0, refYear: req.target.refEpoch || 2016 } : null;
     const w = getWorker();
     let lastBuild = 0;
     const done0 = wanted.length - todo.length;
@@ -489,6 +514,7 @@ export async function render(root, route, { go }) {
     return ms.reduce((a, b) => a + b, 0) / ms.length;
   }
   function frameCenter(i = currentIndex()) {
+    if (req.target.eph && S.eph) { const p = interpEph(S.eph, frameMjd(i)); return p ? [p.ra, p.dec] : [req.target.ra, req.target.dec]; }
     if (!req.track || !(req.target.pmra || req.target.pmdec || req.target.plx)) return [req.target.ra, req.target.dec];
     const p = apparent(req.target.ra, req.target.dec, req.target.pmra, req.target.pmdec, req.target.plx, req.target.refEpoch || 2016, frameMjd(i));
     return [p.ra, p.dec];
@@ -1346,7 +1372,7 @@ export async function render(root, route, { go }) {
   function renderSuggestion() {
     suggestionBox.replaceChildren();
     const sg = suggestFor(req.target);
-    const tip = preset?.tip;
+    const tip = req.target.eph && S.eph ? `Followed along your table of ${S.eph.length} positions (${niceDate(S.eph[0][0])} to ${niceDate(S.eph[S.eph.length - 1][0])}): every exposure is centred on the object at its own time, so the object stays still while the stars stream past. Positions come from your table, not from SkyShift.` : preset?.tip;
     const text = [tip, sg?.text].filter(Boolean).join(' ');
     if (!text) return;
     const btns = [];

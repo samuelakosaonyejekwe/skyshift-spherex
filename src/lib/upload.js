@@ -5,6 +5,7 @@
 import { parseHeader, BLOCK, dataSize } from './fits.js';
 import { CelestialWCS } from './wcs.js';
 import { parsePosition, parseAngle, wrap360, fromGalactic } from './coords.js';
+import { ephemerisFromTable, ephemerisFromText } from './ephem.js';
 
 export const LIMITS = { fileBytes: 30 * 1024 * 1024, unzipBytes: 120 * 1024 * 1024, zipEntries: 200, rows: 20000, ratio: 200 };
 
@@ -14,6 +15,7 @@ const DEC_NAMES = /^(dec|de|dec_?deg|dej2000|decj2000|de_?icrs|dec_?icrs|delta|d
 const NAME_NAMES = /^(name|id|object|obj|target|designation|source_?id|source_?name|main_?id|star|label)$/i;
 const PMRA_NAMES = /^(pmra|pm_?ra|mura|pmra_?masyr)$/i;
 const PMDEC_NAMES = /^(pmdec|pm_?dec|pmde|mudec)$/i;
+const TIME_NAMES = /^(date|time|epoch|jd|mjd|utc|ut|t|datetime|date_?obs|obs_?date|date.*\(ut\).*|date_+\(ut\).*)$/i;
 
 export async function parseUpload(name, buf, mapping = null) {
   const bytes = new Uint8Array(buf);
@@ -374,7 +376,27 @@ export function detectMapping(columns) {
   return { ra: find(RA_NAMES), dec: find(DEC_NAMES), name: find(NAME_NAMES), pmra: find(PMRA_NAMES), pmdec: find(PMDEC_NAMES) };
 }
 
+/**
+ * A table of times and positions (an ephemeris of an asteroid or comet): a time column with RA/Dec columns, or
+ * lines that start with a time followed by RA and Dec (the plain-text tables of ephemeris services). At least 3
+ * positions at different times; otherwise null.
+ */
+function detectEphemeris(columns, rows) {
+  const find = (re) => { const i = columns.findIndex((c) => re.test(String(c).trim())); return i >= 0 ? i : null; };
+  const time = find(TIME_NAMES), ra = find(RA_NAMES), dec = find(DEC_NAMES);
+  let e = time != null && ra != null && dec != null ? ephemerisFromTable(rows, { time, ra, dec }) : null;
+  if (!e) e = ephemerisFromText(rows.map((r) => r.map((c) => String(c ?? '').trim()).filter(Boolean).join('  ')).join('\n'));
+  return e && e.points.length >= 3 ? { points: e.points, skipped: e.bad.length, from: e.points[0][0], to: e.points[e.points.length - 1][0] } : null;
+}
+
 function finish(format, table, mapping, mode = 'table') {
+  const res = finishTargets(format, table, mapping, mode);
+  const eph = detectEphemeris(table.columns || [], table.rows || []);
+  if (eph) { res.ephemeris = eph; res.errors = []; }
+  return res;
+}
+
+function finishTargets(format, table, mapping, mode = 'table') {
   const { columns, rows } = table;
   const errors = [];
   const targets = [];
@@ -411,7 +433,7 @@ function findPositionInText(line) {
   const dec = s.match(/(?:^|\s)(\d{1,3}\.\d+)\s+([+\-−]?\d{1,2}\.\d+)(?:\s|$)/);
   const m = sexa || dec;
   if (!m) return null;
-  const pos = parsePosition(`${m[1]} ${/^[+\-−]/.test(m[2].trim()) ? m[2].replace('−', '-').replace(/\s+/g, '') : '+' + m[2].trim()}`);
+  const pos = parsePosition(`${m[1]} ${/^[+\-−]/.test(m[2].trim()) ? m[2].trim().replace('−', '-').replace(/^([+-])\s+/, '$1') : '+' + m[2].trim()}`);
   if (!pos) return null;
   return { ...pos, rest: s.replace(m[0], ' ').replace(/\s+/g, ' ').trim().slice(0, 80) };
 }

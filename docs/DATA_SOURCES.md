@@ -140,7 +140,9 @@ S3 bucket straight to the user's browser.
 
 ## Features left out because no approved source provides the data
 
-- **Known solar-system object tracks**: no ephemeris service is reached from the seeds.
+- **Solar-system object positions**: no ephemeris service is reached from the seeds, so asteroids and comets are not found
+  by name. Users upload their own table of times and positions (Chase page, or any upload); SkyShift then searches
+  SPHEREx images along the path and centres each exposure on the position at its time (`src/lib/ephem.js`).
 - **General object-name resolution**: no name resolver is reached from the seeds; names resolve for the five targets and for
   Gaia DR3 source IDs only.
 - **Water, CO₂ and CO ice band markers**: the approved pages read (mission page, User Guide, Explanatory Supplement, SPLICES pages

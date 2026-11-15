@@ -60,6 +60,7 @@ export function normalise(partial = {}) {
   r.t = Math.max(0, Math.floor(Number(r.t) || 0));
   if (r.blink && !(Array.isArray(r.blink) && r.blink.length === 2 && r.blink.every((x) => Number.isInteger(x) && x >= 0))) r.blink = null;
   r.invert = !!r.invert; r.track = !!r.track; r.embed = !!r.embed;
+  if (r.target?.eph) r.track = true; // a Solar System object leaves a fixed field within hours: always followed
   r.expr = String(r.expr || '').slice(0, 500);
   r.where = String(r.where || '').slice(0, 500);
   if (r.mode === 'expr' && !r.expr) r.mode = 'movie';
@@ -83,6 +84,8 @@ export function fromParams(params) {
       if (p('pmdec') != null && p('pmdec') !== '') out.target.pmdec = Number(p('pmdec')) || 0;
       if (p('epoch')) out.target.refEpoch = Number(p('epoch'));
       if (p('plx')) out.target.plx = Number(p('plx')) || 0;
+      // a Solar System object followed along the user's table of positions (kept on this device; see lib/ephem.js)
+      if (/^e[0-9a-z]{1,13}$/.test(p('eph') || '')) out.target.eph = p('eph');
     }
   }
   if (p('target')) out.preset = String(p('target')).slice(0, 40);
@@ -127,6 +130,7 @@ export function toParams(r) {
     if (r.target.pmra || r.target.pmdec) { q.set('pmra', String(r.target.pmra || 0)); q.set('pmdec', String(r.target.pmdec || 0)); }
     if (r.target.refEpoch) q.set('epoch', String(r.target.refEpoch));
     if (r.target.plx) q.set('plx', String(r.target.plx));
+    if (r.target.eph) q.set('eph', r.target.eph);
   }
   const d = DEFAULTS;
   if (r.fov !== d.fov) q.set('fov', String(+r.fov.toFixed(2)));

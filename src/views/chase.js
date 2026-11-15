@@ -1,7 +1,7 @@
 // Chase: follow fast-moving stars and brown dwarfs. Motions come from Gaia DR3 (IRSA / MAST).
 // "Follow" keeps the object centred (background stars drift); "Watch it move" keeps the sky
-// fixed so the object crosses the frame. Solar-system objects are not included: no ephemeris
-// service is reached from the challenge resources.
+// fixed so the object crosses the frame. Asteroids and comets follow the user's own table of times and
+// positions (no ephemeris service is reached from the challenge resources).
 
 import { h, icon } from '../ui/dom.js';
 import { presets, presetToTarget, resolveTarget } from '../targets.js';
@@ -9,6 +9,7 @@ import { normalise, toParams } from '../state.js';
 import { parsePosition, formatRA, formatDec } from '../lib/coords.js';
 import { tap, IRSA_TAP } from '../lib/tap.js';
 import { recent } from './home.js';
+import { ephemerisCard } from '../ui/upload-panel.js';
 
 export const title = 'Chase';
 
@@ -87,6 +88,30 @@ ORDER BY phot_g_mean_mag`, { timeout: 60000 });
     } }, posIn, radSel, minSel, h('button', { class: 'btn primary', type: 'submit' }, 'Find')),
     findOut)),
     fastSection(),
-    h('p', { class: 'tiny', style: { marginTop: '16px' } }, 'Asteroids and comets are not listed here: their paths need an orbit service that is not part of the challenge’s resources. You can still spot them with Time Machine → Discover.'));
+    movingSection());
+  // Asteroids and comets: the user's own table of times and positions (no orbit service is called)
+  function movingSection() {
+    const ta = h('textarea', { rows: 5, placeholder: 'Paste a table of times and positions here, one line per time, e.g.\n2026-03-14 00:00  12 34 56.78 +12 34 56.7\n2026-03-15 00:00  12 36 00.00 +12 30 00.0', 'aria-label': 'Table of times and positions', style: { width: '100%', fontFamily: 'var(--mono)', fontSize: '.82rem' } });
+    const fileIn = h('input', { type: 'file', accept: '.csv,.tsv,.txt,.dat,.xlsx,.ods,.json', 'aria-label': 'Table file' });
+    const out = h('div');
+    const read = async (name, buf) => {
+      out.replaceChildren(h('p', { class: 'tiny' }, 'Reading the table…'));
+      try {
+        const { parseUpload } = await import('../lib/upload.js');
+        const res = await parseUpload(name, buf);
+        if (!res.ephemeris) { out.replaceChildren(h('p', { class: 'notice warn' }, 'No times with positions were recognised. Each line (or row) needs a date or JD/MJD, then RA and Dec; a CSV needs columns such as date, ra, dec.')); return; }
+        out.replaceChildren(ephemerisCard(res.ephemeris, name.replace(/\.[^.]+$/, '').replace(/^pasted table$/, ''), go));
+      } catch (err) { out.replaceChildren(h('p', { class: 'notice bad' }, `The table could not be read (${err.message}).`)); }
+    };
+    fileIn.addEventListener('change', async () => { const f = fileIn.files?.[0]; if (f) read(f.name, await f.arrayBuffer()); });
+    return h('section', { class: 'card', style: { marginTop: '18px' } },
+      h('h2', {}, 'Asteroids and comets'),
+      h('p', { class: 'tiny muted' }, 'They move too fast to stay at one position. Give SkyShift a table of times and positions (an ephemeris: CSV, or the plain-text table an ephemeris service produces) and it follows the object through every SPHEREx image along its path. Positions come only from your table, which stays on this device.'),
+      ta,
+      h('div', { class: 'row', style: { marginTop: '8px' } },
+        h('button', { class: 'btn primary', onclick: () => { if (ta.value.trim()) read('pasted table.txt', new TextEncoder().encode(ta.value).buffer); } }, 'Read the table'),
+        h('label', { class: 'btn' }, 'Choose a file', h('span', { style: { display: 'none' } }, fileIn))),
+      out);
+  }
   return () => {};
 }
