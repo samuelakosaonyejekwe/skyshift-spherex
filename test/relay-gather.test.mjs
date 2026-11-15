@@ -27,3 +27,12 @@ test('gather returns exactly the requested bytes, in the order asked (fake archi
   const want = new Uint8Array(ranges.flatMap(([a, b]) => [...file.slice(a, b + 1)]));
   assert.deepEqual([...got], [...want]);
 });
+
+test('flag windows accept only SPHEREx files of the public bucket and small windows', async () => {
+  const { parseFlagWindow } = await import('../relay/core.mjs');
+  const q = (o) => new URLSearchParams({ flagwin: FILE, off: '8000000', x0: '990', x1: '1014', y0: '1001', y1: '1017', ...o });
+  assert.equal(parseFlagWindow(q({})).x1, 1014);
+  assert.match(parseFlagWindow(q({ flagwin: 'https://example.com/a.fits' })).error, /only for SPHEREx/);
+  assert.match(parseFlagWindow(q({ x1: '2000' })).error, /at most/);
+  assert.match(parseFlagWindow(q({ y0: '0' })).error, /1-based/);
+});

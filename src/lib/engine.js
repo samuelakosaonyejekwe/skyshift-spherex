@@ -183,7 +183,8 @@ export async function renderExposure(img, grid, rec, opts = {}) {
   const x0 = Math.max(1, Math.floor(Math.min(xmin, tx) - pad)), x1 = Math.min(W, Math.ceil(Math.max(xmax, tx) + pad));
   const [rows, flagsRaw, wave] = await Promise.all([
     readMode === 'saver' ? img.block(x0, x1, y0, y1) : img.rows(y0, y1),
-    flagMode && Number.isFinite(ty) && fy1 >= fy0 ? img.flagRows(fy0, fy1).catch(() => null) : Promise.resolve(null),
+    // photometry needs only the flags around the target: a small window (decoded by the relay when there is one)
+    flagMode && Number.isFinite(ty) && fy1 >= fy0 ? (flagMode === 'target' && img.flagWindow ? img.flagWindow(Math.floor(tx) - 12, Math.ceil(tx) + 12, fy0, fy1) : img.flagRows(fy0, fy1)).catch(() => null) : Promise.resolve(null),
     img.wave().catch(() => null),
   ]);
   const flags = flagsRaw ? { ...flagsRaw, partial: flagMode === 'target' } : null;

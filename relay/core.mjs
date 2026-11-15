@@ -3,6 +3,8 @@
 // Netlify Edge, Vercel Edge and Deno Deploy. It only forwards to the data services
 // and pages of the challenge resources (and JPL Horizons for Solar System positions); it is not an open proxy.
 
+import { parseHeader, riceDecode32 } from '../src/lib/fits.js';
+
 export const ALLOW = [
   // IRSA (SPHEREx archive, TAP, SIA, IBE cutouts, docs)
   { host: 'irsa.ipac.caltech.edu', paths: ['/TAP/', '/TAP?', '/SIA', '/ibe/', '/Missions/spherex', '/data/SPHEREx/', '/spherex-archive-documentation', '/data/hips/', '/voapi.html'], post: ['/TAP/'] },
@@ -127,10 +129,60 @@ async function gather(target, rspec, fetchImpl) {
   } finally { clearTimeout(timer); }
 }
 
+// ------------------------------------------------------------------ flagwin: quality flags around one position
+// SPHEREx quality flags are stored as RICE-compressed full-width rows (about 100 kB for the rows around a target).
+// The relay reads and decodes those rows near the archive and returns only a small window (int32, little-endian,
+// row by row); the flag names (MSKNnnnn) come back in X-Flag-Bits. Same files and limits as gather.
+export function parseFlagWindow(q) {
+  const g = parseGather(q.get('flagwin'), '0-0');
+  if (g.error) return { error: g.error };
+  const n = (k) => Number(q.get(k));
+  const off = n('off'), x0 = n('x0'), x1 = n('x1'), y0 = n('y0'), y1 = n('y1');
+  if (![off, x0, x1, y0, y1].every(Number.isSafeInteger) || off < 2880 || x0 < 1 || y0 < 1 || x1 < x0 || y1 < y0 || x1 - x0 > 255 || y1 - y0 > 63) return { error: 'flag window: off, x0, x1, y0, y1 (1-based, at most 256 × 64 pixels)' };
+  return { url: g.url, off, x0, x1, y0, y1 };
+}
+
+async function flagWindow(q, fetchImpl) {
+  const w = parseFlagWindow(q);
+  if (w.error) return json(400, { error: w.error });
+  const get = async (a, b) => {
+    const r = await fetchImpl(w.url, { headers: { Range: `bytes=${a}-${b}`, 'User-Agent': 'SkyShift-relay/1.0' } });
+    if (r.status !== 206 && r.status !== 200) throw Object.assign(new Error(`archive answered ${r.status}`), { upstream: r.status });
+    const buf = new Uint8Array(await r.arrayBuffer());
+    return r.status === 200 ? buf.subarray(a, b + 1) : buf;
+  };
+  try {
+    let hb = await get(w.off, w.off + 2880 * 7 - 1), p = parseHeader(hb, 0);
+    if (!p) { hb = await get(w.off, w.off + 2880 * 20 - 1); p = parseHeader(hb, 0); }
+    const h = p?.header;
+    if (!h || h.EXTNAME !== 'FLAGS' || h.ZCMPTYPE !== 'RICE_1' || (h.ZTILE2 ?? 1) !== 1) throw new Error('FLAGS HDU not where expected');
+    const W = h.ZNAXIS1, H = h.ZNAXIS2, rowBytes = h.NAXIS1, dataStart = w.off + p.end, heapStart = dataStart + (h.THEAP ?? h.NAXIS1 * h.NAXIS2);
+    const y0 = Math.max(1, w.y0), y1 = Math.min(H, w.y1), x0 = Math.max(1, w.x0), x1 = Math.min(W, w.x1);
+    const desc = await get(dataStart + (y0 - 1) * rowBytes, dataStart + y1 * rowBytes - 1);
+    const dv = new DataView(desc.buffer, desc.byteOffset, desc.byteLength);
+    const rows = []; let lo = Infinity, hi = 0;
+    for (let r = 0; r <= y1 - y0; r++) { const len = dv.getInt32(r * 8, false), o = dv.getInt32(r * 8 + 4, false); rows.push([len, o]); lo = Math.min(lo, o); hi = Math.max(hi, o + len); }
+    const heap = await get(heapStart + lo, heapStart + hi - 1);
+    const ww = x1 - x0 + 1, out = new Int32Array(ww * rows.length);
+    rows.forEach(([len, o], r) => { const row = riceDecode32(heap.subarray(o - lo, o - lo + len), W, h.ZVAL1 ?? 32); out.set(row.subarray(x0 - 1, x1), r * ww); });
+    const bits = Object.fromEntries(Object.entries(h).filter(([k]) => /^MSKN\d{4}$/.test(k)).map(([k, v]) => [Number(k.slice(4)), v]));
+    return new Response(new Uint8Array(out.buffer), { status: 200, headers: { ...CORS, 'Content-Type': 'application/octet-stream', 'Cache-Control': 'public, max-age=604800, immutable',
+      'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Content-Disposition': 'attachment', 'X-Relay-Upstream-Status': '206',
+      'X-Flag-Window': `${x0},${x1},${y0},${y1}`, 'X-Flag-Bits': encodeURIComponent(JSON.stringify(bits)), 'Access-Control-Expose-Headers': `${CORS['Access-Control-Expose-Headers']}, X-Flag-Window, X-Flag-Bits` } });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'flag window failed', detail: String(e?.message || e).slice(0, 200) }),
+      { status: 200, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Relay-Error': 'flagwin-failed', 'X-Relay-Upstream-Status': String(e?.upstream || 0) } });
+  }
+}
+
 export async function handle(request, { clientIp = 'anon', fetchImpl = fetch } = {}) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (!['GET', 'HEAD', 'POST'].includes(request.method)) return json(405, { error: 'method not allowed' });
   const self = new URL(request.url);
+  if (self.searchParams.has('flagwin') && request.method === 'GET') {
+    if (limited(`g:${clientIp}`, 3000)) return json(429, { error: 'rate limited' });
+    return flagWindow(self.searchParams, fetchImpl);
+  }
   if (self.searchParams.has('gather') && request.method === 'GET') {
     if (limited(`g:${clientIp}`, 3000)) return json(429, { error: 'rate limited' });
     return gather(self.searchParams.get('gather'), self.searchParams.get('r'), fetchImpl);

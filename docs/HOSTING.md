@@ -54,6 +54,8 @@ automatically.
 - **Gather**: `?gather=<SPHEREx file>&r=<start-end,...>` reads the image rows of one exposure near IRSA's bucket in a few
   large reads and returns only the requested bytes, so a browser makes one request per exposure instead of about 100
   (limits: 600 ranges, 6 MB asked, 8 reads of at most 24 MB; only files of the public SPHEREx bucket).
+- **Flag windows**: `?flagwin=<SPHEREx file>&off=…&x0=…&x1=…&y0=…&y1=…` decodes the quality flags around a target next to the
+  archive and returns only that window (at most 256 × 64 pixels), instead of about 100 kB of compressed full-width rows.
 - **NASA JPL Horizons** is on the allow-list (`/api/horizons.api`) for asteroid and comet positions by name.
-- **Smart Placement** (optional): in the Cloudflare dashboard, Pages project → Settings → Functions → Placement → Smart
-  would run the relay near IRSA's bucket (us-east-1) and shorten the first frame of fields without ready-made frames.
+- **Smart Placement** is on (Cloudflare dashboard → Workers & Pages → skyshift-spherex → Settings → Runtime → Placement →
+  Smart, turned on by the author on 2026-11-15): the relay runs next to IRSA's bucket; a gather answers in about 0.4 s.

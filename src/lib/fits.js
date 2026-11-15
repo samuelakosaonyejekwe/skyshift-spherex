@@ -181,6 +181,28 @@ export class RangeSource {
   }
 }
 
+// relay helper for FITS-aware relay calls (flag windows): { buf, headers } or null when no relay can answer
+export async function relayGet(query, { signal, onBytes = () => {} } = {}) {
+  const relay = gatherRelays.find((r) => (gatherFails.get(r) || 0) < 3);
+  if (!relay) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 20000);
+  const onAbort = () => ctl.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    const res = await pooled(() => fetch(`${relay}${relay.includes('?') ? '&' : '?'}${query}`, { signal: ctl.signal, mode: 'cors' }));
+    if (!res.ok || res.headers.get('x-relay-error')) throw new Error(`relay answered ${res.status}`);
+    const buf = await res.arrayBuffer();
+    onBytes(buf.byteLength);
+    gatherFails.set(relay, 0);
+    return { buf, headers: res.headers };
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    gatherFails.set(relay, (gatherFails.get(relay) || 0) + 1);
+    return null;
+  } finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); }
+}
+
 // relays that can gather ranges (absolute URLs, set by the page through the frame worker); failures per relay
 let gatherRelays = [];
 const gatherFails = new Map();

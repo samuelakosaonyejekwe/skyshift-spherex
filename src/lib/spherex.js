@@ -3,7 +3,7 @@
 //   HDU0 PRIMARY (no data) | HDU1 IMAGE float32 2040x2040 MJy/sr | HDU2 FLAGS (RICE_1, one row per tile)
 //   | HDU3 VARIANCE | HDU4 ZODI | HDU5 EPSF | HDU6 WCS-WAVE (last HDU, tiny)
 
-import { RangeSource, parseHeader, dataSize, beFloat32, riceDecode32, parseBinTableRow } from './fits.js';
+import { RangeSource, parseHeader, dataSize, beFloat32, riceDecode32, parseBinTableRow, relayGet } from './fits.js';
 import { CelestialWCS, SpectralWCS } from './wcs.js';
 
 export const S3_BASE = 'https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com/';
@@ -204,6 +204,30 @@ export class SpherexImage {
       };
     });
     return this._fl;
+  }
+
+  /**
+   * FLAGS pixels x0..x1, y0..y1 (1-based) around a target. A relay decodes them next to the archive and returns only
+   * this window (relay/core.mjs flagwin), which saves the compressed full-width rows (about 100 kB per exposure);
+   * without a relay, the full rows are read and decoded here.
+   */
+  async flagWindow(x0, x1, y0, y1) {
+    const m = await this.meta();
+    const W = m.header.NAXIS1, H = m.header.NAXIS2;
+    x0 = Math.max(1, x0); x1 = Math.min(W, x1); y0 = Math.max(1, y0); y1 = Math.min(H, y1);
+    const v = await this._cached(`fw${x0},${x1},${y0},${y1}`, async () => {
+      const off = m.dataStart + dataSize(m.header);
+      const r = await relayGet(`flagwin=${encodeURIComponent(this.url)}&off=${off}&x0=${x0}&x1=${x1}&y0=${y0}&y1=${y1}`, { signal: this.src.signal, onBytes: this.src.onBytes });
+      if (!r) return null;
+      const win = (r.headers.get('x-flag-window') || '').split(',').map(Number);
+      if (win.length !== 4 || !win.every(Number.isFinite)) return null;
+      let bits = {};
+      try { bits = JSON.parse(decodeURIComponent(r.headers.get('x-flag-bits') || '%7B%7D')); } catch { /* names only */ }
+      return { data: new Int32Array(r.buf), win, bits };
+    });
+    if (!v) return this.flagRows(y0, y1);
+    const [wx0, wx1, wy0, wy1] = v.win;
+    return { y0: wy0, y1: wy1, x0: wx0, width: wx1 - wx0 + 1, data: v.data, bits: v.bits };
   }
 
   /** FLAGS rows y0..y1 (1-based), full width, decoded from RICE_1 row tiles. */
