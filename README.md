@@ -12,7 +12,7 @@ Built for the 2026 NASA Space Apps Challenge "Planet X and SPHEREx" by team **Sk
 - Local: `npm start`, then open http://localhost:8080/
 
 On GitHub Pages, searching **any** position works through a pre-built index of every SPHEREx image
-(rebuilt from IRSA every 6 hours), with pixels streamed live from IRSA's cloud bucket; so do the Explore map, Live,
+(rebuilt from IRSA every 3 hours), with pixels streamed live from IRSA's cloud bucket; so do the Explore map, Live,
 Mission statistics, the Sky atlas imagery, saved fields, uploads, equations and dossiers. Services that allow no direct
 browser access (Gaia and WISE overlays, Gaia ID look-ups, NEOSSat listings, Sky atlas catalogues and the live
 data-freshness checks) go through the backup's relay at skyshift-spherex.pages.dev; if no relay answers, the app says so
@@ -54,10 +54,10 @@ pop-up offers updates when a new version or new SPHEREx data is available.
   spread across the bucket's CORS-enabled hostnames. Where a relay answers, it reads the same bytes next to the archive
   and passes them on in one request per exposure (`?gather=`, `?bundle=`; docs/HOSTING.md).
 - **Image searches** use IRSA TAP live through the relay where one is available; otherwise a static index of every
-  SPHEREx image (`scripts/index.mjs`, `src/lib/skyindex.js`), rebuilt every 6 hours by the scheduled workflow and kept in
+  SPHEREx image (`scripts/index.mjs`, `src/lib/skyindex.js`), rebuilt every 3 hours by the scheduled workflow and kept in
   the Actions cache (never committed).
 - **Pre-cut frames** for the five challenge targets and the fastest Gaia DR3 stars (`scripts/packs.mjs`,
-  `src/lib/packs.js`): their 6′ field is cut from the same S3 images with the same code, rebuilt every 6 hours, one
+  `src/lib/packs.js`): their 6′ field is cut from the same S3 images with the same code, rebuilt every 3 hours, one
   file per detector (its first 64 exposures in loading order). A view downloads only the detectors it shows and only
   as far as it needs, and shows frames while they arrive, so these fields open in a few seconds with any detector
   choice; only exposures the packs do not hold are then streamed from IRSA.
@@ -96,8 +96,8 @@ npm run build      # build only (syntax check, size budget, attribution check)
 node scripts/prebake.mjs    # refresh target image lists (data/targets.json)
 node scripts/allsky.mjs     # rebuild the all-sky map from IRSA's HiPS
 node scripts/mission.mjs    # rebuild coverage map and mission statistics
-node scripts/index.mjs      # build the static image index (data/idx/, ~15 min, not committed)
-node scripts/packs.mjs      # cut the frame packs (data/packs/, ~45 min, not committed; uses the index when present)
+node scripts/index.mjs      # build the static image index (data/idx/, 12–20 min on GitHub’s runners, not committed)
+node scripts/packs.mjs      # cut the frame packs (data/packs/, about 13 min for all of them on GitHub’s runners, not committed; uses the index when present)
 node scripts/live.mjs       # Live page snapshot (data/live.json)
 node scripts/sources.mjs    # server-side checks of the eight resources (data/sources.json)
 node scripts/overlays.mjs   # built-in Gaia/CatWISE overlays for the five targets

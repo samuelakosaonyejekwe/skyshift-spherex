@@ -18,7 +18,38 @@ test('coordinate parsing', () => {
   assert.equal(formatRA(133.795129), '08h55m10.831s');
   assert.equal(formatDec(-7.245147), '-07°14′42.53″');
   const b = propagate(269.44850252544, 4.73942005111, -801.551, 10362.394, 2016, 2026);
-  assert.ok(Math.abs(b.dec - (4.73942005111 + 10.362394 * 10 / 3600)) < 1e-9);
+  // the old first-order formula agrees with the rigorous one to well under a milliarcsecond here
+  assert.ok(Math.abs(b.dec - (4.73942005111 + 10.362394 * 10 / 3600)) * 3.6e6 < 1);
+});
+
+// Independent check of proper-motion propagation: spherical trigonometry along the great circle through the
+// start position at position angle θ = atan2(μα*, μδ), over the angle atan(μ·t) that a straight line through
+// space (zero radial velocity) subtends. propagate() uses the vector form instead.
+function greatCircle(ra, dec, pmra, pmdec, dt) {
+  const R = Math.PI / 180, th = Math.atan2(pmra, pmdec), s = Math.atan(Math.hypot(pmra, pmdec) * dt / 3.6e6 * R);
+  const d = dec * R, d2 = Math.asin(Math.sin(d) * Math.cos(s) + Math.cos(d) * Math.sin(s) * Math.cos(th));
+  const da = Math.atan2(Math.sin(th) * Math.sin(s) * Math.cos(d), Math.cos(s) - Math.sin(d) * Math.sin(d2));
+  return { ra: (((ra * R + da) / R) % 360 + 360) % 360, dec: d2 / R };
+}
+// haversine: acos loses precision below a few milliarcseconds
+const sep = (a, b) => { const R = Math.PI / 180, h = Math.sin((b.dec - a.dec) * R / 2) ** 2 + Math.cos(a.dec * R) * Math.cos(b.dec * R) * Math.sin((b.ra - a.ra) * R / 2) ** 2; return 2 * Math.asin(Math.sqrt(h)) / R * 3.6e6; };
+
+test('proper motion: rigorous propagation matches spherical trigonometry, including over a pole and across RA 0', () => {
+  const cases = [
+    [269.44850252544, 4.73942005111, -801.551, 10362.394, 10], // Barnard's Star, 2016 → 2026
+    [331.0966, -56.7998, 3982.0, -2467.0, 10], // ε Indi B
+    [0.0001, 89.99999, 0, 1000, 10], // 1″/yr straight over the north pole
+    [359.99999, -89.9999, 5000, 300, 50], // near the south pole, crossing RA 0
+    [359.9999, 0, 2000, 0, 5], // eastward across RA 0 on the equator
+  ];
+  for (const [ra, dec, pa, pd, dt] of cases) {
+    const p = propagate(ra, dec, pa, pd, 2016, 2016 + dt), q = greatCircle(ra, dec, pa, pd, dt);
+    assert.ok(p.dec <= 90 && p.dec >= -90 && p.ra >= 0 && p.ra < 360, `in range: ${JSON.stringify(p)}`);
+    assert.ok(sep(p, q) < 0.05, `${ra},${dec}: ${sep(p, q)} mas from the spherical-trigonometry result`);
+  }
+  // over the pole: 10″ north from 0.036″ below it ends 9.964″ down the far side (RA turned by 180°)
+  const o = propagate(0.0001, 89.99999, 0, 1000, 2016, 2026);
+  assert.ok(Math.abs((90 - o.dec) * 3600 - 9.964) < 1e-3 && Math.abs(o.ra - 180.0001) < 1e-6, JSON.stringify(o));
 });
 
 test('WCS, wavelength table and flags against IRSA tutorial values', { timeout: 120000 }, async () => {

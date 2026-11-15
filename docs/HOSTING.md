@@ -6,9 +6,9 @@ SkyShift does not depend on the owner's computer, and it is built so that no sin
 
 | Failure | What still works |
 |---|---|
-| The owner's computer is off | Everything: GitHub Actions builds, refreshes (every 6 hours) and deploys; GitHub Pages serves. |
+| The owner's computer is off | Everything: GitHub Actions builds, refreshes (every 3 hours) and deploys; GitHub Pages serves. |
 | GitHub Pages is down | Installed copies (and any browser that opened SkyShift before) start from their offline copy: the app, help, the challenge targets' image lists, and every field already viewed (its images and overlays included). New images still stream for those fields, because pixels come from NASA IRSA's cloud bucket, not from GitHub. |
-| No archive relay available | Searching any position (static image index, rebuilt every 6 hours), the overlays for the five challenge targets (built-in Gaia DR3 and CatWISE2020 lists), Live, Mission and the Sky atlas images. Only overlays for other positions, Gaia ID look-ups, NEOSSat listings and the live source checks need a relay, and the app says so. Without a relay, images are read row by row (slower) and asteroids and comets can be followed only from the user's own table (looking them up by name needs the relay). |
+| No archive relay available | Searching any position (static image index, rebuilt every 3 hours), the overlays for the five challenge targets (built-in Gaia DR3 and CatWISE2020 lists), Live, Mission and the Sky atlas images. Only overlays for other positions, Gaia ID look-ups, NEOSSat listings and the live source checks need a relay, and the app says so. Without a relay, images are read row by row (slower) and asteroids and comets can be followed only from the user's own table (looking them up by name needs the relay). |
 
 ## Live backup
 

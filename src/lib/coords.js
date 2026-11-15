@@ -117,16 +117,26 @@ export function separation(ra1, dec1, ra2, dec2) {
 }
 
 /**
- * Linear proper-motion propagation (adequate over decades for display).
- * pmra is mu_alpha* (includes cos dec), mas/yr, as delivered by Gaia.
+ * Move a sky position along its proper motion from fromYear to toYear. pmra is μα* (mas/yr, already including
+ * cos dec), pmdec is μδ (mas/yr). The star moves in a straight line through space (constant tangential velocity,
+ * radial velocity taken as zero), the rigorous form described in the Gaia DR3 documentation (sec. 4.1.7): the
+ * displacement is added to the unit position vector along the local east and north directions and the result is
+ * normalised. Unlike adding Δα = μα*·t / cos δ, this stays exact at the celestial poles and never gives |δ| > 90°.
  */
 export function propagate(ra, dec, pmra, pmdec, fromYear, toYear) {
   const dt = toYear - fromYear;
   if (!dt || (!pmra && !pmdec)) return { ra, dec };
-  const ddec = (pmdec * dt) / 3.6e6;
-  const cosd = Math.cos(dec * D2R) || 1e-9;
-  const dra = (pmra * dt) / 3.6e6 / cosd;
-  return { ra: wrap360(ra + dra), dec: dec + ddec };
+  return offsetOnSky(ra, dec, (pmra || 0) * dt, (pmdec || 0) * dt);
+}
+
+/** Shift a position by dEast and dNorth milliarcseconds on the sphere (vector form, valid at the poles too). */
+export function offsetOnSky(ra, dec, dEast, dNorth) {
+  const a = ra * D2R, d = dec * D2R, k = D2R / 3.6e6;
+  const ca = Math.cos(a), sa = Math.sin(a), cd = Math.cos(d), sd = Math.sin(d);
+  const e = dEast * k, n = dNorth * k;
+  // unit vector to the star, plus displacement along east (−sin α, cos α, 0) and north (−sin δ cos α, −sin δ sin α, cos δ)
+  const x = cd * ca - e * sa - n * sd * ca, y = cd * sa + e * ca - n * sd * sa, z = sd + n * cd;
+  return { ra: wrap360(Math.atan2(y, x) / D2R), dec: Math.atan2(z, Math.hypot(x, y)) / D2R };
 }
 
 export const mjdToDate = (mjd) => new Date((mjd - 40587) * 86400000);
@@ -205,7 +215,7 @@ export function apparent(ra, dec, pmra, pmdec, plx, refYear, mjd) {
   // projected on the sky). Checked against Astropy's GCRS transform (test/core.test.mjs).
   const dra = plx * (Y * Math.cos(a) - X * Math.sin(a)); // mas, includes cos(dec)
   const ddec = plx * (Z * Math.cos(d) - X * Math.cos(a) * Math.sin(d) - Y * Math.sin(a) * Math.sin(d));
-  return { ra: wrap360(p.ra + dra / 3.6e6 / (Math.cos(d) || 1e-9)), dec: p.dec + ddec / 3.6e6 };
+  return offsetOnSky(p.ra, p.dec, dra, ddec);
 }
 
 /**

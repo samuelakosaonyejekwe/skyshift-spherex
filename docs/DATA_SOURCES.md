@@ -160,7 +160,7 @@ on unchanged, and it unpacks only the small quality-flag window. Images are deco
   and release notes, tutorials) do not state their wavelengths. Lines that are stated are marked.
 - **unWISE image overlay**: WiseView's image backend could not be read; WiseView is linked instead.
 
-## Pre-built indexes (rebuilt by the scheduled workflow every 6 hours; refreshed copies kept in the Actions cache)
+## Pre-built indexes (rebuilt by the scheduled workflow every 3 hours, so a run GitHub drops still leaves them under about 6 hours old; refreshed copies kept in the Actions cache)
 
 | File | Built by | Source | Checked |
 |---|---|---|---|

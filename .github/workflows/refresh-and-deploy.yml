@@ -7,7 +7,8 @@
 name: refresh-and-deploy
 on:
   push: { branches: [main] }
-  schedule: [{ cron: '23 */6 * * *' }]
+  # every 3 hours: GitHub can delay or drop scheduled runs when busy, so a missed run still leaves data under ~6 h old
+  schedule: [{ cron: '23 */3 * * *' }]
   workflow_dispatch: {}
 permissions: { contents: read }  # the deploy job alone gets the Pages rights
 concurrency: { group: pages, cancel-in-progress: false }
