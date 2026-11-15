@@ -11,11 +11,11 @@ and the test or evidence that proves it. Status: ✅ done and tested · 🟡 don
 | Objects reveal themselves by shifting position between images | Movie, Blink, Difference modes; predicted-track overlay; Discover → Spot the movers | Browser runs on WISE 0855 / Barnard, `docs/VALIDATION.md` | ✅ |
 | Create a public-facing web tool to display images of the sky from SPHEREx | Installable PWA, all pages | Local build, browser smoke tests | ✅ |
 | Easy for anyone to quickly see how they change over time | Instant start from saved lists, autoplay, plain-language Explain panel, tour | Browser tests | ✅ |
-| Asteroids and comets orbit the Sun | Ecliptic on the map; Discover movers; solar-system tracks not available from approved sources (documented) | DATA_SOURCES "left out" | 🟡 |
+| Asteroids and comets orbit the Sun | Followed by name (positions from NASA JPL Horizons, added by the author) or from the user's own table; SPHEREx images searched along the path, every exposure centred on the object; shift-and-stack with star-trail rejection and per-pass confirmation; Discover movers; ecliptic on the map | VALIDATION.md (Vesta, 67P, Selinur); `test/ephem.test.mjs` | ✅ |
 | Nearby stars march across the sky | Gaia proper motions, track overlay, Chase page, follow mode | VALIDATION.md (Barnard speed within 2%) | ✅ |
 | Earth's orbit changes apparent positions (distances) | Annual parallax in predicted tracks and overlays; parallax removed in the motion fit; Gaia distance in Object panel and Chase | VALIDATION.md (parallax removed, up to 0.54″ for Barnard) | ✅ |
 | Pluto discovered by comparing two images | Blink mode (first vs last epoch) | Guide, viewer | ✅ |
-| Volunteers discover objects this way (Backyard Worlds) | WiseView link and URL parameters; candidates, queue, random field | Saved page, upload queue E2E | ✅ |
+| Volunteers discover objects this way (Backyard Worlds) | WiseView link (checked first; NASA WISE images from IRSA Finder Chart when it does not answer) and URL parameters; candidates, queue, random field; inspector for the volunteer's own FITS images (J2000 and equinox-of-date coordinates, Gaia-calibrated magnitudes, nearest Gaia star, CSV) | Saved page, upload queue E2E, `test/userimage.test.mjs` | ✅ |
 | Sensitive to hydrogen, water, CO₂, CO and other molecules | Spectrum with hydrogen Pa α, Br α, PAH, He lines; wavelength windows; ice wavelengths not in approved sources (documented) | Spectrum tab | 🟡 |
 | Objects overlap or vary in brightness | Blend warning (Gaia sources in aperture); light curve relative to mean spectrum; brightness-change candidates | RW Aur light curve, VALIDATION.md | ✅ |
 | Too much data for one person | Discover helpers labelled "candidate"; queue of fields; random field | Discover tab | ✅ |
@@ -31,7 +31,7 @@ and the test or evidence that proves it. Status: ✅ done and tested · 🟡 don
 | g. Query by coordinates in the URL; embed | `?ra=&dec=&…`, WiseView-style params, embed=1, iframe snippet | `src/state.js`, Share dialog | ✅ |
 | h. Display metadata like contamination flags | Frame & flags tab, flag map overlay, per-pixel readout | Frame tab | ✅ |
 | i. Astropy and Aladin | Aladin Lite Sky atlas; Astropy reference test of browser maths | `test/astropy.test.mjs` | ✅ |
-| j. Use the Resources tab | All eight resources used and checked live (Mission → Data freshness) | DATA_SOURCES.md | ✅ |
+| j. Use the Resources tab | All eight resources used and checked live (Mission → Data freshness); NASA JPL Horizons added by the author for Solar System positions | DATA_SOURCES.md | ✅ |
 
 ## Build brief (selected requirements; full list in the brief)
 

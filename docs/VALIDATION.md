@@ -39,6 +39,35 @@ Both modes give identical pixels; saver reads only the columns the field covers.
 | 6′ (default) | 0.241 MB | 1.042 MB | 4.3× | 270× |
 | 10′ | 0.288 MB | 1.445 MB | 5.0× | 225× |
 
+## Asteroids, comets and shift-and-stack (live site, 15 November 2026)
+
+Daily geocentric positions (NASA JPL Horizons, 1 May 2025 to 10 October 2026); SkyShift searched SPHEREx images along
+each path and centred every exposure on the object at its time. Stacks are clipped (star trails rejected), errors come
+from 16 comparison apertures, and a detection is "confirmed" only when every six-month pass shows it.
+
+| Object | Exposures found | Result |
+|---|---|---|
+| 4 Vesta | 362 | centred and saturated (V ≈ 6–8), stars trailing |
+| 67P/Churyumov-Gerasimenko (V ≈ 22) | 375 (3 passes) | no confirmed detection; 3σ limits AB 16.1–17.2 in five bands; D4 "not confirmed" (2 of 3 passes) in this crowded bulge field |
+| (500) Selinur (V ≈ 14–15), positive control | 265 (257 measured, 2 passes) | detected in all six bands and both passes: AB 14.45, 14.30, 14.61, 15.42, 15.57, 14.94 (D1–D6); the rise at 4.4–5.0 µm is the start of its thermal emission |
+
+A plain (unclipped) average gave AB 13–15 "detections" for 67P, which cannot be real: hence the clipping, comparison
+apertures and per-pass check.
+
+## Your own image: coordinates and calibrated magnitudes
+
+On a 2MASS J image of the Barnard's Star field (IRSA Finder Chart, 1″ pixels), the inspector calibrated on 26 Gaia DR3
+stars (zero point 22.376 ± 0.059 in G; star-to-star scatter 0.30 mag, as expected between J and G) and measured a star
+clicked at random at G-equivalent 15.48 ± 0.06, matched to Gaia DR3 4472831276236887680 (G = 15.62) at 0.3″. On a
+synthetic image the centroid is within 0.05 px, the aperture flux within 2% and the zero point within 0.08 mag
+(`test/userimage.test.mjs`). Equinox-of-date positions use IAU 1976 precession, equal to Meeus example 21.b to 2×10⁻⁶°
+(`test/report.test.mjs`).
+
+## Image index from the archive storage
+
+FITS headers of 12 files (MJD-BEG, DETECTOR, WCS corners) reproduce the index rows built from IRSA TAP: corners within
+0.00″ and times within the index's 1×10⁻⁵ day (0.86 s) resolution (`node scripts/index-s3.mjs --check`).
+
 ## Reading the results
 
 - Motion: Gaussian-weighted centroids of the target in every six-month co-add, then a weighted straight-line fit;
