@@ -74,10 +74,13 @@ export const S3_HOSTS = [
   'https://s3-external-1.amazonaws.com/nasa-irsa-spherex/',
   'https://s3.dualstack.us-east-1.amazonaws.com/nasa-irsa-spherex/',
 ];
-let hostRR = 0;
+let hostRR = 0, sent = 0;
 function viaHost(url, shift) {
   const base = S3_HOSTS[0];
   if (!url.startsWith(base)) return url;
+  // the first requests use the main hostname, whose connection the page opened in advance (preconnect); later
+  // requests rotate across all hostnames to multiply the browser's per-host connection limit
+  if (sent++ < 8 && !shift) return url;
   return S3_HOSTS[(hostRR++ + shift) % S3_HOSTS.length] + url.slice(base.length);
 }
 // global limiter: 8 hosts x 6 HTTP/1.1 connections

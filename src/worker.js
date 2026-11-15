@@ -25,15 +25,22 @@ function getImage(uri, signal, kind = 'frames') {
 }
 let currentPhot = null;
 
-async function pool(items, limit, fn, signal) {
+async function pool(items, limit, fn, signal, { first = limit } = {}) {
   let i = 0;
+  let release; const ramp = new Promise((r) => { release = r; });
+  signal.addEventListener('abort', () => release(), { once: true }); // a cancelled job never leaves workers waiting
   const run = async () => {
     while (i < items.length && !signal.aborted) {
       const k = i++;
       await fn(items[k], k);
+      release(); // after the first item finishes, the remaining workers start
     }
   };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  // a few workers first, so the first frame is not slowed by many exposures sharing the connection; then all of them
+  const start = Math.min(first, limit, items.length);
+  const runners = Array.from({ length: start }, run);
+  if (limit > start) runners.push(ramp.then(() => Promise.all(Array.from({ length: Math.min(limit, items.length) - start }, run))));
+  await Promise.all(runners);
 }
 
 self.onmessage = async (e) => {
@@ -68,7 +75,7 @@ self.onmessage = async (e) => {
         done++;
         if (!ctl.signal.aborted) self.postMessage({ type: 'progress', id: msg.id, done, total: items.length, bytes, ms: performance.now() - t0 });
       }
-    }, ctl.signal);
+    }, ctl.signal, { first: 2 });
     if (!ctl.signal.aborted) self.postMessage({ type: 'done', id: msg.id, bytes, ms: performance.now() - t0 });
     return;
   }

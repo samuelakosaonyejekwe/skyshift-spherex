@@ -18,6 +18,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SkyShift">
   <link rel="stylesheet" href="styles.css">
+  <!-- connections opened while the app starts: SPHEREx images (IRSA bucket) and the archive relay -->
+  <link rel="preconnect" href="https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com" crossorigin>
+  <link rel="preconnect" href="https://skyshift-spherex.pages.dev" crossorigin>
   <link rel="modulepreload" href="src/app.js">
   <link rel="modulepreload" href="src/state.js">
   <link rel="modulepreload" href="src/lib/coords.js">
